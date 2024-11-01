@@ -61,6 +61,7 @@ void naive_asmgen_gemm(
             auto* c = c_tile.data();
             const auto* alpha = &alpha_v;
             const auto* beta = &beta_v;
+            std::uint64_t cs_c = MR;
 #if 1
             asm(
             ${GEMM}

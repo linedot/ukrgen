@@ -282,6 +282,9 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
     casreg = rt.reserve_any_greg()
     # copy from c source reg
     asmblock = asm.mov_greg(asm.greg(grt.careg), asm.greg(casreg))
+    cscreg = rt.reserve_any_greg()
+    asmblock += asm.mov_param_to_greg("cs_c",asm.greg(cscreg))
+    asmblock += asm.shift_greg_left(asm.greg(cscreg),datatype.value.bit_length()-1)
     # TODO: Deduplicate code for c store in and after loop
     # TODO: Deduplicate code for advancing offsets (also in the code above)
     for i in range(nr):
@@ -297,6 +300,11 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                                       datatype)
                 free_vregs.append(csvreg)
                 csoffset = advance_vecaddr_voffset(csoffset, mem_use)
+                if ((0 == (csoffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+                    asmblock += asm.add_greg_greg(asm.greg(casreg), asm.greg(casreg), asm.greg(cscreg))
+                    csoffset = 0
+                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (csoffset % vectors_in_mr))):
+                    raise NotImplementedError("Special case not handled yet (mr larger than max. vector offset expressable in asm)")
                 if csoffset > asm.max_load_voff:
                     asmblock += add_voff(asm, asm.greg(casreg), csoffset, 
                                          asm.greg(grt.vlreg), datatype)
@@ -316,6 +324,11 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                     asmblock += add_voff(asm, asm.greg(grt.careg), coffset, 
                                          asm.greg(grt.vlreg), datatype)
                     coffset = 0
+                if ((0 == (coffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+                    asmblock += asm.add_greg_greg(asm.greg(grt.careg), asm.greg(grt.careg), asm.greg(cscreg))
+                    coffset = 0
+                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (coffset % vectors_in_mr))):
+                    raise NotImplementedError(f"Special case not handled yet (mr larger than max. vector offset expressable in asm):\n coffset={coffset}\n vectors_in_mr={vectors_in_mr}\n max_load_voff={asm.max_load_voff}")
 
             if layout.bvec_strat == bvec_strategy_type.FMAVF:
                 if not beta0:
@@ -367,6 +380,7 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
             #                      datatype)
             # c_tile_store_queue.append(tile_idx)
             # free_vregs.append(cvreg)
+        #TODO: inc column here
 
     for csvreg in c_tile_store_queue:
         asmblock += asm.store_vector_voff(asm.greg(casreg),
@@ -378,6 +392,11 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
             asmblock += add_voff(asm, asm.greg(casreg), csoffset, 
                                  asm.greg(grt.vlreg), datatype)
             csoffset = 0
+        if ((0 == (csoffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+            asmblock += asm.add_greg_greg(asm.greg(casreg), asm.greg(casreg), asm.greg(cscreg))
+            csoffset = 0
+        elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (csoffset % vectors_in_mr))):
+            raise NotImplementedError("Special case not handled yet (mr larger than max. vector offset expressable in asm)")
     rt.unuse_greg(casreg)
 
     return asmblock
@@ -972,6 +991,7 @@ def nanogemm(asm : asmgen, pf : prefetch_options,
     #inputs.append(('dummy_a', 'm', f"*({c_data_types[datatype]} (*)[]) a"))
     #inputs.append(('dummy_b', 'm', f"*({c_data_types[datatype]} (*)[]) b"))
     inputs.append(('iterations','m','(iterations)'))
+    inputs.append(('cs_c','m','(cs_c)'))
     inputs.append(('kleft','m','(kleft)'))
     inputs.append(('a','m','(a)'))
     inputs.append(('b','m','(b)'))
