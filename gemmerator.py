@@ -57,6 +57,11 @@ dt_ctype_map = {
         "single" : "float",
 }
 
+dt_prefix_map = {
+        "double" : "d",
+        "single" : "s",
+}
+
 def valid_bvec_strats_for(simd_type):
     if "neon" == simd_type:
         return ["dist1_inc","fmaidx","noload"]
@@ -241,6 +246,7 @@ def main():
             "MEM": mem_use.name,
             "MR" : mr,
             "DT" : dt_ctype_map[args.datatype],
+            "DTPREFIX" : dt_prefix_map[args.datatype],
             "VECINMR" : vectors_in_mr,
             "NR" : nr,
             "UNROLL" : unroll_factor,
