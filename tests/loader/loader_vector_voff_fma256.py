@@ -9,9 +9,9 @@ from algobuild.loader import loader_vector_voff
 class test_loader_vector_voff_fma256(unittest.TestCase):
     def test_32steps(self):
         from asmgen.asmblocks.avx_fma import fma256
-        li = loadinfo(address_register=0, address_offset=0, offset_step=1, vector_register=0, datatype=asm_data_type.FP64)
+        li = loadinfo(address_register=0, address_offset=0, offset_step=1, target_register=0, datatype=asm_data_type.FP64)
         asmgen = fma256()
-        sla = simple_load_advancer(asmgen, li, [0,1], 16, 
+        sla = simple_load_advancer(asmgen, li, [0,1], 15, 
                                    vector_offset_advancer(li.datatype))
 
         loader = loader_vector_voff(

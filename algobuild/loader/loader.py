@@ -26,9 +26,29 @@ class loader_vector_voff(loader):
         asmblock  = asmgen.load_vector_voff(
             asmgen.greg(li.address_register), 
             li.address_offset, 
-            asmgen.vreg(li.vector_register),
+            asmgen.vreg(li.target_register),
             li.datatype)
         asmblock += self.load_advancer.advance()
 
         return asmblock
 
+class loader_fp_immoff(loader):
+    def __init__(self, 
+            asmgen       : asmgen,
+            load_advancer: load_advancer):
+        self.load_advancer = load_advancer
+
+    def process(self) -> str:
+
+        asmgen = self.load_advancer.asmgen
+
+        li = self.load_advancer.loadinfo
+
+        asmblock  = asmgen.load_scalar_immoff(
+            asmgen.greg(li.address_register), 
+            li.address_offset, 
+            asmgen.freg(li.target_register),
+            li.datatype)
+        asmblock += self.load_advancer.advance()
+
+        return asmblock

@@ -13,7 +13,7 @@ class test_loader_vector_voff_rvv(unittest.TestCase):
         rt = reg_tracker(max_greg=20, max_vreg=32, max_freg=32)
         address_register = rt.reserve_specific_greg(0)
         vlen_register = rt.reserve_any_greg()
-        li = loadinfo(address_register=0, address_offset=0, offset_step=1, vector_register=0, datatype=asm_data_type.FP64)
+        li = loadinfo(address_register=0, address_offset=0, offset_step=1, target_register=0, datatype=asm_data_type.FP64)
         asmgen = rvv()
 
         asmblock = asmgen.simd_size_to_greg(asmgen.greg(vlen_register), li.datatype)

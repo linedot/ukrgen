@@ -9,7 +9,7 @@ class loadinfo:
     address_register : int = 0
     address_offset   : int = 0
     offset_step      : int = 8
-    vector_register  : int = 0
+    target_register  : int = 0
     datatype         : asm_data_type = asm_data_type.FP64
 
 class load_advancer:
