@@ -71,6 +71,7 @@ int main()
         cdata.resize(get_simd_size()/sizeof($DT)*$VECINMR*$NR);
         break;
     }
+    std::uint64_t cs_c = get_simd_size()/sizeof($DT)*$VECINMR;
 
     alpha_val = dist(rng);
     beta_val  = dist(rng);

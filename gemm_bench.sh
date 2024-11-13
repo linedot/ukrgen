@@ -86,7 +86,7 @@ case "${T}" in
         ;;
     rvv)
         echo "Using RVV 1.0 FMA (<platform-defined> bit):"
-        CFLAGS="-march=rv64gcv1p0"
+        CFLAGS="-march=rv64gcv_zicbop"
         ;;
     rvv071)
         echo "Using RVV 0.7.1 FMA (<platform-defined> bit):"

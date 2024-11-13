@@ -277,6 +277,8 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                   datatype):
     c_tile_store_queue : list[int] = []
     coffset=0
+    cur_c_m=0
+    cur_c_m_s=0
     csoffset=0
     # register holding address for storing C tile
     casreg = rt.reserve_any_greg()
@@ -285,6 +287,13 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
     cscreg = rt.reserve_any_greg()
     asmblock += asm.mov_param_to_greg("cs_c",asm.greg(cscreg))
     asmblock += asm.shift_greg_left(asm.greg(cscreg),datatype.value.bit_length()-1)
+
+    # TODO: this is crap, also written only with RVV in mind
+    if asm.max_load_voff < vectors_in_mr:
+        # TODO: multiply instead of this
+        asmblock += "".join([
+            asm.sub_greg_greg(asm.greg(cscreg), asm.greg(cscreg), asm.greg(grt.vlreg)) for i in range(vectors_in_mr-asm.max_load_voff-1)
+        ])
     # TODO: Deduplicate code for c store in and after loop
     # TODO: Deduplicate code for advancing offsets (also in the code above)
     for i in range(nr):
@@ -300,10 +309,12 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                                       datatype)
                 free_vregs.append(csvreg)
                 csoffset = advance_vecaddr_voffset(csoffset, mem_use)
-                if ((0 == (csoffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+                cur_c_m_s += 1
+                if ((0 == (cur_c_m_s % vectors_in_mr)) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
                     asmblock += asm.add_greg_greg(asm.greg(casreg), asm.greg(casreg), asm.greg(cscreg))
+                    cur_c_m_s = 0
                     csoffset = 0
-                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (csoffset % vectors_in_mr))):
+                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (cur_c_m_s % vectors_in_mr))):
                     raise NotImplementedError("Special case not handled yet (mr larger than max. vector offset expressable in asm)")
                 if csoffset > asm.max_load_voff:
                     asmblock += add_voff(asm, asm.greg(casreg), csoffset, 
@@ -320,15 +331,16 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                                                  asm.vreg(cvreg),
                                                  datatype)
                 coffset = advance_vecaddr_voffset(coffset, mem_use)
+                cur_c_m += 1
+                if ((0 == (cur_c_m % vectors_in_mr)) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+                    asmblock += asm.add_greg_greg(asm.greg(grt.careg), asm.greg(grt.careg), asm.greg(cscreg))
+                    cur_c_m = 0
+                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (cur_c_m % vectors_in_mr))):
+                    raise NotImplementedError(f"Special case not handled yet (mr larger than max. vector offset expressable in asm):\n coffset={coffset}\n vectors_in_mr={vectors_in_mr}\n max_load_voff={asm.max_load_voff}")
                 if coffset > asm.max_load_voff:
                     asmblock += add_voff(asm, asm.greg(grt.careg), coffset, 
                                          asm.greg(grt.vlreg), datatype)
                     coffset = 0
-                if ((0 == (coffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
-                    asmblock += asm.add_greg_greg(asm.greg(grt.careg), asm.greg(grt.careg), asm.greg(cscreg))
-                    coffset = 0
-                elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (coffset % vectors_in_mr))):
-                    raise NotImplementedError(f"Special case not handled yet (mr larger than max. vector offset expressable in asm):\n coffset={coffset}\n vectors_in_mr={vectors_in_mr}\n max_load_voff={asm.max_load_voff}")
 
             if layout.bvec_strat == bvec_strategy_type.FMAVF:
                 if not beta0:
@@ -388,15 +400,17 @@ def update_c_tile(asm : asmgen, rt : reg_tracker, grt : gemm_tracker,
                               asm.vreg(csvreg),
                               datatype)
         csoffset = advance_vecaddr_voffset(csoffset, mem_use)
+        cur_c_m_s += 1
+        if ((0 == (cur_c_m_s % vectors_in_mr)) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
+            asmblock += asm.add_greg_greg(asm.greg(casreg), asm.greg(casreg), asm.greg(cscreg))
+            cur_c_m_s = 0
+            csoffset = 0
+        elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (cur_c_m_s % vectors_in_mr))):
+            raise NotImplementedError("Special case not handled yet (mr larger than max. vector offset expressable in asm)")
         if csoffset > asm.max_load_voff:
             asmblock += add_voff(asm, asm.greg(casreg), csoffset, 
                                  asm.greg(grt.vlreg), datatype)
             csoffset = 0
-        if ((0 == (csoffset % vectors_in_mr)) and (asm.max_load_voff > vectors_in_mr) and not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA))):
-            asmblock += asm.add_greg_greg(asm.greg(casreg), asm.greg(casreg), asm.greg(cscreg))
-            csoffset = 0
-        elif not ((layout.bvec_strat == bvec_strategy_type.NOLOAD) or (mem_use == mem_use_type.SAMEDATA) or (0 != (csoffset % vectors_in_mr))):
-            raise NotImplementedError("Special case not handled yet (mr larger than max. vector offset expressable in asm)")
     rt.unuse_greg(casreg)
 
     return asmblock
