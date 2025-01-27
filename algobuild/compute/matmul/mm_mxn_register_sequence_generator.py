@@ -16,6 +16,9 @@ class mm_mxn_register_sequence_generator(sequence_generator):
     side_effects = [
     ]
 
+    def additional_init(self):
+        pass
+
     def initialize(self):
         self.a_data_register_list = self.internal_parameters["a_data_register_list"]
         if not (len(self.a_data_register_list) == len(set(self.a_data_register_list))):
@@ -38,6 +41,11 @@ class mm_mxn_register_sequence_generator(sequence_generator):
         self.m = self.internal_parameters["m"]
         self.n = self.internal_parameters["n"]
 
+        self.a_data_offset = 0
+        self.b_data_offset = 0
+        self.c_data_offset = 0
+
+        self.additional_init()
 
         if len(self.c_data_register_list) != self.m*self.n:
             raise ValueError(f"C-tile register list size is not m*n ({self.m*self.n})")
@@ -53,6 +61,13 @@ class mm_mxn_register_sequence_generator(sequence_generator):
             "a_vector" : self.a_data_register_list[a_idx],
             "b_vector" : self.b_data_register_list[b_idx],
             "c_vector" : self.c_data_register_list[c_idx],
+            "a_data_offset" : self.a_data_offset + self.a_data_register_list_position,
+            "b_data_offset" : self.b_data_offset + self.b_data_register_list_position,
+            # If everything stays in registers this shouldn't actually be used in the main loop
+            # but then I remembered that AVX has fmas that have memory as operands,
+            # so maybe there will be a use case
+            # NOTE: This is used now to verify that correct data is in the registers
+            "c_data_offset" : self.c_data_register_list_position,
         }
 
         a_idx = self.a_data_register_list_position
@@ -84,8 +99,10 @@ class mm_rsg_afirst(mm_mxn_register_sequence_generator):
         c_idx = ((c_idx + 1) % (self.m*self.n))
         if 0 == c_idx:
             self.a_idx_offset += self.m
+            self.a_data_offset += self.m
             self.a_idx_offset = self.a_idx_offset % len(self.a_data_register_list)
             self.b_idx_offset += self.n
+            self.b_data_offset += self.n
             self.b_idx_offset = self.b_idx_offset % len(self.b_data_register_list)
         a_idx = ((a_idx + 1) % self.m)
         if 0 == a_idx:
@@ -99,8 +116,32 @@ class mm_rsg_bfirst(mm_mxn_register_sequence_generator):
         c_idx = ((c_idx + 1) % (self.m*self.n))
         if 0 == c_idx:
             self.a_idx_offset += self.m
+            self.a_data_offset += self.m
             self.a_idx_offset = self.a_idx_offset % len(self.a_data_register_list)
             self.b_idx_offset += self.n
+            self.b_data_offset += self.n
+            self.b_idx_offset = self.b_idx_offset % len(self.b_data_register_list)
+        b_idx = ((b_idx + 1) % self.n)
+        if 0 == b_idx:
+            a_idx = ((a_idx + 1) % self.m)
+
+        return a_idx, b_idx, c_idx
+
+
+class mm_rsg_bfirst_reorderc(mm_mxn_register_sequence_generator):
+    def advance_simplified(self, a_idx : int, b_idx : int, c_idx : int) -> tuple[int,int,int]:
+
+        prev_c_idx = c_idx
+        c_idx = ((c_idx + self.m) % (self.m*self.n))
+        if prev_c_idx > c_idx:
+            c_idx +=1
+        if prev_c_idx == len(self.c_data_register_list)-1:
+            c_idx = 0
+            self.a_idx_offset += self.m
+            self.a_data_offset += self.m
+            self.a_idx_offset = self.a_idx_offset % len(self.a_data_register_list)
+            self.b_idx_offset += self.n
+            self.b_data_offset += self.n
             self.b_idx_offset = self.b_idx_offset % len(self.b_data_register_list)
         b_idx = ((b_idx + 1) % self.n)
         if 0 == b_idx:
