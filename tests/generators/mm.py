@@ -376,3 +376,29 @@ class test_mm(unittest.TestCase):
             "C(1*VLEN,3*VLEN) <- opa(A(1*VLEN,1),B(1,3*VLEN)) + C(1*VLEN,3*VLEN)",
         ]
         self.assertEqual(expected_sequence, mmgen.generate())
+
+    def test_2x2x2_tile_mma(self):
+        m = 2
+        n = 2
+        k = 2
+        use_fma_vf = True
+        
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(x4_vector,x4_vector))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,x4_vector))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,x4_vector))
+
+        mmgen = dummy_mm_op(a_tile, b_tile, c_tile)
+        mmgen.set_op(opstr="mma")
+
+        expected_sequence=[
+            "C(0,0) <- mma(A(0,0),B(0,0)) + C(0,0)",
+            "C(4,0) <- mma(A(4,0),B(0,0)) + C(4,0)",
+            "C(0,4) <- mma(A(0,0),B(0,4)) + C(0,4)",
+            "C(4,4) <- mma(A(4,0),B(0,4)) + C(4,4)",
+            "C(0,0) <- mma(A(0,4),B(4,0)) + C(0,0)",
+            "C(4,0) <- mma(A(4,4),B(4,0)) + C(4,0)",
+            "C(0,4) <- mma(A(0,4),B(4,4)) + C(0,4)",
+            "C(4,4) <- mma(A(4,4),B(4,4)) + C(4,4)",
+        ]
+        #print("\n".join(mmgen.generate()))
+        self.assertEqual(expected_sequence, mmgen.generate())
