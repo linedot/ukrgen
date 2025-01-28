@@ -42,57 +42,6 @@ class tile:
         self.subtile_count_a = subtile_count_a
         self.subtile_count_b = subtile_count_b
 
-# i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
-#     SVE FP64 vector group(x4) is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
-#     (sd_size=1) for dimb because we can use the individual vectors
-#     AVX FP64 vector           is dima=(dt=fixed,size=4,sdt=fixed,sd_size=4), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
-#     RVV FP64 vector LMUL=4    is dima=(dt=vla,size=1,sdt=vla,sd_size=1), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
-#     (sd_size=1) for dimb again because we can use the individual vectors (paying the cost for a vsetvl or using 
-#      whole-vector instructions if available for the operation in question)
-#     PTX m16n8k16 fragments:
-#                             A is dima=(dt=fixed,size=16,std=fixed,fd_size=16), dimb=(dt=fixed,size=16,std=fixed,sd_size=16)
-#                             B is dima=(dt=fixed,size=16,std=fixed,fd_size=16), dimb=(dt=fixed,size=8,std=fixed,sd_size=16)
-#                             C is dima=(dt=fixed,size=16,std=fixed,fd_size=16), dimb=(dt=fixed,size=8,std=fixed,sd_size=16)
-#     GPU stuff still needs some thinking because of the cooperative threads and complexity of indexing into the tiles
-
-# Taxonomy of GEMM kernels:
-# vlen = SIMD width in elements
-# kernel dimensions : mxn
-# mv = m/vlen
-# nv = n/vlen
-# kv = k/vlen
-# VLA requirements:
-#   - s: sliding scalar elements along vector registers
-#   - l: loop over elements in vector registers
-#   - rti: runtime index into vector
-#   - rtr: Number of required registers to express kernel depends
-#          on vlen (possible by implementing multiple kernels and 
-#          selecting at runtime if vlen << N_{reg,arch})
-#  Type             A            B             C          VLA  requirements   VLA dim
-# fma_vf     | mv vectors  | n scalars   | mvxn vectors  |                  | m      |
-# fma_idx    | mv vectors  | nv vectors  | mvxn vectors  | rtr(n),sl or rti | m      |
-# fma_bcast  | mv vectors  | n vectors   | mvxn vectors  |                  | m      |
-# fmat_vf    | m scalars   | nv vectors  | mxnv vectors  |                  | n      |
-# fmat_idx   | mv vectors  | nv vectors  | mxnv vectors  | rtr(m),sl or rti | n      |
-# fmat_bcast | m vectors   | nv vectors  | mxnv vectors  |                  | n      |
-# dot_s      | m vectors   | n vectors   | mxn scalars   |                  | k      |
-# dot_idx    | m vectors   | n vectors   | mvxn vectors  | rtr(m),sl or rti | k      |
-# dott_idx   | m vectors   | n vectors   | mxnv vectors  | rtr(n),sl or rti | k      |
-# opa        | mv vectors  | nv vectors  | mvxnv tiles   |                  | m,n    |
-# mma        | mvxkv tiles | kvxnv tiles | mvxnv tiles   |                  | m,n,k  |
-#
-# With SVE we also have ability to lane-select within each fixed-size (128bit) chunk of
-# the vector, enabling variants of fma_bcast that broadcast one chunk into the vector:
-# nc = n/chunk size
-#  Type             A            B             C          VLA  requirements   VLA dim
-# fma_bcidx  | mv vectors  | nc vectors  | mvxn vectors  |                  | m      |
-# fmat_bcidx | mc vectors  | nv vectors  | mxnv vectors  |                  | n      |
-#
-# - scalar fma is any fma but with vlen=1
-# - number of operations is always cdims * k (or kv for mma)
-# - The VLA-problematic ones are always when between a c dim and the corresponding A/B dim,
-#   one is xv and the other is x
-
 class loop_order:
     kmn = [2,0,1]
     knm = [2,1,0]
