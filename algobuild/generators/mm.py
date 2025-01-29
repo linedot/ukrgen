@@ -43,16 +43,42 @@ class tile:
         self.subtile_count_b = subtile_count_b
 
 class loop_order:
-    kmn = [2,0,1]
-    knm = [2,1,0]
-    mnk = [0,1,2]
-    mkn = [0,2,1]
-    nmk = [1,0,2]
-    nkm = [1,2,0]
+    max_direct_dimchars = 5 # 8 # This is 40k permutations, dynamic computation is probably faster
+    def __init__(self, dimchars : list[str]):
+        self.dimchars = dimchars
+        if len(dimchars) <= loop_order.max_direct_dimchars:
+            indices = list(range(len(dimchars)))
+            import itertools
+            permutations = itertools.permutations(indices)
+            self.directmap = {
+                "".join([dimchars[i] for i in p]) : p for p in permutations
+            }
+        else:
+            self.dimchar_indices = { d : i for i,d in enumerate(dimchars) }
+    def __call__(self, order : str):
+        assert len(order) == len(self.dimchars)
+        assert set(order) == set(self.dimchars)
+        if len(order) <= loop_order.max_direct_dimchars:
+            return self.directmap[order]
+        return [self.dimchar_indices[c] for c in order]
+
+# In case either future me or someone else tries searching for the definition of these
+# order2D, order3D, order4D, order5D, order6D, order7D, order8D, order9D
+all_dimchars = ['m','n','k','l','o','p','r','s','t']
+for i in range(3,len(all_dimchars)+1):
+    dimchars = [f(c) for c in all_dimchars[:i] for f in (lambda c : c.upper(), lambda c : c)]
+    name = "".join(dimchars)+"_order"
+    vars()[name] = loop_order(dimchars=dimchars)
+    vars()[f"order{i-1}D"] = vars()[name]
+
+# The above does basically:
+# MmNnKk_order = loop_order(dimchars=['M','m','N','n','K','k'])
+# order2D      = MmNnKk_order
+# ... etc
 
 
 class mm_op:
-    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = loop_order.mnk, reorder_c : bool = False):
+    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK'), reorder_c : bool = False):
         self.a = a
         self.b = b
         self.c = c
@@ -130,14 +156,17 @@ class mm_op:
             )
 
         result = []
-        tile_count = M*N*K
+        tile_count = M*N*K*M_factor*N_factor*K_factor
         for tile_idx in range(tile_count):
             # Some parts are already kind-of set up for multidim/tensors
             # but let's focus on GEMM for now
-            indices = self.get_indices(tile_idx=tile_idx, dims=[M, N, K])
+            indices = self.get_indices(tile_idx=tile_idx, dims=[M, M_factor, N, N_factor, K, K_factor])
             m_idx = indices[0]
-            n_idx = indices[1]
-            k_idx = indices[2]
+            n_idx = indices[2]
+            k_idx = indices[4]
+            m_subidx = indices[1]
+            n_subidx = indices[3]
+            k_subidx = indices[5]
             #print(f"(m,n,k)=({m_idx},{n_idx},{k_idx})")
 
 
@@ -161,19 +190,12 @@ class mm_op:
                                                             (c_subtile.dima.size, c_subtile.dimb.size))])
 
 
-            subidx_count = M_factor*N_factor*K_factor
-            for subidx_idx in range(subidx_count):
-                subindices = self.get_indices(tile_idx=subidx_idx, dims=[M_factor,N_factor,K_factor])
-                m_subidx = subindices[0]
-                n_subidx = subindices[1]
-                k_subidx = subindices[2]
-
-                subresult = self.compute_subtiles(
-                    a_tile=a_subtile, b_tile=b_subtile, c_tile=c_subtile, 
-                    a_off=a_suboffset, b_off=b_suboffset, c_off=c_suboffset, 
-                    m_subidx=m_subidx, n_subidx=n_subidx, k_subidx=k_subidx, 
-                )
-                result.extend(subresult)
+            subresult = self.compute_subtiles(
+                a_tile=a_subtile, b_tile=b_subtile, c_tile=c_subtile, 
+                a_off=a_suboffset, b_off=b_suboffset, c_off=c_suboffset, 
+                m_subidx=m_subidx, n_subidx=n_subidx, k_subidx=k_subidx, 
+            )
+            result.extend(subresult)
         return result
 
     @abstractmethod

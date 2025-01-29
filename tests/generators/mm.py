@@ -1,7 +1,14 @@
 import unittest
 
 
-from algobuild.generators import dummy_mm_op,tile,dimension_properties,dimension_type,storage_type
+from algobuild.generators import (
+    dimension_properties,
+    dimension_type,
+    dummy_mm_op,
+    order2D,
+    storage_type,
+    tile,
+)
 
 # i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
 #     SVE FP64 vector group(x4) is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
@@ -195,25 +202,25 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n//x4_vector.sd_size, subdims=(scalar,x4_vector))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar))
 
-        mmgen = dummy_mm_op(a_tile, b_tile, c_tile)
+        mmgen = dummy_mm_op(a_tile, b_tile, c_tile, lo=order2D('mkMnNK'))
         mmgen.set_op(opstr="fma_idxx4")
 
         expected_sequence = [
             "C(0,0+0) <- fma_idxx4(A(0,0),B(0,0.el[0])) + C(0,0+0)",
-            "C(0,0+1) <- fma_idxx4(A(0,0),B(0,0.el[1])) + C(0,0+1)",
-            "C(0,0+2) <- fma_idxx4(A(0,0),B(0,0.el[2])) + C(0,0+2)",
-            "C(0,0+3) <- fma_idxx4(A(0,0),B(0,0.el[3])) + C(0,0+3)",
             "C(4,0+0) <- fma_idxx4(A(4,0),B(0,0.el[0])) + C(4,0+0)",
+            "C(0,0+1) <- fma_idxx4(A(0,0),B(0,0.el[1])) + C(0,0+1)",
             "C(4,0+1) <- fma_idxx4(A(4,0),B(0,0.el[1])) + C(4,0+1)",
+            "C(0,0+2) <- fma_idxx4(A(0,0),B(0,0.el[2])) + C(0,0+2)",
             "C(4,0+2) <- fma_idxx4(A(4,0),B(0,0.el[2])) + C(4,0+2)",
+            "C(0,0+3) <- fma_idxx4(A(0,0),B(0,0.el[3])) + C(0,0+3)",
             "C(4,0+3) <- fma_idxx4(A(4,0),B(0,0.el[3])) + C(4,0+3)",
             "C(0,0+0) <- fma_idxx4(A(0,1),B(1,0.el[0])) + C(0,0+0)",
-            "C(0,0+1) <- fma_idxx4(A(0,1),B(1,0.el[1])) + C(0,0+1)",
-            "C(0,0+2) <- fma_idxx4(A(0,1),B(1,0.el[2])) + C(0,0+2)",
-            "C(0,0+3) <- fma_idxx4(A(0,1),B(1,0.el[3])) + C(0,0+3)",
             "C(4,0+0) <- fma_idxx4(A(4,1),B(1,0.el[0])) + C(4,0+0)",
+            "C(0,0+1) <- fma_idxx4(A(0,1),B(1,0.el[1])) + C(0,0+1)",
             "C(4,0+1) <- fma_idxx4(A(4,1),B(1,0.el[1])) + C(4,0+1)",
+            "C(0,0+2) <- fma_idxx4(A(0,1),B(1,0.el[2])) + C(0,0+2)",
             "C(4,0+2) <- fma_idxx4(A(4,1),B(1,0.el[2])) + C(4,0+2)",
+            "C(0,0+3) <- fma_idxx4(A(0,1),B(1,0.el[3])) + C(0,0+3)",
             "C(4,0+3) <- fma_idxx4(A(4,1),B(1,0.el[3])) + C(4,0+3)",
         ]
         self.assertEqual(expected_sequence, mmgen.generate())
