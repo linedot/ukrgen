@@ -5,6 +5,7 @@ from algobuild.generators import (
     dimension_properties,
     dimension_type,
     dummy_mm_op,
+    resource_mm_op,
     order2D,
     storage_type,
     tile,
@@ -121,6 +122,117 @@ class test_mm(unittest.TestCase):
             "C(1,3) <- fma(A(1,0),B(0,3)) + C(1,3)"
         ]
         self.assertEqual(expected_sequence, mmgen.generate())
+
+    def test_2vx4_scalar_regmapped(self):
+        m = 2
+        n = 4
+        unroll_factor = 2
+        k = unroll_factor
+        use_fma_vf = True
+
+        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
+        b_mapper = lambda tile, idx : k*idx[0]+idx[1]
+        
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar,scalar))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,scalar))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar,scalar))
+        mmgen = resource_mm_op(
+                     res_counts=[2,4,8],
+                     res_steps=[1,1,1],
+                     addr_counts=[1,1,1],
+                     addr_offset_ranges=[[(0,7)],[(0,7)],[(0,7)]],
+                     addr_starts=[[0],[0],[0]],
+                     preload_counts=[0,0,8],
+                     mappers = [ac_mapper,b_mapper,ac_mapper], 
+                     a=a_tile, b=b_tile, c=c_tile)
+
+
+        expected_sequence = [
+            "a0 <- LOAD aa0 + o0",
+            "b0 <- LOAD ba0 + o0",
+            "c0 <- fma(a0,b0,c0)",
+            "a1 <- LOAD aa0 + o1",
+            "c1 <- fma(a1,b0,c1)",
+            "b1 <- LOAD ba0 + o1",
+            "c2 <- fma(a0,b1,c2)",
+            "c3 <- fma(a1,b1,c3)",
+            "b2 <- LOAD ba0 + o2",
+            "c4 <- fma(a0,b2,c4)",
+            "c5 <- fma(a1,b2,c5)",
+            "b3 <- LOAD ba0 + o3",
+            "c6 <- fma(a0,b3,c6)",
+            "c7 <- fma(a1,b3,c7)",
+            "a0 <- LOAD aa0 + o2",
+            "c0 <- fma(a0,b2,c0)",
+            "a1 <- LOAD aa0 + o3",
+            "c1 <- fma(a1,b2,c1)",
+            "c2 <- fma(a0,b3,c2)",
+            "c3 <- fma(a1,b3,c3)",
+            "b0 <- LOAD ba0 + o4",
+            "c4 <- fma(a0,b0,c4)",
+            "c5 <- fma(a1,b0,c5)",
+            "b1 <- LOAD ba0 + o5",
+            "c6 <- fma(a0,b1,c6)",
+            "c7 <- fma(a1,b1,c7)",
+        ]
+        self.assertEqual(expected_sequence, mmgen.generate())
+        #print("\n".join(mmgen.generate()))
+
+    def test_2vx4_vla_vector_regmapped(self):
+        m = 2
+        n = 4
+        unroll_factor = 2
+        k = unroll_factor
+        use_fma_vf = True
+
+        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
+        b_mapper = lambda tile, idx : k*idx[0]+idx[1]
+        
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(vla_vector,scalar))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,scalar))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,scalar))
+        mmgen = resource_mm_op(
+                     res_counts=[2,4,8],
+                     res_steps=[1,1,1],
+                     addr_counts=[2,1,1],
+                     addr_offset_ranges=[[(0,0),(0,0)],[(0,7)],[(0,0)]],
+                     addr_starts=[[0,2],[0],[0]],
+                     preload_counts=[0,0,8],
+                     mappers = [ac_mapper,b_mapper,ac_mapper], 
+                     a=a_tile, b=b_tile, c=c_tile)
+
+        expected_sequence = [
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "b0 <- LOAD ba0 + o0",
+            "c0 <- fma(a0,b0,c0)",
+            "aa0 <- aa0 + 1*VLEN",
+            "a1 <- LOAD aa0 + 0*VLEN",
+            "c1 <- fma(a1,b0,c1)",
+            "b1 <- LOAD ba0 + o1",
+            "c2 <- fma(a0,b1,c2)",
+            "c3 <- fma(a1,b1,c3)",
+            "b2 <- LOAD ba0 + o2",
+            "c4 <- fma(a0,b2,c4)",
+            "c5 <- fma(a1,b2,c5)",
+            "b3 <- LOAD ba0 + o3",
+            "c6 <- fma(a0,b3,c6)",
+            "c7 <- fma(a1,b3,c7)",
+            "a0 <- LOAD aa1 + 0*VLEN",
+            "c0 <- fma(a0,b2,c0)",
+            "aa1 <- aa1 + 1*VLEN",
+            "a1 <- LOAD aa1 + 0*VLEN",
+            "c1 <- fma(a1,b2,c1)",
+            "c2 <- fma(a0,b3,c2)",
+            "c3 <- fma(a1,b3,c3)",
+            "b0 <- LOAD ba0 + o4",
+            "c4 <- fma(a0,b0,c4)",
+            "c5 <- fma(a1,b0,c5)",
+            "b1 <- LOAD ba0 + o5",
+            "c6 <- fma(a0,b1,c6)",
+            "c7 <- fma(a1,b1,c7)",
+        ]
+        self.assertEqual(expected_sequence, mmgen.generate())
+        #print("\n".join(mmgen.generate()))
 
     def test_2vx4_vla_vf_fma(self):
         m = 2
