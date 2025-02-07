@@ -212,3 +212,24 @@ class mm:
             result.extend(subresult)
         return result
 
+
+class string_mapper:
+    def __init__(self, op : str = "fma"):
+        self.op = op
+    def __call__(self, ops : list[mm_op]) -> list[str]:
+
+        result = []
+        idxstr = lambda dima,dimb,sidx : "" if dima.size==dimb.size else f".el[{sidx}]" if dima.size > dimb.size else f"+{sidx}"
+        vlensuf = lambda d : "*VLEN" if d.dt == dimension_type.vla else ""
+        for op in ops:
+
+            a_idx_str = (f"({op.a_idx[0]}{vlensuf(op.a_tile.dima)}{idxstr(op.a_tile.dima,op.c_tile.dima,op.m_subidx)},"
+                          f"{op.a_idx[1]}{vlensuf(op.a_tile.dimb)}{idxstr(op.a_tile.dimb,op.b_tile.dima,op.k_subidx)})")
+            b_idx_str = (f"({op.b_idx[0]}{vlensuf(op.b_tile.dima)}{idxstr(op.b_tile.dima,op.a_tile.dimb,op.k_subidx)},"
+                          f"{op.b_idx[1]}{vlensuf(op.b_tile.dimb)}{idxstr(op.b_tile.dimb,op.c_tile.dimb,op.n_subidx)})")
+            c_idx_str = (f"({op.c_idx[0]}{vlensuf(op.c_tile.dima)}{idxstr(op.c_tile.dima,op.a_tile.dima,op.m_subidx)},"
+                          f"{op.c_idx[1]}{vlensuf(op.c_tile.dimb)}{idxstr(op.c_tile.dimb,op.b_tile.dimb,op.n_subidx)})")
+            result.append(
+                f"C{c_idx_str} <- {self.op}(A{a_idx_str},B{b_idx_str},C{c_idx_str})"
+            )
+        return result

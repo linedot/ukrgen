@@ -1,28 +1,5 @@
 from abc import abstractmethod
-from enum import Enum
-
 from algobuild.generators import mm_op,tile,dimension_type
-
-class dummy_mm_mapper:
-    def __init__(self, op : str = "fma"):
-        self.op = op
-    def __call__(self, ops : list[mm_op]) -> list[str]:
-
-        result = []
-        idxstr = lambda dima,dimb,sidx : "" if dima.size==dimb.size else f".el[{sidx}]" if dima.size > dimb.size else f"+{sidx}"
-        vlensuf = lambda d : "*VLEN" if d.dt == dimension_type.vla else ""
-        for op in ops:
-
-            a_idx_str = (f"({op.a_idx[0]}{vlensuf(op.a_tile.dima)}{idxstr(op.a_tile.dima,op.c_tile.dima,op.m_subidx)},"
-                          f"{op.a_idx[1]}{vlensuf(op.a_tile.dimb)}{idxstr(op.a_tile.dimb,op.b_tile.dima,op.k_subidx)})")
-            b_idx_str = (f"({op.b_idx[0]}{vlensuf(op.b_tile.dima)}{idxstr(op.b_tile.dima,op.a_tile.dimb,op.k_subidx)},"
-                          f"{op.b_idx[1]}{vlensuf(op.b_tile.dimb)}{idxstr(op.b_tile.dimb,op.c_tile.dimb,op.n_subidx)})")
-            c_idx_str = (f"({op.c_idx[0]}{vlensuf(op.c_tile.dima)}{idxstr(op.c_tile.dima,op.a_tile.dima,op.m_subidx)},"
-                          f"{op.c_idx[1]}{vlensuf(op.c_tile.dimb)}{idxstr(op.c_tile.dimb,op.b_tile.dimb,op.n_subidx)})")
-            result.append(
-                f"C{c_idx_str} <- {self.op}(A{a_idx_str},B{b_idx_str},C{c_idx_str})"
-            )
-        return result
 
 class tile_offset_mapper:
     @abstractmethod
@@ -33,7 +10,7 @@ class tile_offset_mapper:
 #            subidx : int) -> int:
         raise NotImplementedError("tried calling abstract tile offset mapper")
 
-class vn_mm_op_load:
+class mm_op_load:
     def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
         self.rtype_idx = rtype_idx
         self.res_idx = res_idx
@@ -50,7 +27,7 @@ class vn_mm_op_load:
             vlenstr = "*VLEN"*vladims
         return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr}"
 
-class vn_mm_op_zero:
+class mm_op_zero:
     def __init__(self, rtype_idx : int, res_idx : int, t : tile):
         self.rtype_idx = rtype_idx
         self.res_idx = res_idx
@@ -60,7 +37,7 @@ class vn_mm_op_zero:
         reg_chars = ['a','b','c']
         return f"{reg_chars[self.rtype_idx]}{self.res_idx} <- 0"
 
-class vn_mm_op_addr_update:
+class mm_op_addr_update:
     def __init__(self, rtype_idx : int, addr_idx : int, off : int, t : tile):
         self.rtype_idx = rtype_idx
         self.addr_idx = addr_idx
@@ -76,13 +53,13 @@ class vn_mm_op_addr_update:
         ar_str = f"{reg_chars[self.rtype_idx]}a{self.addr_idx}"
         return f"{ar_str} <- {ar_str} + {self.off}{vlenstr}"
 
-class vn_mm_op_debugmsg:
+class mm_op_debugmsg:
     def __init__(self, msg : str):
         self.msg = msg
     def __str__(self):
         return self.msg
     
-class vn_mm_op_op:
+class mm_op_op:
     def __init__(self, op : str, res_indices : list[int], sub_indices : list[int], tiles : list[tile]):
         self.op = op
         self.res_indices = res_indices
@@ -96,7 +73,7 @@ class vn_mm_op_op:
         out += ")"
         return out
 
-class vn_mm_mapper:
+class mm_machine:
     def __init__(self,
                  res_counts : list[int],
                  res_steps : list[int],
@@ -104,7 +81,7 @@ class vn_mm_mapper:
                  addr_offset_ranges : list[list[tuple[int,int]]],
                  addr_starts : list[list[int]],
                  preload_counts : list[int],
-                 mappers : list[tile_offset_mapper],
+                 offset_mappers : list[tile_offset_mapper],
                  op : str = "fma"):
 
         for rc,pc in zip(res_counts,preload_counts):
@@ -113,7 +90,7 @@ class vn_mm_mapper:
         self.res_counts = res_counts
         self.res_steps = res_steps
         self.preload_counts = preload_counts
-        self.mappers = mappers
+        self.offset_mappers = offset_mappers
         self.op = op
 
         self.addr_counts = addr_counts
@@ -161,7 +138,7 @@ class vn_mm_mapper:
 
         return (difference >= offset_range[0]) and (difference <= offset_range[1])
 
-    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[vn_mm_op_load|vn_mm_op_addr_update]:
+    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[mm_op_load|mm_op_addr_update]:
         # check if the required data is already in the resource
         reg_chars = ["a","b","c"]
         corg = self.cdos[rtype_idx][res_idx]
@@ -219,7 +196,7 @@ class vn_mm_mapper:
             add_value = toff - caoff_min + self.addr_offset_ranges[rtype_idx][addr_idx_to_increment][0]
             #ar_str = f"{reg_chars[rtype_idx]}a{addr_idx_to_increment}"
             #result.append(f"{ar_str} <- {ar_str} + {add_value}{vlenstr}")
-            result.append(vn_mm_op_addr_update(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
+            result.append(mm_op_addr_update(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
             self.addr_reg_offsets[rtype_idx][addr_idx_to_increment] += add_value
         
         
@@ -231,7 +208,7 @@ class vn_mm_mapper:
         if 0 < vladims:
             offpref = ""
         #result.append(f"{res_str} <- LOAD {ar_str} + {offpref}{self.addr_offsets[rtype_idx]}{vlenstr}")
-        result.append(vn_mm_op_load(rtype_idx=rtype_idx, res_idx=res_idx,
+        result.append(mm_op_load(rtype_idx=rtype_idx, res_idx=res_idx,
                                     addr_idx=addr_idx_to_use,
                                     off=self.addr_offsets[rtype_idx],
                                     t=t))
@@ -247,13 +224,13 @@ class vn_mm_mapper:
     def map_one(self,
                 a_tile : tile, b_tile : tile, c_tile : tile,
                 a_idx : (int,int), b_idx : (int,int), c_idx : (int,int),
-                m_subidx : int, n_subidx : int, k_subidx : int) -> list[vn_mm_op_load|vn_mm_op_addr_update|vn_mm_op_op]:
+                m_subidx : int, n_subidx : int, k_subidx : int) -> list[mm_op_load|mm_op_addr_update|mm_op_op]:
 
         reg_chars = ['a','b','c']
         tiles = [a_tile,b_tile,c_tile]
         indices = [a_idx,b_idx,c_idx]
         target_offsets = [ mapper(tile,idx) for  mapper,tile,idx in\
-                zip(self.mappers,tiles,indices)]
+                zip(self.offset_mappers,tiles,indices)]
 
         result = []
         res_indices = []
@@ -265,7 +242,7 @@ class vn_mm_mapper:
                 zip(target_offsets,self.cdos,self.res_counts,[a_tile,b_tile,c_tile])):
             res_idx = -1
 
-            #result.append(vn_mm_op_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
+            #result.append(mm_op_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
 
             # check if any of the registers have the data
             for j in range(res_count):
@@ -279,14 +256,14 @@ class vn_mm_mapper:
                 self.res_indices[i] = (res_idx+self.res_steps[i]) % self.res_counts[i]
 
             res_indices.append(res_idx)
-            #result.append(vn_mm_op_debugmsg(f"Need {toff} in {reg_chars[i]}{res_idx}"))
+            #result.append(mm_op_debugmsg(f"Need {toff} in {reg_chars[i]}{res_idx}"))
             result.extend(self.resolve_data(t=t,res_idx=res_idx, toff=toff, rtype_idx=i))
 
         areg = res_indices[0]
         breg = res_indices[1]
         creg = res_indices[2]
         #result.append(f"c{creg} <- {self.op}(a{areg},b{breg},c{creg})")
-        result.append(vn_mm_op_op(op=self.op, res_indices=res_indices,
+        result.append(mm_op_op(op=self.op, res_indices=res_indices,
                                   sub_indices=[m_subidx,n_subidx,k_subidx],
                                   tiles=[a_tile,b_tile,c_tile]))
         return result
@@ -297,7 +274,7 @@ class vn_mm_mapper:
                 zero_dims : list[int] = [2],
                 ignore_dims : list[int] = [],
                 add_current_offsets : bool = False,
-                ) -> list[vn_mm_op_load|vn_mm_op_zero|vn_mm_op_addr_update]:
+                ) -> list[mm_op_load|mm_op_zero|mm_op_addr_update]:
         results = []
         preloads_done = [0]*len(self.res_counts)
         # treat ignored as already preloaded
@@ -320,7 +297,7 @@ class vn_mm_mapper:
         #    ]
         # TODO: decouple a reg tracker structure and use it instead of 
         #       tracking manually
-        #results.append(vn_mm_op_debugmsg("\n  ".join(map(str,self.cdos))))
+        #results.append(mm_op_debugmsg("\n  ".join(map(str,self.cdos))))
 
         # NOTE: Another pythonism, the commented out line and the next one
         #       are not equivalent and the former will result in partly
@@ -342,22 +319,22 @@ class vn_mm_mapper:
                 m_subidx = op.m_subidx, n_subidx = op.n_subidx, k_subidx = op.k_subidx
                 )
             for op in mapresults:
-                if isinstance(op, vn_mm_op_op):
+                if isinstance(op, mm_op_op):
                     continue
-                if isinstance(op, vn_mm_op_debugmsg):
+                if isinstance(op, mm_op_debugmsg):
                     subresults.append(op)
                     continue
                 if self.preload_counts[op.rtype_idx] <= preloads_done[op.rtype_idx]:
                     continue
-                if isinstance(op, vn_mm_op_addr_update):
+                if isinstance(op, mm_op_addr_update):
                     if op.rtype_idx not in zero_dims:
                         subresults.append(op)
                     caoff = self.addr_reg_offsets[op.rtype_idx][op.addr_idx]
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff + op.off
                     preload_addr_reg_last_used_tile[op.rtype_idx][op.addr_idx] = op.t
-                if isinstance(op, vn_mm_op_load):
+                if isinstance(op, mm_op_load):
                     if op.rtype_idx in zero_dims:
-                        subresults.append(vn_mm_op_zero(
+                        subresults.append(mm_op_zero(
                             rtype_idx=op.rtype_idx, res_idx=op.res_idx, t=op.t))
                     else:
                         subresults.append(op)
@@ -365,7 +342,7 @@ class vn_mm_mapper:
                     # Some updates to offsets are implicit, therefore update
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff
                     new_do = caoff + op.off
-                    #subresults.append(vn_mm_op_debugmsg(f"{reg_chars[op.rtype_idx]}{op.res_idx} now holds {new_do}"))
+                    #subresults.append(mm_op_debugmsg(f"{reg_chars[op.rtype_idx]}{op.res_idx} now holds {new_do}"))
                     preload_dos[op.rtype_idx][op.res_idx] = new_do
                     tsize = op.t.dima.size*op.t.dimb.size
                     preload_addr_reg_last_used_offsets[op.rtype_idx][op.addr_idx] = op.off
@@ -398,7 +375,7 @@ class vn_mm_mapper:
                 for addr_idx,start in zip(range(addr_count),self.addr_starts[i]):
                     caoff = preload_addr_reg_offsets[i][addr_idx]
                     add_off = caoff_max-caoff+off+t.dima.size*t.dimb.size+start
-                    results.append(vn_mm_op_addr_update(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
+                    results.append(mm_op_addr_update(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
                     preload_addr_reg_offsets[i][addr_idx] = caoff+add_off
         # update the internal states so the main block would be correct:
         self.addr_reg_offsets = [d.copy() for d in preload_addr_reg_offsets]
@@ -407,8 +384,8 @@ class vn_mm_mapper:
         for i,dos in enumerate(preload_dos):
             for res_idx,orig in dos.items():
                 self.cdos[i][res_idx] = orig
-        #results.append(vn_mm_op_debugmsg("dos after preload:\n    " + "\n    ".join(map(str,self.cdos))))
-        #results.append(vn_mm_op_debugmsg("res idx after preload: " + ", ".join(map(str,self.res_indices))))
+        #results.append(mm_op_debugmsg("dos after preload:\n    " + "\n    ".join(map(str,self.cdos))))
+        #results.append(mm_op_debugmsg("res idx after preload: " + ", ".join(map(str,self.res_indices))))
         # reset the indices
         self.res_indices = [ d%count for d,count in zip(preloads_done,self.res_counts)]
         return results
