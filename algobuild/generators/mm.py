@@ -94,12 +94,11 @@ class mm_op:
 
 
 class mm:
-    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK'), reorder_c : bool = False):
+    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK')):
         self.a = a
         self.b = b
         self.c = c
         self.lo = lo
-        self.reorder_c = reorder_c
 
     @property
     def a_tile(self) -> tile:
@@ -112,11 +111,22 @@ class mm:
         return self.c
 
     
-    def generate(self) -> list[mm_op]:
+    def generate(self, add_dims : list[int] = None) -> list[mm_op]:
+        if None == add_dims:
+            add_dims = [0]*len(self.lo)
+
+        # TODO: Think about how to make the index order clear in the interface
+        #       - is the order the same as lo or fixed?
+        add_M = add_dims[3]
+        add_N = add_dims[4]
+        add_K = add_dims[5]
+        add_m = add_dims[0]
+        add_n = add_dims[1]
+        add_k = add_dims[2]
 
         result = self.compute_subtiles(self.a, self.b, self.c,
-                                       a_off=(0,0),b_off=(0,0),c_off=(0,0),
-                                       m_subidx=0, n_subidx=0, k_subidx=0 
+                                       a_off=(add_M,add_K),b_off=(add_K,add_N),c_off=(add_M,add_N),
+                                       m_subidx=add_m, n_subidx=add_n, k_subidx=add_k
                                        )
         return result
 
@@ -132,9 +142,8 @@ class mm:
     def compute_subtiles(self,
             a_tile : tile, b_tile : tile, c_tile : tile,
             a_off : (int,int), b_off : (int,int), c_off : (int,int),
-            m_subidx : int, n_subidx : int, k_subidx : int
+            m_subidx : int, n_subidx : int, k_subidx : int,
             ) -> list[mm_op]:
-
 
         M_small = min(a_tile.dima.size, c_tile.dima.size)
         M_big = max(a_tile.dima.size, c_tile.dima.size)
