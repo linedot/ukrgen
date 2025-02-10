@@ -12,6 +12,7 @@ from algobuild.generators import (
 
 from algobuild.generators.mm import string_mapper
 from algobuild.vn.mm_machine import mm_machine
+from algobuild.vn.scheduler import mm_scheduler
 
 # i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
 #     SVE FP64 vector group(x4) is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
@@ -282,7 +283,52 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_preload,    list(map(str,preload)))
         self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
-        #print("\n".join(mmgen.generate()))
+
+        scheduler = mm_scheduler(rar=0,raw=6,war=0,waw=6)
+
+        rs_preload = scheduler(preload, loop=False)
+        rs_mbpl = scheduler(mainblock+preload_mb)
+
+        expected_rs_preload = list(map(str,preload))
+
+        expected_rs_mbpl = [
+            "b3 <- LOAD ba0 + 0",
+            "c0 <- fma(a0, b0, c0)",
+            "c1 <- fma(a1, b0, c1)",
+            "a2 <- LOAD aa0 + 0*VLEN",
+            "b0 <- LOAD ba0 + 1",
+            "c2 <- fma(a0, b1, c2)",
+            "a3 <- LOAD aa1 + 0*VLEN",
+            "c3 <- fma(a1, b1, c3)",
+            "b1 <- LOAD ba0 + 2",
+            "c4 <- fma(a0, b2, c4)",
+            "c5 <- fma(a1, b2, c5)",
+            "b2 <- LOAD ba0 + 3",
+            "c6 <- fma(a0, b3, c6)",
+            "c7 <- fma(a1, b3, c7)",
+            "b3 <- LOAD ba0 + 4",
+            "c0 <- fma(a2, b0, c0)",
+            "c1 <- fma(a3, b0, c1)",
+            "aa0 <- aa0 + 2*VLEN",
+            "c2 <- fma(a2, b1, c2)",
+            "c3 <- fma(a3, b1, c3)",
+            "aa1 <- aa1 + 2*VLEN",
+            "c4 <- fma(a2, b2, c4)",
+            "c5 <- fma(a3, b2, c5)",
+            "b0 <- LOAD ba0 + 5",
+            "b1 <- LOAD ba0 + 6",
+            "b2 <- LOAD ba0 + 7",
+            "ba0 <- ba0 + 8",
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "a1 <- LOAD aa1 + 0*VLEN",
+            "aa0 <- aa0 + 2*VLEN",
+            "c6 <- fma(a2, b3, c6)",
+            "c7 <- fma(a3, b3, c7)",
+            "aa1 <- aa1 + 2*VLEN",
+        ]
+
+        self.assertEqual(expected_rs_preload,    list(map(str,rs_preload)))
+        self.assertEqual(expected_rs_mbpl,  list(map(str,rs_mbpl)))
 
     def test_2vx4_fix_vf_fma(self):
         m = 2
@@ -485,6 +531,8 @@ class test_mm(unittest.TestCase):
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="opa")
 
+        mm_ops = mmgen.generate()
+
         expected_sequence=[
             "C(0*VLEN,0*VLEN) <- opa(A(0*VLEN,0),B(0,0*VLEN),C(0*VLEN,0*VLEN))",
             "C(1*VLEN,0*VLEN) <- opa(A(1*VLEN,0),B(0,0*VLEN),C(1*VLEN,0*VLEN))",
@@ -503,7 +551,173 @@ class test_mm(unittest.TestCase):
             "C(0*VLEN,3*VLEN) <- opa(A(0*VLEN,1),B(1,3*VLEN),C(0*VLEN,3*VLEN))",
             "C(1*VLEN,3*VLEN) <- opa(A(1*VLEN,1),B(1,3*VLEN),C(1*VLEN,3*VLEN))",
         ]
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, inspector(mm_ops))
+
+        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
+        b_mapper = lambda tile, idx : n*idx[0]+idx[1]
+        
+
+        machine = mm_machine(
+                     res_counts=[4,8,8],
+                     res_steps=[1,1,1],
+                     addr_counts=[1,1,1],
+                     addr_offset_ranges=[
+                         [(0,7)],
+                         [(0,7)],
+                         [(0,0)]],
+                     addr_starts=[
+                         [0],
+                         [0],
+                         [0]],
+                     preload_counts=[4,4,8],
+                     offset_mappers = [ac_mapper,b_mapper,ac_mapper],
+                     op="opa")
+
+        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        #print("\n".join(map(str,inspector(mm_ops_next))))
+
+        preload = machine.preload(mm_ops)
+        mainblock = machine(mm_ops)
+        preload_mb = machine.preload(mm_ops_next,
+                                       zero_addrs=False,
+                                       ignore_dims=[2])
+        
+        #print("\n".join(map(str,preload)))
+        #print("MAIN LOOP -------------------------------")
+        #print("  "+"\n  ".join(map(str,mainblock)))
+        #print("PRELOAD NEXT ----------------------------")
+        #print("  "+"\n  ".join(map(str,preload_mb)))
+        #print("END MAIN LOOP ---------------------------")
+
+        expected_preload = [
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "b0 <- LOAD ba0 + 0*VLEN",
+            "c0 <- 0",
+            "a1 <- LOAD aa0 + 1*VLEN",
+            "c1 <- 0",
+            "b1 <- LOAD ba0 + 1*VLEN",
+            "c2 <- 0",
+            "c3 <- 0",
+            "b2 <- LOAD ba0 + 2*VLEN",
+            "c4 <- 0",
+            "c5 <- 0",
+            "b3 <- LOAD ba0 + 3*VLEN",
+            "c6 <- 0",
+            "c7 <- 0",
+            "a2 <- LOAD aa0 + 2*VLEN",
+            "a3 <- LOAD aa0 + 3*VLEN",
+            "aa0 <- aa0 + 4*VLEN",
+            "ba0 <- ba0 + 4*VLEN",
+        ]
+        expected_mainblock = [
+            "c0 <- opa(a0, b0, c0)",
+            "c1 <- opa(a1, b0, c1)",
+            "c2 <- opa(a0, b1, c2)",
+            "c3 <- opa(a1, b1, c3)",
+            "c4 <- opa(a0, b2, c4)",
+            "c5 <- opa(a1, b2, c5)",
+            "c6 <- opa(a0, b3, c6)",
+            "c7 <- opa(a1, b3, c7)",
+            "b4 <- LOAD ba0 + 0*VLEN",
+            "c0 <- opa(a2, b4, c0)",
+            "c1 <- opa(a3, b4, c1)",
+            "b5 <- LOAD ba0 + 1*VLEN",
+            "c2 <- opa(a2, b5, c2)",
+            "c3 <- opa(a3, b5, c3)",
+            "b6 <- LOAD ba0 + 2*VLEN",
+            "c4 <- opa(a2, b6, c4)",
+            "c5 <- opa(a3, b6, c5)",
+            "b7 <- LOAD ba0 + 3*VLEN",
+            "c6 <- opa(a2, b7, c6)",
+            "c7 <- opa(a3, b7, c7)",
+        ]
+
+        expected_preload_mb = [
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "b0 <- LOAD ba0 + 4*VLEN",
+            "a1 <- LOAD aa0 + 1*VLEN",
+            "b1 <- LOAD ba0 + 5*VLEN",
+            "b2 <- LOAD ba0 + 6*VLEN",
+            "b3 <- LOAD ba0 + 7*VLEN",
+            "a2 <- LOAD aa0 + 2*VLEN",
+            "a3 <- LOAD aa0 + 3*VLEN",
+            "aa0 <- aa0 + 4*VLEN",
+            "ba0 <- ba0 + 8*VLEN",
+        ]
+
+        self.assertEqual(expected_preload,    list(map(str,preload)))
+        self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
+        self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
+
+        scheduler = mm_scheduler(rar=0,raw=8,war=0,waw=6)
+
+        rs_preload = scheduler(preload, loop=False)
+        rs_mbpl = scheduler(mainblock+preload_mb)
+
+        #print("============== RESCHEDULED =================")
+        #print("\n".join(map(str,rs_preload)))
+        #print("MAIN LOOP -------------------------------")
+        #print("  "+"\n  ".join(map(str,rs_mbpl)))
+        #print("END MAIN LOOP ---------------------------")
+
+        expected_rs_preload = [
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "b0 <- LOAD ba0 + 0*VLEN",
+            "c0 <- 0",
+            "a1 <- LOAD aa0 + 1*VLEN",
+            "c1 <- 0",
+            "b1 <- LOAD ba0 + 1*VLEN",
+            "c2 <- 0",
+            "c3 <- 0",
+            "b2 <- LOAD ba0 + 2*VLEN",
+            "c4 <- 0",
+            "c5 <- 0",
+            "b3 <- LOAD ba0 + 3*VLEN",
+            "c6 <- 0",
+            "c7 <- 0",
+            "a2 <- LOAD aa0 + 2*VLEN",
+            "a3 <- LOAD aa0 + 3*VLEN",
+            "aa0 <- aa0 + 4*VLEN",
+            "ba0 <- ba0 + 4*VLEN",
+        ]
+
+        expected_rs_mbpl = [
+            "b4 <- LOAD ba0 + 0*VLEN",
+            "c1 <- opa(a1, b0, c1)",
+            "c0 <- opa(a0, b0, c0)",
+            "b5 <- LOAD ba0 + 1*VLEN",
+            "c3 <- opa(a1, b1, c3)",
+            "c2 <- opa(a0, b1, c2)",
+            "b6 <- LOAD ba0 + 2*VLEN",
+            "c5 <- opa(a1, b2, c5)",
+            "c4 <- opa(a0, b2, c4)",
+            "b7 <- LOAD ba0 + 3*VLEN",
+            "c7 <- opa(a1, b3, c7)",
+            "c6 <- opa(a0, b3, c6)",
+            "c0 <- opa(a2, b4, c0)",
+            "c1 <- opa(a3, b4, c1)",
+            "c2 <- opa(a2, b5, c2)",
+            "c3 <- opa(a3, b5, c3)",
+            "c4 <- opa(a2, b6, c4)",
+            "b0 <- LOAD ba0 + 4*VLEN",
+            "b1 <- LOAD ba0 + 5*VLEN",
+            "b2 <- LOAD ba0 + 6*VLEN",
+            "b3 <- LOAD ba0 + 7*VLEN",
+            "ba0 <- ba0 + 8*VLEN",
+            "a1 <- LOAD aa0 + 1*VLEN",
+            "a0 <- LOAD aa0 + 0*VLEN",
+            "c5 <- opa(a3, b6, c5)",
+            "c6 <- opa(a2, b7, c6)",
+            "c7 <- opa(a3, b7, c7)",
+            "a2 <- LOAD aa0 + 2*VLEN",
+            "a3 <- LOAD aa0 + 3*VLEN",
+            "aa0 <- aa0 + 4*VLEN",
+        ]
+
+       
+        self.assertEqual(expected_rs_preload,    list(map(str,rs_preload)))
+        self.assertEqual(expected_rs_mbpl,  list(map(str,rs_mbpl)))
+
 
     def test_2x2x2_tile_mma(self):
         m = 2

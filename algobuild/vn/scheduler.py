@@ -1,0 +1,245 @@
+from enum import Enum,auto
+
+
+from .mm_machine import mm_op_addr_update as aop,mm_op_load as lop,mm_op_zero as zop,mm_op_op as oop
+
+class target_type(Enum):
+    resource = auto()
+    address = auto()
+    def __str__(self):
+        return self.name
+    def __repr__(self):
+        return self.__str__()
+
+class reg:
+    def __init__(self, ttype : target_type, indices : list[int]):
+        self.ttype = ttype
+        self.indices = indices
+    def __eq__(self, other):
+        if len(self.indices) != len(other.indices):
+            return False
+        return self.ttype == other.ttype and \
+                all([idx1 == idx2 for idx1,idx2 in zip(self.indices,other.indices)])
+    def __hash__(self):
+        return hash((self.ttype,tuple(self.indices)))
+    def __str__(self):
+        reg_chars = ['a','b','c']
+        result = f"{reg_chars[self.indices[0]]}"
+        if self.ttype == target_type.address:
+            result+= "a"
+        result += ",".join(map(str,self.indices[1:]))
+        return result
+    def __repr__(self):
+        return self.__str__()
+
+
+
+class vn_op_access_annotated:
+    def __init__(self, reads : list[reg], writes : list[reg], op : aop|lop|zop|oop):
+        self.reads = reads
+        self.writes = writes
+        self.op = op
+
+    def from_mm_op(op : aop|lop|zop|oop):
+        reads = []
+        writes = []
+        if isinstance(op, aop):
+            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
+            writes.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
+        elif isinstance(op, lop):
+            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
+            writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
+        elif isinstance(op, zop):
+            writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
+        elif isinstance(op, oop):
+            out_rtype_idx = len(op.res_indices)-1
+            writes.append(reg(ttype=target_type.resource,
+                              indices=[out_rtype_idx, op.res_indices[out_rtype_idx]]))
+            for i,res_idx in enumerate(op.res_indices):
+                reads.append(reg(ttype=target_type.resource,
+                                 indices=[i, res_idx]))
+        return vn_op_access_annotated(reads=reads, writes=writes, op=op)
+    def __eq__(self, other):
+        return all([r1 == r2 for r1,r2 in zip(self.reads,other.reads)]) and \
+               all([w1 == w2 for w1,w2 in zip(self.writes,other.writes)]) and \
+               self.op == other.op
+
+    def __str__(self):
+        return self.op.__str__()
+
+    def __repr__(self):
+        return self.__str__()
+
+class mm_scheduler:
+    def __init__(self,
+                 rar : int = 0,
+                 raw : int = 10,
+                 war : int = 0,
+                 waw : int = 10,
+                 patterns : list[str] = [],
+                 debug_on : bool = False
+                 ):
+        self.rar = rar
+        self.raw = raw
+        self.war = war
+        self.waw = waw
+        self.patterns = patterns
+        self.debug_on = debug_on
+
+    def debug(self, msg : str):
+        if self.debug_on:
+            print(msg)
+
+    def get_move_up(self,
+                    next_op : vn_op_access_annotated,
+                    cur_op : vn_op_access_annotated,
+                    distance : int,
+                    checks : tuple[bool,bool,bool,bool] = (True,True,True,True) ) -> int:
+        move_up = 0
+        depends = False
+        if checks[0] and len(set(next_op.reads) & set(cur_op.reads))>0:
+            move_up = max(move_up,max(0,self.rar - distance))
+            depends = True
+        if checks[1] and len(set(next_op.reads) & set(cur_op.writes))>0:
+            move_up = max(move_up,max(0,self.raw - distance))
+            depends = True
+        if checks[2] and len(set(next_op.writes) & set(cur_op.reads))>0:
+            move_up = max(move_up,max(0,self.war - distance))
+            depends = True
+        if checks[3] and len(set(next_op.writes) & set(cur_op.writes))>0:
+            move_up = max(move_up,max(0,self.waw - distance))
+            depends = True
+        return depends,move_up
+
+
+    def depschedule(self, ops: list[vn_op_access_annotated], loop : bool) -> list[vn_op_access_annotated]:
+        scheduled = []
+        lookforward = 0
+        if loop:
+            lookforward = max(self.rar,self.raw,self.war,self.waw)
+
+        opslf = ops+ops[:lookforward]
+        for cur_idx in range(len(ops)+lookforward):
+            # update the lookforward when at end of loop
+            if loop and cur_idx == len(ops)-1:
+                opslf[len(ops):] = [sop[1] for sop in scheduled[:lookforward]]
+            cur_op = opslf[cur_idx]
+            move_indices = []
+            # Check for distances to dependencies and add to move list
+            # along with the distance to move
+            for sched_idx,(orig_idx,sched_op) in enumerate(scheduled):
+                distance = len(scheduled)-1-sched_idx
+                depends,move_up = self.get_move_up(next_op=cur_op,
+                                           cur_op=sched_op,
+                                           distance=distance)
+                if move_up > 0:
+                    # save with original index, which we use to filter the lookforward
+                    # in the end
+                    move_indices.append((sched_idx,move_up))
+            if not move_indices:
+                scheduled.append((cur_idx,cur_op))
+                continue
+
+            self.debug("Currently scheduled: ")
+            self.debug("  "+"\n  ".join([f"pos {scheduled[idx][0]}: "+\
+                    str(scheduled[idx][1]) for idx in range(len(scheduled))]))
+            self.debug(f"instructions that need to be moved up :")
+            for idx,places in move_indices:
+                sched_pos,sched_op = scheduled[idx]
+                self.debug(f"  pos {sched_pos} up {places} places : {sched_op}")
+                self.debug(f"    (reads {sched_op.reads} and writes {sched_op.writes})")
+            self.debug(f"because the next instruction is:")
+            self.debug(f"  {cur_op}")
+            self.debug(f"    (reads {cur_op.reads} and writes {cur_op.writes})")
+
+
+            midx = 0
+            while midx < len(move_indices):
+                self.debug(f"instructions that need to be moved up :")
+                for idx,places in move_indices:
+                    sched_pos,sched_op = scheduled[idx]
+                    self.debug(f"  pos {sched_pos} up {places} places : {sched_op}")
+                    self.debug(f"    (reads {sched_op.reads} and writes {sched_op.writes})")
+                idx,move_up = move_indices[midx]
+                if move_up == 0:
+                    midx += 1
+                    continue
+                resched_idx,resched_op = scheduled[idx]
+                midx_add = 1
+                for move_idx in range(move_up):
+                    if idx == 0:
+                        # TODO: allow suboptimal solution?
+                        raise RuntimeError("Instruction at top of schedule and min distances not satisfied")
+                    prev_idx,prev_op = scheduled[idx-1]
+                    # if prev_op is also in move_indices:
+                    #  - it has a dependency with same op as this op
+                    #  - it was moved to just the minimum distance
+                    #  - so, if we swap with it, it will be below min distance
+                    #  - therefore increase it's move_up by move_up-move_idx,
+                    #    decrement midx and break out to outer loop
+                    if midx > 0:
+                        midx_found = None
+                        for midx_check,(test_m_idx,_) in enumerate(move_indices):
+                            if scheduled[test_m_idx][0] == prev_idx:
+                                midx_found = midx_check
+                        if None != midx_found:
+                            assert midx > midx_found
+                            prev_m_idx,prev_m_move_up = move_indices[midx_found]
+                            move_indices[midx_found] = (prev_m_idx, prev_m_move_up + (move_up-move_idx))
+                            midx_add = midx_found-midx
+                            break
+
+                    depends = False
+                    move_up_prev_max = 0
+                    # test against all to be rescheduled from this one
+                    for midx_check,(test_m_idx,move_up_left) in enumerate(move_indices[midx:]):
+                        depends,move_up_prev = \
+                                self.get_move_up(
+                                        next_op=scheduled[test_m_idx][1],
+                                        cur_op=prev_op,
+                                        distance=midx_check,
+                                        # read-after-read is irrelevant
+                                        checks=[False,True,True,True])
+                        move_up_prev_max = max(move_up_prev_max,move_up_prev)
+                    # We can't swap the instructions, so we need to move
+                    # the previous instruction up as well
+                    if depends:
+                        # TODO: better data structure than list
+                        move_indices.insert(midx,(idx-1, max(move_up-move_idx,move_up_prev_max) ))
+                        # Don't increment the index (it points to the prev op now)
+                        midx_add = 0
+                        # And stop processing this op
+                        break
+
+                    self.debug(f"swapped {prev_op} and {resched_op}")
+                    scheduled[idx] = (prev_idx,prev_op)
+                    scheduled[idx-1] = (resched_idx,resched_op)
+                    idx -= 1
+                    move_indices[midx] = (idx,move_up-move_idx-1)
+                    # We might need a check for rar here after the swap??
+                midx += midx_add
+
+            self.debug("After rescheduling: ")
+            self.debug("  "+"\n  ".join([f"pos {scheduled[idx][0]}: "+\
+                    str(scheduled[idx][1]) for idx in range(len(scheduled))]))
+
+
+            self.debug("============================================================")
+            scheduled.append((cur_idx,cur_op))
+
+        final_schedule = [sop for sop in scheduled if sop[0] < len(ops)]
+
+        self.debug("Final Schedule (without lookforward): ")
+        self.debug("  "+"\n  ".join([f"pos {final_schedule[idx][0]}: "+\
+                str(final_schedule[idx][1]) for idx in range(len(final_schedule))]))
+
+        return [sop[1] for sop in final_schedule]
+
+        
+
+    def __call__(self, ops : list[aop|lop|zop|oop], loop : bool = True):
+        reordered_ops = []
+        queue = []
+        ops_aa = [vn_op_access_annotated.from_mm_op(op) for op in ops]
+        
+        return self.depschedule(ops=ops_aa, loop=loop)
