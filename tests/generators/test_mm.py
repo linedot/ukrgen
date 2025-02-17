@@ -1,18 +1,11 @@
 import unittest
 
 
-from algobuild.generators import (
-    dimension_properties,
-    dimension_type,
-    mm,
-    order2D,
-    storage_type,
-    tile,
-)
-
+from algobuild.components import tile,dimension_properties,dimension_type,storage_type
+from algobuild.generators import mm,order2D
 from algobuild.generators.mm import string_mapper
-from algobuild.vn.mm_machine import mm_machine
-from algobuild.vn.scheduler import mm_scheduler
+from algobuild.models import load_store_cpu
+from algobuild.schedulers import simple_dependency_scheduler
 
 # i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
 #     SVE FP64 vector group(x4) is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
@@ -130,7 +123,7 @@ class test_mm(unittest.TestCase):
 
         ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
         b_mapper = lambda tile, idx : k*idx[0]+idx[1]
-        machine = mm_machine(
+        machine = load_store_cpu(
                      res_counts=[2,4,8],
                      res_steps=[1,1,1],
                      addr_counts=[1,1,1],
@@ -199,7 +192,7 @@ class test_mm(unittest.TestCase):
         b_mapper = lambda tile, idx : n*idx[0]+idx[1]
         
 
-        machine = mm_machine(
+        machine = load_store_cpu(
                      res_counts=[4,4,8],
                      res_steps=[1,1,1],
                      addr_counts=[2,1,1],
@@ -284,7 +277,7 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
-        scheduler = mm_scheduler(rar=0,raw=6,war=0,waw=6)
+        scheduler = simple_dependency_scheduler(rar=0,raw=6,war=0,waw=6)
 
         rs_preload = scheduler(preload, loop=False)
         rs_mbpl = scheduler(mainblock+preload_mb)
@@ -557,7 +550,7 @@ class test_mm(unittest.TestCase):
         b_mapper = lambda tile, idx : n*idx[0]+idx[1]
         
 
-        machine = mm_machine(
+        machine = load_store_cpu(
                      res_counts=[4,8,8],
                      res_steps=[1,1,1],
                      addr_counts=[1,1,1],
@@ -649,7 +642,7 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
-        scheduler = mm_scheduler(rar=0,raw=8,war=0,waw=6)
+        scheduler = simple_dependency_scheduler(rar=0,raw=8,war=0,waw=6)
 
         rs_preload = scheduler(preload, loop=False)
         rs_mbpl = scheduler(mainblock+preload_mb)

@@ -73,7 +73,7 @@ class mm_op_op:
         out += ")"
         return out
 
-class mm_machine:
+class load_store_cpu:
     def __init__(self,
                  res_counts : list[int],
                  res_steps : list[int],

@@ -1,46 +1,10 @@
-# annotation for self type
-from __future__ import annotations
+
 
 from abc import abstractmethod
 from enum import Enum,auto
 
-class storage_type(Enum):
-    register = auto()
-    memory = auto()
-
-class dimension_type(Enum):
-    fixed = auto()
-    vla = auto()
-    # I think we don't need this, and fixed fits the functionality
-    # subtile = auto()
-
-class dimension_properties:
-    def __init__(self, dt : dimension_type, size : int, sdt : dimension_type, sd_size : int):
-        self.dt = dt
-        self.size = size
-        self.sdt = sdt
-        self.sd_size = sd_size
-
-
-class tile:
-    def __init__(self, 
-                 dima : dimension_properties, # m for c, m for a, k for b
-                 dimb : dimension_properties, # n for c, k for a, n for b
-                 # 3D tiles? 3D registers? Tensors? :D maybe in the future
-                 # dims : list[dimension_properties]
-                 # Thinking of tiling with differently-sized kernels in 2D...
-                 subtiles : list[tile] = None,
-                 subtile_count_a : int = None,
-                 subtile_count_b : int = None,
-                 # ND?
-                 # subtile_counts : list[int] = None,
-                 stype : storage_type = storage_type.register):
-        self.storage_type = storage_type
-        self.dima = dima
-        self.dimb = dimb
-        self.subtiles = subtiles
-        self.subtile_count_a = subtile_count_a
-        self.subtile_count_b = subtile_count_b
+from ..components import operation
+from ..components import tile,dimension_type
 
 class loop_order:
     max_direct_dimchars = 5 # 8 # This is 40k permutations, dynamic computation is probably faster
@@ -77,20 +41,52 @@ for i in range(3,len(all_dimchars)+1):
 # ... etc
 
 
-class mm_op:
+class mm_op(operation):
     def __init__(self,
                  a_tile : tile, b_tile : tile, c_tile : tile,
                  a_idx : (int,int), b_idx : (int,int), c_idx : (int,int),
-                 m_subidx : int, n_subidx : int, k_subidx : int):
-        self.a_tile = a_tile
-        self.b_tile = b_tile
-        self.c_tile = c_tile
-        self.a_idx = a_idx
-        self.b_idx = b_idx
-        self.c_idx = c_idx
-        self.m_subidx = m_subidx
-        self.n_subidx = n_subidx
-        self.k_subidx = k_subidx
+                 m_subidx : int, n_subidx : int, k_subidx : int,
+                 opstr : str = "fma"):
+        super().__init__(
+                 tiles=[a_tile,b_tile,c_tile],
+                 tile_offsets=[list(a_idx),list(b_idx),list(c_idx)],
+                 subindices=[m_subidx, n_subidx, k_subidx],
+                 opstr=opstr)
+    @property
+    def a_tile(self):
+        return self.tiles[0]
+
+    @property
+    def b_tile(self):
+        return self.tiles[1]
+
+    @property
+    def c_tile(self):
+        return self.tiles[2]
+
+    @property
+    def a_idx(self):
+        return self.tile_offsets[0]
+
+    @property
+    def b_idx(self):
+        return self.tile_offsets[1]
+
+    @property
+    def c_idx(self):
+        return self.tile_offsets[2]
+
+    @property
+    def m_subidx(self):
+        return self.subindices[0]
+
+    @property
+    def n_subidx(self):
+        return self.subindices[1]
+
+    @property
+    def k_subidx(self):
+        return self.subindices[2]
 
 
 class mm:

@@ -1,7 +1,13 @@
 from enum import Enum,auto
 
 
-from .mm_machine import mm_op_addr_update as aop,mm_op_load as lop,mm_op_zero as zop,mm_op_op as oop
+from ..models.load_store_cpu import (
+        mm_op_addr_update as aop,
+        mm_op_load as lop,
+        mm_op_zero as zop,
+        mm_op_op as oop,
+        tile
+        )
 
 class target_type(Enum):
     resource = auto()
@@ -12,9 +18,10 @@ class target_type(Enum):
         return self.__str__()
 
 class reg:
-    def __init__(self, ttype : target_type, indices : list[int]):
+    def __init__(self, ttype : target_type, indices : list[int], t : tile = None):
         self.ttype = ttype
         self.indices = indices
+        self.t = t
     def __eq__(self, other):
         if len(self.indices) != len(other.indices):
             return False
@@ -34,7 +41,7 @@ class reg:
 
 
 
-class vn_op_access_annotated:
+class lsc_op_access_annotated:
     def __init__(self, reads : list[reg], writes : list[reg], op : aop|lop|zop|oop):
         self.reads = reads
         self.writes = writes
@@ -58,7 +65,7 @@ class vn_op_access_annotated:
             for i,res_idx in enumerate(op.res_indices):
                 reads.append(reg(ttype=target_type.resource,
                                  indices=[i, res_idx]))
-        return vn_op_access_annotated(reads=reads, writes=writes, op=op)
+        return lsc_op_access_annotated(reads=reads, writes=writes, op=op)
     def __eq__(self, other):
         return all([r1 == r2 for r1,r2 in zip(self.reads,other.reads)]) and \
                all([w1 == w2 for w1,w2 in zip(self.writes,other.writes)]) and \
@@ -70,7 +77,7 @@ class vn_op_access_annotated:
     def __repr__(self):
         return self.__str__()
 
-class mm_scheduler:
+class simple_dependency_scheduler:
     def __init__(self,
                  rar : int = 0,
                  raw : int = 10,
@@ -91,8 +98,8 @@ class mm_scheduler:
             print(msg)
 
     def get_move_up(self,
-                    next_op : vn_op_access_annotated,
-                    cur_op : vn_op_access_annotated,
+                    next_op : lsc_op_access_annotated,
+                    cur_op : lsc_op_access_annotated,
                     distance : int,
                     checks : tuple[bool,bool,bool,bool] = (True,True,True,True) ) -> int:
         move_up = 0
@@ -112,7 +119,7 @@ class mm_scheduler:
         return depends,move_up
 
 
-    def depschedule(self, ops: list[vn_op_access_annotated], loop : bool) -> list[vn_op_access_annotated]:
+    def depschedule(self, ops: list[lsc_op_access_annotated], loop : bool) -> list[lsc_op_access_annotated]:
         scheduled = []
         lookforward = 0
         if loop:
@@ -240,6 +247,6 @@ class mm_scheduler:
     def __call__(self, ops : list[aop|lop|zop|oop], loop : bool = True):
         reordered_ops = []
         queue = []
-        ops_aa = [vn_op_access_annotated.from_mm_op(op) for op in ops]
+        ops_aa = [lsc_op_access_annotated.from_mm_op(op) for op in ops]
         
         return self.depschedule(ops=ops_aa, loop=loop)
