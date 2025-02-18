@@ -1,6 +1,9 @@
 from abc import abstractmethod
 from algobuild.generators import mm_op,tile,dimension_type
 
+from algobuild.components.operation import operation
+from algobuild.components import scalar_tile
+
 class tile_offset_mapper:
     @abstractmethod
     def __call__(
@@ -10,13 +13,45 @@ class tile_offset_mapper:
 #            subidx : int) -> int:
         raise NotImplementedError("tried calling abstract tile offset mapper")
 
-class mm_op_load:
+class lsc_operation:
+    def __init__(self,
+                 tiles : list[tile],
+                 indices: list[list[int]],
+                 reads: list[int],
+                 writes: list[int]):
+        self.tiles = tiles
+        self.indices = indices
+        self.reads = reads
+        self.writes = writes
+
+class lsc_load(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
-        self.rtype_idx = rtype_idx
-        self.res_idx = res_idx
-        self.addr_idx = addr_idx
         self.off = off
-        self.t = t
+
+        tiles = [scalar_tile, t]
+        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
+        # read address
+        reads = [0]
+        # write resource
+        writes = [1]
+
+        super(lsc_load, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+
+    @property
+    def rtype_idx(self):
+        return self.indices[0][0]
+
+    @property
+    def res_idx(self):
+        return self.indices[1][1]
+
+    @property
+    def addr_idx(self):
+        return self.indices[0][1]
+
+    @property
+    def t(self):
+        return self.tiles[1]
 
     def __str__(self):
         reg_chars = ['a','b','c']
@@ -27,22 +62,57 @@ class mm_op_load:
             vlenstr = "*VLEN"*vladims
         return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr}"
 
-class mm_op_zero:
+class lsc_zero(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, t : tile):
-        self.rtype_idx = rtype_idx
-        self.res_idx = res_idx
-        self.t = t
+
+        tiles = [t]
+        indices = [[rtype_idx, res_idx]]
+        reads = []
+        # write resource
+        writes = [0]
+
+        super(lsc_zero, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+    @property
+    def rtype_idx(self):
+        return self.indices[0][0]
+
+    @property
+    def res_idx(self):
+        return self.indices[0][1]
+
+    @property
+    def t(self):
+        return self.tiles[0]
 
     def __str__(self):
         reg_chars = ['a','b','c']
         return f"{reg_chars[self.rtype_idx]}{self.res_idx} <- 0"
 
-class mm_op_addr_update:
+class lsc_addr_add(lsc_operation):
     def __init__(self, rtype_idx : int, addr_idx : int, off : int, t : tile):
-        self.rtype_idx = rtype_idx
-        self.addr_idx = addr_idx
         self.off = off
-        self.t = t
+
+        # t is used for calculating address, isn't the tile the address resides in
+        tiles = [scalar_tile, t]
+        indices = [[rtype_idx, addr_idx]]
+        # read addr
+        reads = [0]
+        # write addr
+        writes = [0]
+
+        super(lsc_addr_add, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+
+    @property
+    def rtype_idx(self):
+        return self.indices[0][0]
+
+    @property
+    def addr_idx(self):
+        return self.indices[0][1]
+
+    @property
+    def t(self):
+        return self.tiles[1]
 
     def __str__(self):
         reg_chars = ['a','b','c']
@@ -53,18 +123,32 @@ class mm_op_addr_update:
         ar_str = f"{reg_chars[self.rtype_idx]}a{self.addr_idx}"
         return f"{ar_str} <- {ar_str} + {self.off}{vlenstr}"
 
-class mm_op_debugmsg:
+class lsc_debugmsg(lsc_operation):
     def __init__(self, msg : str):
+        super(lsc_debugmsg, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
         self.msg = msg
     def __str__(self):
         return self.msg
     
-class mm_op_op:
-    def __init__(self, op : str, res_indices : list[int], sub_indices : list[int], tiles : list[tile]):
+class lsc_transformation(lsc_operation):
+    def __init__(self, op : str,
+                 res_indices : list[int],
+                 sub_indices : list[int],
+                 tiles : list[tile],
+                 reads : list[int] = [0,1,2],
+                 writes : list[int] = [2]):
         self.op = op
-        self.res_indices = res_indices
-        self.sub_indices = sub_indices
-        self.tiles = tiles
+        indices = [[i,r,s] for i,(r,s) in enumerate(zip(res_indices,sub_indices))]
+        super(lsc_transformation, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+
+    @property
+    def res_indices(self):
+        return [idxlist[1] for idxlist in self.indices]
+
+    @property
+    def sub_indices(self):
+        return [idxlist[2] for idxlist in self.indices]
+
     def __str__(self):
         reg_chars = ['a','b','c']
         #TODO: subindices
@@ -138,7 +222,7 @@ class load_store_cpu:
 
         return (difference >= offset_range[0]) and (difference <= offset_range[1])
 
-    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[mm_op_load|mm_op_addr_update]:
+    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[lsc_load|lsc_addr_add]:
         # check if the required data is already in the resource
         reg_chars = ["a","b","c"]
         corg = self.cdos[rtype_idx][res_idx]
@@ -196,7 +280,7 @@ class load_store_cpu:
             add_value = toff - caoff_min + self.addr_offset_ranges[rtype_idx][addr_idx_to_increment][0]
             #ar_str = f"{reg_chars[rtype_idx]}a{addr_idx_to_increment}"
             #result.append(f"{ar_str} <- {ar_str} + {add_value}{vlenstr}")
-            result.append(mm_op_addr_update(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
+            result.append(lsc_addr_add(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
             self.addr_reg_offsets[rtype_idx][addr_idx_to_increment] += add_value
         
         
@@ -208,7 +292,7 @@ class load_store_cpu:
         if 0 < vladims:
             offpref = ""
         #result.append(f"{res_str} <- LOAD {ar_str} + {offpref}{self.addr_offsets[rtype_idx]}{vlenstr}")
-        result.append(mm_op_load(rtype_idx=rtype_idx, res_idx=res_idx,
+        result.append(lsc_load(rtype_idx=rtype_idx, res_idx=res_idx,
                                     addr_idx=addr_idx_to_use,
                                     off=self.addr_offsets[rtype_idx],
                                     t=t))
@@ -224,7 +308,7 @@ class load_store_cpu:
     def map_one(self,
                 a_tile : tile, b_tile : tile, c_tile : tile,
                 a_idx : (int,int), b_idx : (int,int), c_idx : (int,int),
-                m_subidx : int, n_subidx : int, k_subidx : int) -> list[mm_op_load|mm_op_addr_update|mm_op_op]:
+                m_subidx : int, n_subidx : int, k_subidx : int) -> list[lsc_operation]:
 
         reg_chars = ['a','b','c']
         tiles = [a_tile,b_tile,c_tile]
@@ -242,7 +326,7 @@ class load_store_cpu:
                 zip(target_offsets,self.cdos,self.res_counts,[a_tile,b_tile,c_tile])):
             res_idx = -1
 
-            #result.append(mm_op_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
+            #result.append(lsc_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
 
             # check if any of the registers have the data
             for j in range(res_count):
@@ -256,14 +340,14 @@ class load_store_cpu:
                 self.res_indices[i] = (res_idx+self.res_steps[i]) % self.res_counts[i]
 
             res_indices.append(res_idx)
-            #result.append(mm_op_debugmsg(f"Need {toff} in {reg_chars[i]}{res_idx}"))
+            #result.append(lsc_debugmsg(f"Need {toff} in {reg_chars[i]}{res_idx}"))
             result.extend(self.resolve_data(t=t,res_idx=res_idx, toff=toff, rtype_idx=i))
 
         areg = res_indices[0]
         breg = res_indices[1]
         creg = res_indices[2]
         #result.append(f"c{creg} <- {self.op}(a{areg},b{breg},c{creg})")
-        result.append(mm_op_op(op=self.op, res_indices=res_indices,
+        result.append(lsc_transformation(op=self.op, res_indices=res_indices,
                                   sub_indices=[m_subidx,n_subidx,k_subidx],
                                   tiles=[a_tile,b_tile,c_tile]))
         return result
@@ -274,7 +358,7 @@ class load_store_cpu:
                 zero_dims : list[int] = [2],
                 ignore_dims : list[int] = [],
                 add_current_offsets : bool = False,
-                ) -> list[mm_op_load|mm_op_zero|mm_op_addr_update]:
+                ) -> list[lsc_operation]:
         results = []
         preloads_done = [0]*len(self.res_counts)
         # treat ignored as already preloaded
@@ -297,7 +381,7 @@ class load_store_cpu:
         #    ]
         # TODO: decouple a reg tracker structure and use it instead of 
         #       tracking manually
-        #results.append(mm_op_debugmsg("\n  ".join(map(str,self.cdos))))
+        #results.append(lsc_debugmsg("\n  ".join(map(str,self.cdos))))
 
         # NOTE: Another pythonism, the commented out line and the next one
         #       are not equivalent and the former will result in partly
@@ -319,22 +403,22 @@ class load_store_cpu:
                 m_subidx = op.m_subidx, n_subidx = op.n_subidx, k_subidx = op.k_subidx
                 )
             for op in mapresults:
-                if isinstance(op, mm_op_op):
+                if isinstance(op, lsc_transformation):
                     continue
-                if isinstance(op, mm_op_debugmsg):
+                if isinstance(op, lsc_debugmsg):
                     subresults.append(op)
                     continue
                 if self.preload_counts[op.rtype_idx] <= preloads_done[op.rtype_idx]:
                     continue
-                if isinstance(op, mm_op_addr_update):
+                if isinstance(op, lsc_addr_add):
                     if op.rtype_idx not in zero_dims:
                         subresults.append(op)
                     caoff = self.addr_reg_offsets[op.rtype_idx][op.addr_idx]
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff + op.off
                     preload_addr_reg_last_used_tile[op.rtype_idx][op.addr_idx] = op.t
-                if isinstance(op, mm_op_load):
+                if isinstance(op, lsc_load):
                     if op.rtype_idx in zero_dims:
-                        subresults.append(mm_op_zero(
+                        subresults.append(lsc_zero(
                             rtype_idx=op.rtype_idx, res_idx=op.res_idx, t=op.t))
                     else:
                         subresults.append(op)
@@ -342,7 +426,7 @@ class load_store_cpu:
                     # Some updates to offsets are implicit, therefore update
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff
                     new_do = caoff + op.off
-                    #subresults.append(mm_op_debugmsg(f"{reg_chars[op.rtype_idx]}{op.res_idx} now holds {new_do}"))
+                    #subresults.append(lsc_debugmsg(f"{reg_chars[op.rtype_idx]}{op.res_idx} now holds {new_do}"))
                     preload_dos[op.rtype_idx][op.res_idx] = new_do
                     tsize = op.t.dima.size*op.t.dimb.size
                     preload_addr_reg_last_used_offsets[op.rtype_idx][op.addr_idx] = op.off
@@ -375,7 +459,7 @@ class load_store_cpu:
                 for addr_idx,start in zip(range(addr_count),self.addr_starts[i]):
                     caoff = preload_addr_reg_offsets[i][addr_idx]
                     add_off = caoff_max-caoff+off+t.dima.size*t.dimb.size+start
-                    results.append(mm_op_addr_update(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
+                    results.append(lsc_addr_add(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
                     preload_addr_reg_offsets[i][addr_idx] = caoff+add_off
         # update the internal states so the main block would be correct:
         self.addr_reg_offsets = [d.copy() for d in preload_addr_reg_offsets]
@@ -384,8 +468,8 @@ class load_store_cpu:
         for i,dos in enumerate(preload_dos):
             for res_idx,orig in dos.items():
                 self.cdos[i][res_idx] = orig
-        #results.append(mm_op_debugmsg("dos after preload:\n    " + "\n    ".join(map(str,self.cdos))))
-        #results.append(mm_op_debugmsg("res idx after preload: " + ", ".join(map(str,self.res_indices))))
+        #results.append(lsc_debugmsg("dos after preload:\n    " + "\n    ".join(map(str,self.cdos))))
+        #results.append(lsc_debugmsg("res idx after preload: " + ", ".join(map(str,self.res_indices))))
         # reset the indices
         self.res_indices = [ d%count for d,count in zip(preloads_done,self.res_counts)]
         return results

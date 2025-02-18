@@ -2,10 +2,10 @@ from enum import Enum,auto
 
 
 from ..models.load_store_cpu import (
-        mm_op_addr_update as aop,
-        mm_op_load as lop,
-        mm_op_zero as zop,
-        mm_op_op as oop,
+        lsc_addr_add as aop,
+        lsc_load as lop,
+        lsc_zero as zop,
+        lsc_transformation as oop,
         tile
         )
 
@@ -48,6 +48,7 @@ class lsc_op_access_annotated:
         self.op = op
 
     def from_mm_op(op : aop|lop|zop|oop):
+        #TODO: reads/writes from lsc_operation
         reads = []
         writes = []
         if isinstance(op, aop):

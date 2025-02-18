@@ -40,3 +40,10 @@ class tile:
         self.subtiles = subtiles
         self.subtile_count_a = subtile_count_a
         self.subtile_count_b = subtile_count_b
+
+
+
+scalar_dp = dimension_properties(dt=dimension_type.fixed, size=1,
+                                 sdt=dimension_type.fixed, sd_size=1)
+
+scalar_tile = tile(dima=scalar_dp, dimb=scalar_dp)

@@ -90,11 +90,12 @@ class mm_op(operation):
 
 
 class mm:
-    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK')):
+    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK'), opstr : str = "fma"):
         self.a = a
         self.b = b
         self.c = c
         self.lo = lo
+        self.opstr = opstr
 
     @property
     def a_tile(self) -> tile:
@@ -163,6 +164,7 @@ class mm:
                 a_tile=a_tile, b_tile=b_tile, c_tile=c_tile, 
                 a_idx=a_off, b_idx=b_off, c_idx=c_off,
                 m_subidx=m_subidx, n_subidx=n_subidx, k_subidx=k_subidx, 
+                opstr=self.opstr
             )]
 
         result = []
