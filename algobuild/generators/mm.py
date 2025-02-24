@@ -190,6 +190,7 @@ class mm:
             n_subtile_idx = n_idx % c_tile.subtile_count_b
             k_subtile_idx = k_idx % a_tile.subtile_count_b
 
+
             c_subtile = c_tile.subtiles[n_subtile_idx*c_tile.subtile_count_a + m_subtile_idx]
             b_subtile = b_tile.subtiles[n_subtile_idx*b_tile.subtile_count_a + k_subtile_idx]
             a_subtile = a_tile.subtiles[k_subtile_idx*a_tile.subtile_count_a + m_subtile_idx]

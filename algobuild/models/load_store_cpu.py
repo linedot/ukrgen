@@ -1,8 +1,16 @@
 from abc import abstractmethod
+from enum import Enum,auto
 from algobuild.generators import mm_op,tile,dimension_type
 
 from algobuild.components.operation import operation
 from algobuild.components import scalar_tile
+
+
+class lsc_state(Enum):
+    clean = auto()
+    loaded = auto()
+    modified = auto()
+
 
 class tile_offset_mapper:
     @abstractmethod
@@ -61,6 +69,44 @@ class lsc_load(lsc_operation):
         if 0 < vladims:
             vlenstr = "*VLEN"*vladims
         return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr}"
+
+class lsc_store(lsc_operation):
+    def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
+        self.off = off
+
+        tiles = [scalar_tile, t]
+        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
+        # read resource
+        reads = [0,1]
+        # we write memory, not the address register
+        writes = []
+
+        super(lsc_store, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+
+    @property
+    def rtype_idx(self):
+        return self.indices[0][0]
+
+    @property
+    def res_idx(self):
+        return self.indices[1][1]
+
+    @property
+    def addr_idx(self):
+        return self.indices[0][1]
+
+    @property
+    def t(self):
+        return self.tiles[1]
+
+    def __str__(self):
+        reg_chars = ['a','b','c']
+        i = self.rtype_idx
+        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
+        vlenstr = ""
+        if 0 < vladims:
+            vlenstr = "*VLEN"*vladims
+        return f"{reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr} <- STORE {reg_chars[i]}{self.res_idx}"
 
 class lsc_zero(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, t : tile):
@@ -195,10 +241,16 @@ class load_store_cpu:
         # TODO: revisit with not-magic-number based approach?
         self.cdos = [
             { i : -2 if i < pre_count else -1 for i in range(res_count)}\
-                    for res_count,pre_count,idx,subidx in\
-                    zip(self.res_counts,self.preload_counts,
-                        self.res_indices,self.res_subindices)
+                    for res_count,pre_count in\
+                    zip(self.res_counts,self.preload_counts)
         ]
+
+        self.states = [
+            { i : lsc_state.loaded if i < pre_count else lsc_state.clean for i in range(res_count)}\
+                    for res_count,pre_count in\
+                    zip(self.res_counts,self.preload_counts)
+        ]
+
         # Offsets to base address corresponding to absolute address values 
         # currently stored in the address registers
         # -2 = assume correct value in addr, replace tracked value, but don't
@@ -209,7 +261,8 @@ class load_store_cpu:
                     zip(self.preload_counts,self.addr_starts,self.addr_counts)
         ]
         # ABC data offsets to addresses currently stored in the address registers
-        self.addr_offsets = [0]*len(self.res_counts)
+        self.load_offsets = [0]*len(self.res_counts)
+        self.store_offsets = [0]*len(self.res_counts)
 
 
         # Track last tile used per res to determine offset to next tile given
@@ -222,25 +275,9 @@ class load_store_cpu:
 
         return (difference >= offset_range[0]) and (difference <= offset_range[1])
 
-    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[lsc_load|lsc_addr_add]:
-        # check if the required data is already in the resource
-        reg_chars = ["a","b","c"]
-        corg = self.cdos[rtype_idx][res_idx]
-        result = []
-        if corg == -2:
-            self.cdos[rtype_idx][res_idx] = toff
-            corg = toff
-        if corg == toff:
-            return result
-
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [t.dima,t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-
-
+    def resolve_addr(self, rtype_idx : int, toff : int, addr_offsets : list[int],
+                     op_list : list[lsc_operation], t : tile) -> int:
         caoffs = self.addr_reg_offsets[rtype_idx]
-
         addr_idx_to_use = -1
         while -1 == addr_idx_to_use:
             # TODO: better starting value
@@ -251,7 +288,7 @@ class load_store_cpu:
                 offset_range = self.addr_offset_ranges[rtype_idx][addr_idx]
                 if (caoff == -2):
                     addr_idx_to_use = addr_idx
-                    self.addr_offsets[rtype_idx] = 0
+                    addr_offsets[rtype_idx] = 0
                     self.addr_reg_offsets[rtype_idx][addr_idx] = toff
                     break
                 if self.is_in_range(current_offset=caoff,
@@ -261,7 +298,7 @@ class load_store_cpu:
                     if off < offset_min:
                         offset_min = off
                         addr_idx_to_use = addr_idx
-                        self.addr_offsets[rtype_idx] = off
+                        addr_offsets[rtype_idx] = off
             if -1 != addr_idx_to_use:
                 break
 
@@ -280,28 +317,69 @@ class load_store_cpu:
             add_value = toff - caoff_min + self.addr_offset_ranges[rtype_idx][addr_idx_to_increment][0]
             #ar_str = f"{reg_chars[rtype_idx]}a{addr_idx_to_increment}"
             #result.append(f"{ar_str} <- {ar_str} + {add_value}{vlenstr}")
-            result.append(lsc_addr_add(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
+            op_list.append(lsc_addr_add(rtype_idx=rtype_idx, addr_idx=addr_idx_to_increment, off=add_value, t=t))
             self.addr_reg_offsets[rtype_idx][addr_idx_to_increment] += add_value
-        
-        
-        #ar_str = f"{reg_chars[rtype_idx]}a{addr_idx_to_use}"
-        #res_str = f"{reg_chars[rtype_idx]}{res_idx}"
 
+        return addr_idx_to_use
+
+    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[lsc_load|lsc_addr_add]:
+        # check if the required data is already in the resource
+        reg_chars = ["a","b","c"]
+        corg = self.cdos[rtype_idx][res_idx]
+        result = []
+        if corg == -2:
+            self.cdos[rtype_idx][res_idx] = toff
+            corg = toff
+        if corg == toff:
+            return result
+
+
+        # store if dirty
+        if lsc_state.modified == self.states[rtype_idx][res_idx]:
+            addr_idx_for_store = self.resolve_addr(rtype_idx=rtype_idx, toff=corg,
+                                                   addr_offsets=self.store_offsets,
+                                                   op_list=result, t=t)
+            result.append(lsc_store(rtype_idx=rtype_idx, res_idx=res_idx,
+                                    addr_idx=addr_idx_for_store,
+                                    off=self.store_offsets[rtype_idx],
+                                    t=t))
+
+        # load
+        addr_idx_for_load = self.resolve_addr(rtype_idx=rtype_idx, toff=toff,
+                                              addr_offsets=self.load_offsets,
+                                              op_list=result, t=t)
         self.cdos[rtype_idx][res_idx] = toff
-        offpref = "o"
-        if 0 < vladims:
-            offpref = ""
-        #result.append(f"{res_str} <- LOAD {ar_str} + {offpref}{self.addr_offsets[rtype_idx]}{vlenstr}")
+        self.states[rtype_idx][res_idx] = lsc_state.loaded
         result.append(lsc_load(rtype_idx=rtype_idx, res_idx=res_idx,
-                                    addr_idx=addr_idx_to_use,
-                                    off=self.addr_offsets[rtype_idx],
+                                    addr_idx=addr_idx_for_load,
+                                    off=self.load_offsets[rtype_idx],
                                     t=t))
         self.last_tile_used[rtype_idx] = t
+
         # advance the addr offset by the size of the data. This is important when updating indices
         # at the end of the preload/main loop
-        self.addr_offsets[rtype_idx] += t.dima.size*t.dimb.size
+        self.load_offsets[rtype_idx] += t.dima.size*t.dimb.size
 
 
+        return result
+
+    def store_modified(self) -> list[lsc_operation]:
+        result = []
+        for rtype_idx,res_count in enumerate(self.res_counts):
+            for res_idx in range(res_count):
+                if lsc_state.modified == self.states[rtype_idx][res_idx]:
+                    corg = self.cdos[rtype_idx][res_idx]
+                    # NOTE: are different tiles for different res indices feasible?
+                    t = self.last_tile_used[rtype_idx]
+                    addr_idx_for_store = self.resolve_addr(
+                            rtype_idx=rtype_idx, toff=corg,
+                            addr_offsets=self.store_offsets,
+                            op_list=result, t=t)
+                    result.append(lsc_store(rtype_idx=rtype_idx, res_idx=res_idx,
+                                            addr_idx=addr_idx_for_store,
+                                            off=self.store_offsets[rtype_idx],
+                                            t=t))
+                    self.states[rtype_idx][res_idx] = lsc_state.clean
         return result
 
         
@@ -347,9 +425,13 @@ class load_store_cpu:
         breg = res_indices[1]
         creg = res_indices[2]
         #result.append(f"c{creg} <- {self.op}(a{areg},b{breg},c{creg})")
+        self.states[2][creg] = lsc_state.modified
         result.append(lsc_transformation(op=self.op, res_indices=res_indices,
                                   sub_indices=[m_subidx,n_subidx,k_subidx],
                                   tiles=[a_tile,b_tile,c_tile]))
+        self.last_tile_used[0] = a_tile
+        self.last_tile_used[1] = b_tile
+        self.last_tile_used[2] = c_tile
         return result
 
     def preload(self, ops : list[mm_op],
@@ -443,7 +525,7 @@ class load_store_cpu:
             results.extend(subresults)
             i+= 1
         if update_addrs:
-            for i,(addr_count,off) in enumerate(zip(self.addr_counts,self.addr_offsets)):
+            for i,(addr_count,off) in enumerate(zip(self.addr_counts,self.load_offsets)):
                 # No address updates if data was just zeroed out
                 if i in zero_dims:
                     continue

@@ -91,7 +91,50 @@ class simple_ukr_tile(tile):
                 subtile_count_b = 1,
                 stype = storage_type.register)
 
+class composed_ukr_tile(tile):
+    def __init__(self, 
+                 a_sizes : list[int],
+                 b_sizes : list[int],
+                 subdims : tuple[dimension_properties,dimension_properties]):
+
+        tiles = [simple_ukr_tile(a_size=a, b_size=b, subdims=subdims) for a in a_sizes for b in b_sizes]
+
+        dima = dimension_properties(dt=dimension_type.fixed,
+                                    size=len(a_sizes),
+                                    sdt=dimension_type.fixed,
+                                    sd_size=len(a_sizes))
+        dimb = dimension_properties(dt=dimension_type.fixed,
+                                    size=len(b_sizes),
+                                    sdt=dimension_type.fixed,
+                                    sd_size=len(b_sizes))
+        super().__init__(
+                dima=dima,dimb=dimb,
+                subtiles =tiles,
+                subtile_count_a = len(a_sizes),
+                subtile_count_b = len(b_sizes),
+                stype = storage_type.memory)
+
 class test_mm(unittest.TestCase):
+    # TODO: multitile
+    #def test_multitile(self):
+    #    m = [4,3]
+    #    n = [4]
+    #    k = [2]
+
+    #    
+    #    
+    #    a_tile = composed_ukr_tile(a_sizes=m, b_sizes=k, subdims=(scalar,scalar))
+    #    b_tile = composed_ukr_tile(a_sizes=k, b_sizes=n, subdims=(scalar,scalar))
+    #    c_tile = composed_ukr_tile(a_sizes=m, b_sizes=n, subdims=(scalar,scalar))
+
+    #    mmgen = mm(a_tile, b_tile, c_tile)
+    #    inspector = string_mapper(op="fma")
+
+    #    mm_ops = mmgen.generate()
+
+    #    print("\n".join(map(str,inspector(mm_ops))))
+    #    #self.assertEqual(expected_sequence, inspector(mm_ops))
+
     def test_2x4_scalar(self):
         m = 2
         n = 4
@@ -206,6 +249,7 @@ class test_mm(unittest.TestCase):
 
         preload = machine.preload(mm_ops)
         mainblock = machine(mm_ops)
+        storeblock = machine.store_modified()
         preload_mb = machine.preload(mm_ops_next,
                                        zero_addrs=False,
                                        ignore_dims=[2])
@@ -265,6 +309,24 @@ class test_mm(unittest.TestCase):
             "aa1 <- aa1 + 2*VLEN",
             "ba0 <- ba0 + 8",
         ]
+        expected_storeblock = [
+            "ca0 <- ca0 + -7*VLEN",
+            "ca0 + 0*VLEN <- STORE c0",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c1",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c2",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c3",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c4",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c5",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c6",
+            "ca0 <- ca0 + 1*VLEN",
+            "ca0 + 0*VLEN <- STORE c7",
+        ]
         
         #print("\n".join(map(str,preload)))
         #print("MAIN LOOP -------------------------------")
@@ -272,9 +334,13 @@ class test_mm(unittest.TestCase):
         #print("PRELOAD NEXT ----------------------------")
         #print("  "+"\n  ".join(map(str,preload_mb)))
         #print("END MAIN LOOP ---------------------------")
+        #print("STOREBLOCK ------------------------------")
+        #print("  "+"\n  ".join(map(str,storeblock)))
+        #print("ENDSTOREBLOCK ---------------------------")
 
         self.assertEqual(expected_preload,    list(map(str,preload)))
         self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
+        self.assertEqual(expected_storeblock,  list(map(str,storeblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
         scheduler = simple_dependency_scheduler(rar=0,raw=6,war=0,waw=6)
