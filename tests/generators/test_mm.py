@@ -438,6 +438,8 @@ class test_mm(unittest.TestCase):
         mmgen = mm(a_tile, b_tile, c_tile, lo=order2D('mkMnNK'))
         inspector = string_mapper(op="fma_idxx4")
 
+        mm_ops = mmgen.generate()
+
         expected_sequence = [
             "C(0,0+0) <- fma_idxx4(A(0,0),B(0,0.el[0]),C(0,0+0))",
             "C(4,0+0) <- fma_idxx4(A(4,0),B(0,0.el[0]),C(4,0+0))",
@@ -456,7 +458,40 @@ class test_mm(unittest.TestCase):
             "C(0,0+3) <- fma_idxx4(A(0,1),B(1,0.el[3]),C(0,0+3))",
             "C(4,0+3) <- fma_idxx4(A(4,1),B(1,0.el[3]),C(4,0+3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, inspector(mm_ops))
+
+        ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
+        b_mapper = lambda tile, idx : n*idx[0]+idx[1]
+        
+
+        machine = load_store_cpu(
+                     res_counts=[4,2,8],
+                     res_steps=[1,1,1],
+                     addr_counts=[2,1,1],
+                     addr_offset_ranges=[[(0,255),(0,255)],[(0,7)],[(0,255)]],
+                     addr_starts=[[0,4],[0],[0]],
+                     preload_counts=[2,2,8],
+                     offset_mappers = [ac_mapper,b_mapper,ac_mapper])
+
+        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        #print("\n".join(map(str,inspector(mm_ops_next))))
+
+        preload = machine.preload(mm_ops)
+        mainblock = machine(mm_ops)
+        storeblock = machine.store_modified()
+        preload_mb = machine.preload(mm_ops_next,
+                                       zero_addrs=False,
+                                       ignore_dims=[2])
+
+        print("\n".join(map(str,preload)))
+        print("MAIN LOOP -------------------------------")
+        print("  "+"\n  ".join(map(str,mainblock)))
+        print("PRELOAD NEXT ----------------------------")
+        print("  "+"\n  ".join(map(str,preload_mb)))
+        print("END MAIN LOOP ---------------------------")
+        print("STOREBLOCK ------------------------------")
+        print("  "+"\n  ".join(map(str,storeblock)))
+        print("ENDSTOREBLOCK ---------------------------")
 
     def test_2vx4_fix_dot(self):
         m = 2
@@ -574,6 +609,16 @@ class test_mm(unittest.TestCase):
             "C(0.el[2],3) <- dota(A(0+2,4),B(4,3),C(0.el[2],3))",
             "C(0.el[3],3) <- dota(A(0+3,4),B(4,3),C(0.el[3],3))",
         ]
+        
+        #print("\n".join(map(str,preload)))
+        #print("MAIN LOOP -------------------------------")
+        #print("  "+"\n  ".join(map(str,mainblock)))
+        #print("PRELOAD NEXT ----------------------------")
+        #print("  "+"\n  ".join(map(str,preload_mb)))
+        #print("END MAIN LOOP ---------------------------")
+        #print("STOREBLOCK ------------------------------")
+        #print("  "+"\n  ".join(map(str,storeblock)))
+        #print("ENDSTOREBLOCK ---------------------------")
         self.assertEqual(expected_sequence, inspector(mmgen.generate()))
 
     def test_2vx4_vector_opa(self):

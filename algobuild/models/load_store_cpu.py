@@ -1,3 +1,4 @@
+import copy
 from abc import abstractmethod
 from enum import Enum,auto
 from algobuild.generators import mm_op,tile,dimension_type
@@ -197,9 +198,12 @@ class lsc_transformation(lsc_operation):
 
     def __str__(self):
         reg_chars = ['a','b','c']
+        elsuf = lambda subidx : f".el[{subidx}]" if None != subidx else ""
         #TODO: subindices
-        out = f"{reg_chars[-1]}{self.res_indices[-1]} <- {self.op}("
-        out += ", ".join([f"{reg_chars[i]}{r}" for i,r in enumerate(self.res_indices)])
+        regstrs = [f"{reg_chars[i]}{r}{elsuf(subidx)}" for i,(r,subidx) in\
+                enumerate(zip(self.res_indices,self.sub_indices))]
+        out = f"{regstrs[-1]} <- {self.op}("
+        out += ", ".join(regstrs)
         out += ")"
         return out
 
@@ -333,7 +337,6 @@ class load_store_cpu:
         if corg == toff:
             return result
 
-
         # store if dirty
         if lsc_state.modified == self.states[rtype_idx][res_idx]:
             addr_idx_for_store = self.resolve_addr(rtype_idx=rtype_idx, toff=corg,
@@ -390,6 +393,30 @@ class load_store_cpu:
 
         reg_chars = ['a','b','c']
         tiles = [a_tile,b_tile,c_tile]
+        a_subidx = None
+        if a_tile.dima.size > c_tile.dima.size:
+            a_subidx = m_subidx
+            c_idx = (c_idx[0]+m_subidx, c_idx[1])
+        if a_tile.dimb.size > b_tile.dima.size:
+            a_subidx = k_subidx
+            b_idx = (b_idx[0]+k_subidx, b_idx[1])
+
+        b_subidx = None
+        if b_tile.dima.size > a_tile.dimb.size:
+            b_subidx = k_subidx
+            a_idx = (a_idx[0], a_idx[1]+k_subidx)
+        if b_tile.dimb.size > c_tile.dimb.size:
+            b_subidx = n_subidx
+            c_idx = (c_idx[0], c_idx[1]+n_subidx)
+            
+
+        c_subidx = None
+        if c_tile.dima.size > a_tile.dima.size:
+            c_subidx = m_subidx
+            a_idx = (a_idx[0]+m_subidx, a_idx[1])
+        if c_tile.dimb.size > b_tile.dimb.size:
+            c_subidx = n_subidx
+            b_idx = (b_idx[0], b_idx[1]+n_subidx)
         indices = [a_idx,b_idx,c_idx]
         target_offsets = [ mapper(tile,idx) for  mapper,tile,idx in\
                 zip(self.offset_mappers,tiles,indices)]
@@ -425,9 +452,11 @@ class load_store_cpu:
         breg = res_indices[1]
         creg = res_indices[2]
         #result.append(f"c{creg} <- {self.op}(a{areg},b{breg},c{creg})")
+
+
         self.states[2][creg] = lsc_state.modified
         result.append(lsc_transformation(op=self.op, res_indices=res_indices,
-                                  sub_indices=[m_subidx,n_subidx,k_subidx],
+                                  sub_indices=[a_subidx,b_subidx,c_subidx],
                                   tiles=[a_tile,b_tile,c_tile]))
         self.last_tile_used[0] = a_tile
         self.last_tile_used[1] = b_tile
@@ -446,6 +475,8 @@ class load_store_cpu:
         # treat ignored as already preloaded
         for dim in ignore_dims:
             preloads_done[dim] = self.preload_counts[dim]
+
+        pre_preload_states = copy.deepcopy(self.states)
 
         initial_cdos = self.cdos.copy()
         self.cdos = [{ i : -1 for i in range(res_count)} for res_count in self.res_counts]
@@ -522,6 +553,7 @@ class load_store_cpu:
             # Debug preloads:
             #print(", ".join(f"{d}/{p}" for d,p in zip(preloads_done,self.preload_counts)))
 
+
             results.extend(subresults)
             i+= 1
         if update_addrs:
@@ -537,9 +569,16 @@ class load_store_cpu:
                         caoff_max = caoff
                         max_idx = addr_idx
                 off = preload_addr_reg_last_used_offsets[i][max_idx]
+                # TODO: figure out how this can happen
+                if None == off:
+                    off = 0
                 t = preload_addr_reg_last_used_tile[i][max_idx]
+                # TODO: figure out how this can happen
+                if None == t:
+                    t = self.last_tile_used[i]
                 for addr_idx,start in zip(range(addr_count),self.addr_starts[i]):
                     caoff = preload_addr_reg_offsets[i][addr_idx]
+
                     add_off = caoff_max-caoff+off+t.dima.size*t.dimb.size+start
                     results.append(lsc_addr_add(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
                     preload_addr_reg_offsets[i][addr_idx] = caoff+add_off
@@ -550,6 +589,9 @@ class load_store_cpu:
         for i,dos in enumerate(preload_dos):
             for res_idx,orig in dos.items():
                 self.cdos[i][res_idx] = orig
+
+        # correct load states were already set in self.reset(). preload shouldn't change it
+        self.states = copy.deepcopy(pre_preload_states)
         #results.append(lsc_debugmsg("dos after preload:\n    " + "\n    ".join(map(str,self.cdos))))
         #results.append(lsc_debugmsg("res idx after preload: " + ", ".join(map(str,self.res_indices))))
         # reset the indices
