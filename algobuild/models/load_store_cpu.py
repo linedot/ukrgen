@@ -432,7 +432,7 @@ class load_store_cpu:
         
         #for i,(toff,dos,res_count,t) in enumerate(
         #        zip(target_offsets,self.cdos,self.res_counts,[a_tile,b_tile,c_tile])):
-        for i in self.resolve_order:
+        for i in self.resolve_order[:len(self.res_counts)]:
             toff = target_offsets[i]
             dos = self.cdos[i]
             res_count = self.res_counts[i]

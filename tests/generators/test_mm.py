@@ -13,7 +13,6 @@ from algobuild.components import (
         x4_vector
         )
 from algobuild.generators import mm,order2D
-from algobuild.generators.mm import string_mapper
 from algobuild.models import load_store_cpu
 from algobuild.schedulers import simple_dependency_scheduler
 
@@ -101,8 +100,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="fma")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="fma")
 
         mm_ops = mmgen.generate()
 
@@ -116,7 +114,7 @@ class test_mm(unittest.TestCase):
             "C(0,3) <- fma(A(0,0),B(0,3),C(0,3))",
             "C(1,3) <- fma(A(1,0),B(0,3),C(1,3))"
         ]
-        self.assertEqual(expected_sequence, inspector(mm_ops))
+        self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
         ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
         b_mapper = lambda tile, idx : k*idx[0]+idx[1]
@@ -159,8 +157,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="fma")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="fma")
 
 
         mm_ops = mmgen.generate()
@@ -183,7 +180,41 @@ class test_mm(unittest.TestCase):
             "C(0*VLEN,3) <- fma(A(0*VLEN,1),B(1,3),C(0*VLEN,3))",
             "C(1*VLEN,3) <- fma(A(1*VLEN,1),B(1,3),C(1*VLEN,3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mm_ops))
+        self.assertEqual(expected_sequence, list(map(str,mm_ops)))
+
+    
+        scale_tile = simple_ukr_tile(a_size=m*n, b_size=1, subdims=(vla_vector,scalar_dp))
+        beta_tile = simple_ukr_tile(a_size=1, b_size=1, subdims=(scalar_dp,scalar_dp))
+        scalegen = mm(scale_tile, beta_tile, scale_tile, opstr="mulnop", tile_strs=["C","beta","C"])
+
+        beta_scale_ops = scalegen.generate()
+
+        expected_sequence = [
+            "C(0*VLEN,0) <- mulnop(C(0*VLEN,0),beta(0,0),C(0*VLEN,0))",
+            "C(1*VLEN,0) <- mulnop(C(1*VLEN,0),beta(0,0),C(1*VLEN,0))",
+            "C(2*VLEN,0) <- mulnop(C(2*VLEN,0),beta(0,0),C(2*VLEN,0))",
+            "C(3*VLEN,0) <- mulnop(C(3*VLEN,0),beta(0,0),C(3*VLEN,0))",
+            "C(4*VLEN,0) <- mulnop(C(4*VLEN,0),beta(0,0),C(4*VLEN,0))",
+            "C(5*VLEN,0) <- mulnop(C(5*VLEN,0),beta(0,0),C(5*VLEN,0))",
+            "C(6*VLEN,0) <- mulnop(C(6*VLEN,0),beta(0,0),C(6*VLEN,0))",
+            "C(7*VLEN,0) <- mulnop(C(7*VLEN,0),beta(0,0),C(7*VLEN,0))"
+        ]
+        self.assertEqual(expected_sequence, list(map(str,beta_scale_ops)))
+
+        scalegen = mm(scale_tile, beta_tile, scale_tile, opstr="fma", tile_strs=["AB","alpha","C"])
+        alpha_scale_ops = scalegen.generate()
+
+        expected_sequence = [
+            "C(0*VLEN,0) <- fma(AB(0*VLEN,0),alpha(0,0),C(0*VLEN,0))",
+            "C(1*VLEN,0) <- fma(AB(1*VLEN,0),alpha(0,0),C(1*VLEN,0))",
+            "C(2*VLEN,0) <- fma(AB(2*VLEN,0),alpha(0,0),C(2*VLEN,0))",
+            "C(3*VLEN,0) <- fma(AB(3*VLEN,0),alpha(0,0),C(3*VLEN,0))",
+            "C(4*VLEN,0) <- fma(AB(4*VLEN,0),alpha(0,0),C(4*VLEN,0))",
+            "C(5*VLEN,0) <- fma(AB(5*VLEN,0),alpha(0,0),C(5*VLEN,0))",
+            "C(6*VLEN,0) <- fma(AB(6*VLEN,0),alpha(0,0),C(6*VLEN,0))",
+            "C(7*VLEN,0) <- fma(AB(7*VLEN,0),alpha(0,0),C(7*VLEN,0))"
+        ]
+        self.assertEqual(expected_sequence, list(map(str,alpha_scale_ops)))
 
         ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
         b_mapper = lambda tile, idx : n*idx[0]+idx[1]
@@ -353,9 +384,9 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="fma")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="fma")
 
+        mm_ops = mmgen.generate()
         expected_sequence = [
             "C(0,0) <- fma(A(0,0),B(0,0),C(0,0))",
             "C(4,0) <- fma(A(4,0),B(0,0),C(4,0))",
@@ -374,7 +405,7 @@ class test_mm(unittest.TestCase):
             "C(0,3) <- fma(A(0,1),B(1,3),C(0,3))",
             "C(4,3) <- fma(A(4,1),B(1,3),C(4,3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
     # TODO: more metainfo required to differentiate fma_bcastx4 from this
     def test_2vx4_idxx4_fma(self):
@@ -388,8 +419,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n//x4_vector.sd_size, subdims=(scalar_dp,x4_vector))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile, lo=order2D('mkMnNK'))
-        inspector = string_mapper(op="fma_idxx4")
+        mmgen = mm(a_tile, b_tile, c_tile, lo=order2D('mkMnNK'),opstr="fma_idxx4")
 
         mm_ops = mmgen.generate()
 
@@ -411,7 +441,7 @@ class test_mm(unittest.TestCase):
             "C(0,0+3) <- fma_idxx4(A(0,1),B(1,0.el[3]),C(0,0+3))",
             "C(4,0+3) <- fma_idxx4(A(4,1),B(1,0.el[3]),C(4,0+3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mm_ops))
+        self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
         ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
         b_mapper = lambda tile, idx : n*idx[0]+idx[1]
@@ -436,15 +466,77 @@ class test_mm(unittest.TestCase):
                                        zero_addrs=False,
                                        ignore_dims=[2])
 
-        print("\n".join(map(str,preload)))
-        print("MAIN LOOP -------------------------------")
-        print("  "+"\n  ".join(map(str,mainblock)))
-        print("PRELOAD NEXT ----------------------------")
-        print("  "+"\n  ".join(map(str,preload_mb)))
-        print("END MAIN LOOP ---------------------------")
-        print("STOREBLOCK ------------------------------")
-        print("  "+"\n  ".join(map(str,storeblock)))
-        print("ENDSTOREBLOCK ---------------------------")
+        #print("\n".join(map(str,preload)))
+        #print("MAIN LOOP -------------------------------")
+        #print("  "+"\n  ".join(map(str,mainblock)))
+        #print("PRELOAD NEXT ----------------------------")
+        #print("  "+"\n  ".join(map(str,preload_mb)))
+        #print("END MAIN LOOP ---------------------------")
+        #print("STOREBLOCK ------------------------------")
+        #print("  "+"\n  ".join(map(str,storeblock)))
+        #print("ENDSTOREBLOCK ---------------------------")
+
+        expected_preload = [
+            "a0 <- LOAD aa0 + 0",
+            "b0 <- LOAD ba0 + 0",
+            "c0 <- 0",
+            "a1 <- LOAD aa1 + 0",
+            "c1 <- 0",
+            "c2 <- 0",
+            "c3 <- 0",
+            "c4 <- 0",
+            "c5 <- 0",
+            "c6 <- 0",
+            "c7 <- 0",
+            "b1 <- LOAD ba0 + 4",
+            "aa0 <- aa0 + 8",
+            "aa1 <- aa1 + 8",
+            "ba0 <- ba0 + 8",
+        ]
+        expected_mainblock = [
+            "c0 <- fma(a0, b0.el[0], c0)",
+            "c1 <- fma(a1, b0.el[0], c1)",
+            "c2 <- fma(a0, b0.el[1], c2)",
+            "c3 <- fma(a1, b0.el[1], c3)",
+            "c4 <- fma(a0, b0.el[2], c4)",
+            "c5 <- fma(a1, b0.el[2], c5)",
+            "c6 <- fma(a0, b0.el[3], c6)",
+            "c7 <- fma(a1, b0.el[3], c7)",
+            "a2 <- LOAD aa0 + 0",
+            "c0 <- fma(a2, b1.el[0], c0)",
+            "a3 <- LOAD aa1 + 0",
+            "c1 <- fma(a3, b1.el[0], c1)",
+            "c2 <- fma(a2, b1.el[1], c2)",
+            "c3 <- fma(a3, b1.el[1], c3)",
+            "c4 <- fma(a2, b1.el[2], c4)",
+            "c5 <- fma(a3, b1.el[2], c5)",
+            "c6 <- fma(a2, b1.el[3], c6)",
+            "c7 <- fma(a3, b1.el[3], c7)",
+        ]
+        expected_preload_mb = [
+            "a0 <- LOAD aa1 + 4", # TODO: aa0 + 8
+            "b0 <- LOAD ba0 + 0",
+            "a1 <- LOAD aa1 + 8",
+            "b1 <- LOAD ba0 + 4",
+            "aa0 <- aa0 + 16",
+            "aa1 <- aa1 + 16",
+            "ba0 <- ba0 + 8",
+        ]
+        expected_storeblock = [
+            "ca0 + 0 <- STORE c0",
+            "ca0 + 4 <- STORE c1",
+            "ca0 + 8 <- STORE c2",
+            "ca0 + 12 <- STORE c3",
+            "ca0 + 16 <- STORE c4",
+            "ca0 + 20 <- STORE c5",
+            "ca0 + 24 <- STORE c6",
+            "ca0 + 28 <- STORE c7",
+        ]
+
+        self.assertEqual(expected_preload,    list(map(str,preload)))
+        self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
+        self.assertEqual(expected_storeblock,  list(map(str,storeblock)))
+        self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
     def test_2vx4_fix_dot(self):
         m = 2
@@ -457,28 +549,27 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="dot")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="dota")
 
         expected_sequence = [
-            "C(0,0) <- dot(A(0,0),B(0,0),C(0,0))",
-            "C(1,0) <- dot(A(1,0),B(0,0),C(1,0))",
-            "C(0,1) <- dot(A(0,0),B(0,1),C(0,1))",
-            "C(1,1) <- dot(A(1,0),B(0,1),C(1,1))",
-            "C(0,2) <- dot(A(0,0),B(0,2),C(0,2))",
-            "C(1,2) <- dot(A(1,0),B(0,2),C(1,2))",
-            "C(0,3) <- dot(A(0,0),B(0,3),C(0,3))",
-            "C(1,3) <- dot(A(1,0),B(0,3),C(1,3))",
-            "C(0,0) <- dot(A(0,4),B(4,0),C(0,0))",
-            "C(1,0) <- dot(A(1,4),B(4,0),C(1,0))",
-            "C(0,1) <- dot(A(0,4),B(4,1),C(0,1))",
-            "C(1,1) <- dot(A(1,4),B(4,1),C(1,1))",
-            "C(0,2) <- dot(A(0,4),B(4,2),C(0,2))",
-            "C(1,2) <- dot(A(1,4),B(4,2),C(1,2))",
-            "C(0,3) <- dot(A(0,4),B(4,3),C(0,3))",
-            "C(1,3) <- dot(A(1,4),B(4,3),C(1,3))",
+            "C(0,0) <- dota(A(0,0),B(0,0),C(0,0))",
+            "C(1,0) <- dota(A(1,0),B(0,0),C(1,0))",
+            "C(0,1) <- dota(A(0,0),B(0,1),C(0,1))",
+            "C(1,1) <- dota(A(1,0),B(0,1),C(1,1))",
+            "C(0,2) <- dota(A(0,0),B(0,2),C(0,2))",
+            "C(1,2) <- dota(A(1,0),B(0,2),C(1,2))",
+            "C(0,3) <- dota(A(0,0),B(0,3),C(0,3))",
+            "C(1,3) <- dota(A(1,0),B(0,3),C(1,3))",
+            "C(0,0) <- dota(A(0,4),B(4,0),C(0,0))",
+            "C(1,0) <- dota(A(1,4),B(4,0),C(1,0))",
+            "C(0,1) <- dota(A(0,4),B(4,1),C(0,1))",
+            "C(1,1) <- dota(A(1,4),B(4,1),C(1,1))",
+            "C(0,2) <- dota(A(0,4),B(4,2),C(0,2))",
+            "C(1,2) <- dota(A(1,4),B(4,2),C(1,2))",
+            "C(0,3) <- dota(A(0,4),B(4,3),C(0,3))",
+            "C(1,3) <- dota(A(1,4),B(4,3),C(1,3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, list(map(str,mmgen.generate())))
 
     def test_2vx4_vla_dot(self):
         m = 2
@@ -491,8 +582,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(vla_vector,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="dota")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="dota")
 
         expected_sequence = [
             "C(0,0) <- dota(A(0,0*VLEN),B(0*VLEN,0),C(0,0))",
@@ -512,7 +602,7 @@ class test_mm(unittest.TestCase):
             "C(0,3) <- dota(A(0,1*VLEN),B(1*VLEN,3),C(0,3))",
             "C(1,3) <- dota(A(1,1*VLEN),B(1*VLEN,3),C(1,3))",
         ]
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, list(map(str,mmgen.generate())))
 
     def test_4vx4_idxx4_dot(self):
         m = 4
@@ -525,8 +615,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar_dp))
         c_tile = simple_ukr_tile(a_size=m//x4_vector.sd_size, b_size=n, subdims=(x4_vector,scalar_dp))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="dota")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="dota")
 
         expected_sequence = [
             "C(0.el[0],0) <- dota(A(0+0,0),B(0,0),C(0.el[0],0))",
@@ -572,7 +661,7 @@ class test_mm(unittest.TestCase):
         #print("STOREBLOCK ------------------------------")
         #print("  "+"\n  ".join(map(str,storeblock)))
         #print("ENDSTOREBLOCK ---------------------------")
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, list(map(str,mmgen.generate())))
 
     def test_2vx4_vector_opa(self):
         m = 2
@@ -585,8 +674,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,vla_vector))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,vla_vector))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="opa")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="opa")
 
         mm_ops = mmgen.generate()
 
@@ -608,7 +696,7 @@ class test_mm(unittest.TestCase):
             "C(0*VLEN,3*VLEN) <- opa(A(0*VLEN,1),B(1,3*VLEN),C(0*VLEN,3*VLEN))",
             "C(1*VLEN,3*VLEN) <- opa(A(1*VLEN,1),B(1,3*VLEN),C(1*VLEN,3*VLEN))",
         ]
-        self.assertEqual(expected_sequence, inspector(mm_ops))
+        self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
         ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
         b_mapper = lambda tile, idx : n*idx[0]+idx[1]
@@ -786,8 +874,7 @@ class test_mm(unittest.TestCase):
         b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,x4_vector))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,x4_vector))
 
-        mmgen = mm(a_tile, b_tile, c_tile)
-        inspector = string_mapper(op="mma")
+        mmgen = mm(a_tile, b_tile, c_tile, opstr="mma")
 
         expected_sequence=[
             "C(0,0) <- mma(A(0,0),B(0,0),C(0,0))",
@@ -800,4 +887,4 @@ class test_mm(unittest.TestCase):
             "C(4,4) <- mma(A(4,4),B(4,4),C(4,4))",
         ]
         #print("\n".join(mmgen.generate()))
-        self.assertEqual(expected_sequence, inspector(mmgen.generate()))
+        self.assertEqual(expected_sequence, list(map(str,mmgen.generate())))

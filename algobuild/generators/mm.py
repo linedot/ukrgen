@@ -46,12 +46,14 @@ class mm_op(operation):
                  a_tile : tile, b_tile : tile, c_tile : tile,
                  a_idx : (int,int), b_idx : (int,int), c_idx : (int,int),
                  m_subidx : int, n_subidx : int, k_subidx : int,
-                 opstr : str = "fma"):
+                 opstr : str = "fma",
+                 tile_strs : list[str] = ['A','B','C']):
         super().__init__(
                  tiles=[a_tile,b_tile,c_tile],
                  tile_offsets=[list(a_idx),list(b_idx),list(c_idx)],
                  subindices=[m_subidx, n_subidx, k_subidx],
-                 opstr=opstr)
+                 opstr=opstr,
+                 tile_strs=tile_strs)
     @property
     def a_tile(self):
         return self.tiles[0]
@@ -90,12 +92,16 @@ class mm_op(operation):
 
 
 class mm:
-    def __init__(self, a : tile, b : tile, c : tile, lo : list[int] = order2D('mnkMNK'), opstr : str = "fma"):
+    def __init__(self, a : tile, b : tile, c : tile,
+                 lo : list[int] = order2D('mnkMNK'),
+                 opstr : str = "fma",
+                 tile_strs : list[str] = ['A','B','C']):
         self.a = a
         self.b = b
         self.c = c
         self.lo = lo
         self.opstr = opstr
+        self.tile_strs = tile_strs
 
     @property
     def a_tile(self) -> tile:
@@ -164,7 +170,8 @@ class mm:
                 a_tile=a_tile, b_tile=b_tile, c_tile=c_tile, 
                 a_idx=a_off, b_idx=b_off, c_idx=c_off,
                 m_subidx=m_subidx, n_subidx=n_subidx, k_subidx=k_subidx, 
-                opstr=self.opstr
+                opstr=self.opstr,
+                tile_strs=self.tile_strs
             )]
 
         result = []
@@ -213,10 +220,14 @@ class mm:
 
 
 class string_mapper:
-    def __init__(self, op : str = "fma"):
+    def __init__(self, op : str = "fma", tile_strs : list[str] = ['A','B','C']):
         self.op = op
+        self.tile_strs = tile_strs
     def __call__(self, ops : list[mm_op]) -> list[str]:
 
+        A = self.tile_strs[0]
+        B = self.tile_strs[1]
+        C = self.tile_strs[2]
         result = []
         idxstr = lambda dima,dimb,sidx : "" if dima.size==dimb.size else f".el[{sidx}]" if dima.size > dimb.size else f"+{sidx}"
         vlensuf = lambda d : "*VLEN" if d.dt == dimension_type.vla else ""
@@ -229,6 +240,6 @@ class string_mapper:
             c_idx_str = (f"({op.c_idx[0]}{vlensuf(op.c_tile.dima)}{idxstr(op.c_tile.dima,op.a_tile.dima,op.m_subidx)},"
                           f"{op.c_idx[1]}{vlensuf(op.c_tile.dimb)}{idxstr(op.c_tile.dimb,op.b_tile.dimb,op.n_subidx)})")
             result.append(
-                f"C{c_idx_str} <- {self.op}(A{a_idx_str},B{b_idx_str},C{c_idx_str})"
+                f"{C}{c_idx_str} <- {self.op}({A}{a_idx_str},{B}{b_idx_str},{C}{c_idx_str})"
             )
         return result
