@@ -216,6 +216,7 @@ class load_store_cpu:
                  addr_starts : list[list[int]],
                  preload_counts : list[int],
                  offset_mappers : list[tile_offset_mapper],
+                 resolve_order : list[int] = [0,1,2],
                  op : str = "fma"):
 
         for rc,pc in zip(res_counts,preload_counts):
@@ -225,6 +226,7 @@ class load_store_cpu:
         self.res_steps = res_steps
         self.preload_counts = preload_counts
         self.offset_mappers = offset_mappers
+        self.resolve_order = resolve_order
         self.op = op
 
         self.addr_counts = addr_counts
@@ -326,7 +328,7 @@ class load_store_cpu:
 
         return addr_idx_to_use
 
-    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[lsc_load|lsc_addr_add]:
+    def resolve_data(self, t : tile, res_idx : int, toff : int, rtype_idx : int) -> list[lsc_operation]:
         # check if the required data is already in the resource
         reg_chars = ["a","b","c"]
         corg = self.cdos[rtype_idx][res_idx]
@@ -422,13 +424,19 @@ class load_store_cpu:
                 zip(self.offset_mappers,tiles,indices)]
 
         result = []
-        res_indices = []
+        res_indices = [-1]*len(self.res_counts)
 
 
 
 
-        for i,(toff,dos,res_count,t) in enumerate(
-                zip(target_offsets,self.cdos,self.res_counts,[a_tile,b_tile,c_tile])):
+        
+        #for i,(toff,dos,res_count,t) in enumerate(
+        #        zip(target_offsets,self.cdos,self.res_counts,[a_tile,b_tile,c_tile])):
+        for i in self.resolve_order:
+            toff = target_offsets[i]
+            dos = self.cdos[i]
+            res_count = self.res_counts[i]
+            t = tiles[i]
             res_idx = -1
 
             #result.append(lsc_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
@@ -444,7 +452,7 @@ class load_store_cpu:
                 res_idx = self.res_indices[i]
                 self.res_indices[i] = (res_idx+self.res_steps[i]) % self.res_counts[i]
 
-            res_indices.append(res_idx)
+            res_indices[i] = res_idx
             #result.append(lsc_debugmsg(f"Need {toff} in {reg_chars[i]}{res_idx}"))
             result.extend(self.resolve_data(t=t,res_idx=res_idx, toff=toff, rtype_idx=i))
 
@@ -478,7 +486,7 @@ class load_store_cpu:
 
         pre_preload_states = copy.deepcopy(self.states)
 
-        initial_cdos = self.cdos.copy()
+        initial_cdos = copy.deepcopy(self.cdos)
         self.cdos = [{ i : -1 for i in range(res_count)} for res_count in self.res_counts]
         if zero_addrs:
             self.addr_reg_offsets = [
@@ -582,10 +590,17 @@ class load_store_cpu:
                     add_off = caoff_max-caoff+off+t.dima.size*t.dimb.size+start
                     results.append(lsc_addr_add(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
                     preload_addr_reg_offsets[i][addr_idx] = caoff+add_off
+
+        # This messes up zero_dims/ignore_dims stuff
+        # self.addr_reg_offsets = [d.copy() for d in preload_addr_reg_offsets]
         # update the internal states so the main block would be correct:
-        self.addr_reg_offsets = [d.copy() for d in preload_addr_reg_offsets]
+        self.addr_reg_offsets = [
+            { i : -2 if i < pre_count else starts[i] for i in range(addr_count)}\
+                    for pre_count,starts,addr_count in\
+                    zip(self.preload_counts,self.addr_starts,self.addr_counts)
+        ]
         # use the original dos and assign the preloaded data
-        self.cdos = initial_cdos
+        self.cdos = copy.deepcopy(initial_cdos)
         for i,dos in enumerate(preload_dos):
             for res_idx,orig in dos.items():
                 self.cdos[i][res_idx] = orig

@@ -1,7 +1,17 @@
 import unittest
 
 
-from algobuild.components import tile,dimension_properties,dimension_type,storage_type
+from algobuild.components import (
+        dimension_properties,
+        dimension_type,
+        simple_ukr_tile,
+        storage_type,
+        tile,
+        scalar_dp,
+        scalar_tile,
+        vla_vector,
+        x4_vector
+        )
 from algobuild.generators import mm,order2D
 from algobuild.generators.mm import string_mapper
 from algobuild.models import load_store_cpu
@@ -58,62 +68,6 @@ from algobuild.schedulers import simple_dependency_scheduler
 # - The VLA-problematic ones are always when between a c dim and the corresponding A/B dim,
 #   one is xv and the other is x
 
-scalar = dimension_properties(dt=dimension_type.fixed, size=1,
-                              sdt=dimension_type.fixed, sd_size=1)
-
-vla_vector = dimension_properties(dt=dimension_type.vla, size=1,
-                                  sdt=dimension_type.fixed, sd_size=4)
-
-x4_vector = dimension_properties(dt=dimension_type.fixed, size=4,
-                                 sdt=dimension_type.fixed, sd_size=4)
-
-vla_tile = dimension_properties(dt=dimension_type.fixed, size=4,
-                                sdt=dimension_type.fixed, sd_size=4)
-class simple_ukr_tile(tile):
-    def __init__(self, 
-                 a_size : int,
-                 b_size : int,
-                 subdims : tuple[dimension_properties,dimension_properties]):
-
-        dima = dimension_properties(dt=dimension_type.fixed,
-                                    size=a_size,
-                                    sdt=dimension_type.fixed,
-                                    sd_size=a_size)
-        dimb = dimension_properties(dt=dimension_type.fixed,
-                                    size=b_size,
-                                    sdt=dimension_type.fixed,
-                                    sd_size=b_size)
-
-        super().__init__(
-                dima=dima,dimb=dimb,
-                subtiles = [tile(dima=subdims[0],dimb=subdims[1])],
-                subtile_count_a = 1,
-                subtile_count_b = 1,
-                stype = storage_type.register)
-
-class composed_ukr_tile(tile):
-    def __init__(self, 
-                 a_sizes : list[int],
-                 b_sizes : list[int],
-                 subdims : tuple[dimension_properties,dimension_properties]):
-
-        tiles = [simple_ukr_tile(a_size=a, b_size=b, subdims=subdims) for a in a_sizes for b in b_sizes]
-
-        dima = dimension_properties(dt=dimension_type.fixed,
-                                    size=len(a_sizes),
-                                    sdt=dimension_type.fixed,
-                                    sd_size=len(a_sizes))
-        dimb = dimension_properties(dt=dimension_type.fixed,
-                                    size=len(b_sizes),
-                                    sdt=dimension_type.fixed,
-                                    sd_size=len(b_sizes))
-        super().__init__(
-                dima=dima,dimb=dimb,
-                subtiles =tiles,
-                subtile_count_a = len(a_sizes),
-                subtile_count_b = len(b_sizes),
-                stype = storage_type.memory)
-
 class test_mm(unittest.TestCase):
     # TODO: multitile
     #def test_multitile(self):
@@ -123,9 +77,9 @@ class test_mm(unittest.TestCase):
 
     #    
     #    
-    #    a_tile = composed_ukr_tile(a_sizes=m, b_sizes=k, subdims=(scalar,scalar))
-    #    b_tile = composed_ukr_tile(a_sizes=k, b_sizes=n, subdims=(scalar,scalar))
-    #    c_tile = composed_ukr_tile(a_sizes=m, b_sizes=n, subdims=(scalar,scalar))
+    #    a_tile = composed_ukr_tile(a_sizes=m, b_sizes=k, subdims=(scalar_dp,scalar_dp))
+    #    b_tile = composed_ukr_tile(a_sizes=k, b_sizes=n, subdims=(scalar_dp,scalar_dp))
+    #    c_tile = composed_ukr_tile(a_sizes=m, b_sizes=n, subdims=(scalar_dp,scalar_dp))
 
     #    mmgen = mm(a_tile, b_tile, c_tile)
     #    inspector = string_mapper(op="fma")
@@ -143,9 +97,9 @@ class test_mm(unittest.TestCase):
         use_fma_vf = True
 
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar,scalar))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,scalar))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar_dp,scalar_dp))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="fma")
@@ -201,9 +155,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(vla_vector,scalar))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,scalar))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(vla_vector,scalar_dp))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="fma")
@@ -310,7 +264,6 @@ class test_mm(unittest.TestCase):
             "ba0 <- ba0 + 8",
         ]
         expected_storeblock = [
-            "ca0 <- ca0 + -7*VLEN",
             "ca0 + 0*VLEN <- STORE c0",
             "ca0 <- ca0 + 1*VLEN",
             "ca0 + 0*VLEN <- STORE c1",
@@ -396,9 +349,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(x4_vector,scalar))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,scalar))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(x4_vector,scalar_dp))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="fma")
@@ -431,9 +384,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(x4_vector,scalar))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n//x4_vector.sd_size, subdims=(scalar,x4_vector))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(x4_vector,scalar_dp))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n//x4_vector.sd_size, subdims=(scalar_dp,x4_vector))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(x4_vector,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile, lo=order2D('mkMnNK'))
         inspector = string_mapper(op="fma_idxx4")
@@ -500,9 +453,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar,x4_vector))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar_dp,x4_vector))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="dot")
@@ -534,9 +487,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar,vla_vector))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(vla_vector,scalar))
-        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar_dp,vla_vector))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(vla_vector,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(scalar_dp,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="dota")
@@ -568,9 +521,9 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar,x4_vector))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar))
-        c_tile = simple_ukr_tile(a_size=m//x4_vector.sd_size, b_size=n, subdims=(x4_vector,scalar))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(scalar_dp,x4_vector))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(x4_vector,scalar_dp))
+        c_tile = simple_ukr_tile(a_size=m//x4_vector.sd_size, b_size=n, subdims=(x4_vector,scalar_dp))
 
         mmgen = mm(a_tile, b_tile, c_tile)
         inspector = string_mapper(op="dota")
@@ -628,8 +581,8 @@ class test_mm(unittest.TestCase):
         k = unroll_factor
         use_fma_vf = True
         
-        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(vla_vector,scalar))
-        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar,vla_vector))
+        a_tile = simple_ukr_tile(a_size=m, b_size=k, subdims=(vla_vector,scalar_dp))
+        b_tile = simple_ukr_tile(a_size=k, b_size=n, subdims=(scalar_dp,vla_vector))
         c_tile = simple_ukr_tile(a_size=m, b_size=n, subdims=(vla_vector,vla_vector))
 
         mmgen = mm(a_tile, b_tile, c_tile)
