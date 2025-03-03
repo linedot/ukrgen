@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 from nanogemm import nanogemm,gemm_params,prefetch_options,mem_use_type,kernel_layout,bvec_strategy_type,avec_strategy_type
-from asmgen.asmblocks.noarch import asm_data_type
+from asmgen.registers import asm_data_type,adt_size
 from asmgen.asmblocks.sve import sve
 from asmgen.asmblocks.neon import neon
 from asmgen.asmblocks.avx_fma import fma128,fma256,avx512
@@ -177,8 +177,8 @@ def main():
         vectors_in_mr = mr
         elements_in_vector = "unknown"
     else:
-        vectors_in_mr = mr//(gen.simd_size//dt.value)
-        elements_in_vector = gen.simd_size//dt.value
+        vectors_in_mr = mr//(gen.simd_size//adt_size(dt))
+        elements_in_vector = gen.simd_size//adt_size(dt)
 
 
     avec_count = vectors_in_mr
@@ -240,7 +240,7 @@ def main():
                         vectors_in_mr=vectors_in_mr, nr=nr,
                         unroll_factor=unroll_factor,
                         max_vregs=max_vregs,
-                        mem_use=mem_use, datatype=dt, params=gemm_params())
+                        mem_use=mem_use, dt=dt, params=gemm_params())
 
     substitutions = {
             "MEM": mem_use.name,
