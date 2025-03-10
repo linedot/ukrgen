@@ -22,16 +22,22 @@ class tile_offset_mapper:
 #            subidx : int) -> int:
         raise NotImplementedError("tried calling abstract tile offset mapper")
 
+class lsc_reg_type(Enum):
+    address = auto()
+    data = auto()
+
 class lsc_operation:
     def __init__(self,
                  tiles : list[tile],
                  indices: list[list[int]],
                  reads: list[int],
-                 writes: list[int]):
+                 writes: list[int],
+                 reg_types : list[lsc_reg_type]):
         self.tiles = tiles
         self.indices = indices
         self.reads = reads
         self.writes = writes
+        self.reg_types = reg_types
 
 class lsc_load(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
@@ -44,7 +50,11 @@ class lsc_load(lsc_operation):
         # write resource
         writes = [1]
 
-        super(lsc_load, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+        reg_types = [lsc_reg_type.address, lsc_reg_type.data]
+
+        super(lsc_load, self).__init__(tiles=tiles, indices=indices,
+                                       reads=reads, writes=writes,
+                                       reg_types=reg_types)
 
     @property
     def rtype_idx(self):
@@ -82,7 +92,11 @@ class lsc_store(lsc_operation):
         # we write memory, not the address register
         writes = []
 
-        super(lsc_store, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+        reg_types = [lsc_reg_type.address, lsc_reg_type.data]
+
+        super(lsc_store, self).__init__(tiles=tiles, indices=indices,
+                                        reads=reads, writes=writes,
+                                        reg_types=reg_types)
 
     @property
     def rtype_idx(self):
@@ -118,7 +132,11 @@ class lsc_zero(lsc_operation):
         # write resource
         writes = [0]
 
-        super(lsc_zero, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+        reg_types = [lsc_reg_type.data]
+
+        super(lsc_zero, self).__init__(tiles=tiles, indices=indices,
+                                       reads=reads, writes=writes,
+                                       reg_types=reg_types)
     @property
     def rtype_idx(self):
         return self.indices[0][0]
@@ -146,8 +164,13 @@ class lsc_addr_add(lsc_operation):
         reads = [0]
         # write addr
         writes = [0]
+        
+        reg_types = [lsc_reg_type.address]
 
-        super(lsc_addr_add, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+
+        super(lsc_addr_add, self).__init__(tiles=tiles, indices=indices,
+                                           reads=reads, writes=writes,
+                                           reg_types=reg_types)
 
     @property
     def rtype_idx(self):
@@ -172,7 +195,7 @@ class lsc_addr_add(lsc_operation):
 
 class lsc_debugmsg(lsc_operation):
     def __init__(self, msg : str):
-        super(lsc_debugmsg, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+        super(lsc_debugmsg, self).__init__(tiles=[], indices=[], reads=[], writes=[], reg_types=[])
         self.msg = msg
     def __str__(self):
         return self.msg
@@ -186,7 +209,10 @@ class lsc_transformation(lsc_operation):
                  writes : list[int] = [2]):
         self.op = op
         indices = [[i,r,s] for i,(r,s) in enumerate(zip(res_indices,sub_indices))]
-        super(lsc_transformation, self).__init__(tiles=tiles, indices=indices, reads=reads, writes=writes)
+        reg_types = [lsc_reg_type.data for i in range(len(res_indices))]
+        super(lsc_transformation, self).__init__(tiles=tiles, indices=indices,
+                                                 reads=reads, writes=writes,
+                                                 reg_types=reg_types)
 
     @property
     def res_indices(self):

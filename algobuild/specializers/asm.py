@@ -43,12 +43,17 @@ class lsc_specializer:
         self.model = model
         self.gen = gen
         self.rt = rt
-        self.vlenadds = set()
-        self.byteadds = set()
+
+        self.reset_analysis()
 
         self.op_support_map = {}
-        
         self.get_op_capabilities()
+
+    def reset_analysis(self):
+        self.vlenadds = set()
+        self.byteadds = set()
+        self.ops_used = []
+
 
     def op_tiles(self, op : str, triple : adt_triple, arith_op : opd3, modifiers : set[mod]):
         # c/a
@@ -63,6 +68,14 @@ class lsc_specializer:
         # TODO: indexable elements (like 128bit in SVE)
         vec_dp = dimension_properties(dt=vec_dt, size=vec_size,
                                       sdt=vec_dt, sd_size=vec_size)
+    
+        wide_vec_dp = vec_dp
+        # TODO: not sure how to better handle it - the mm generator
+        #       right now needs the sizes to be the same, but we will
+        #       need waysx registers for C
+        #if arith_op.widening_method in [wm.vec_group, wm.vec_multi]:
+        #    wide_vec_dp = dimension_properties(dt=vec_dt, size=vec_size*ways,
+        #                                       sdt=vec_dt, sd_size=vec_size*ways)
 
         # Add the tiles for this triple
         if arith_op.widening_method == wm.dot_neighbours and\
@@ -70,11 +83,11 @@ class lsc_specializer:
           ways > 1:
             n_dp = dimension_properties(dt=dimension_type.fixed, size=ways,
                                         sdt=dimension_type.fixed, sd_size=ways)
-            a_tile,b_tile,c_tile = tile(vec_dp, n_dp), tile(n_dp, vec_dp), tile(vec_dp, vec_dp)
+            a_tile,b_tile,c_tile = tile(vec_dp, n_dp), tile(n_dp, vec_dp), tile(wide_vec_dp, wide_vec_dp)
         elif op == 'fopa':
-            a_tile,b_tile,c_tile = tile(vec_dp, scalar_dp), tile(scalar_dp, vec_dp), tile(vec_dp, vec_dp)
+            a_tile,b_tile,c_tile = tile(vec_dp, scalar_dp), tile(scalar_dp, vec_dp), tile(wide_vec_dp, wide_vec_dp)
         elif op == 'fma' or op == 'fmul':
-            a_tile,b_tile,c_tile = tile(vec_dp, scalar_dp), tile(vec_dp, scalar_dp), tile(vec_dp, scalar_dp)
+            a_tile,b_tile,c_tile = tile(vec_dp, scalar_dp), tile(vec_dp, scalar_dp), tile(wide_vec_dp, scalar_dp)
         elif op == 'dota':
             a_tile,b_tile,c_tile = tile(scalar_dp, vec_dp), tile(vec_dp, scalar_dp), tile(scalar_dp, scalar_dp)
         else:
@@ -176,3 +189,46 @@ class lsc_specializer:
                     self.vlenadds.add(op.off)
                 else:
                     self.byteadds.add(op.off)
+            elif isinstance(op, lsc_transformation):
+                self.ops_used.append(op.op)
+
+    def pre_specialize(self, ops : list[lsc_operation], triple : adt_triple) -> list[lsc_operation]:
+        # Changes needed:
+        # - multiple instructions for widening lsc_transformation when wm = split_instructions
+        #   - also change c idx for this case
+        # - Don't change whem wm = vec_group. It isn't guaranteed that vector groups work
+        #   like in RVV everywhere where you need multiple of ways as reg index
+        ways = adt_size(triple.c)//adt_size(triple.a)
+        if ways == 1:
+            return ops
+        if ways > 1:
+            wms = [getattr(self.gen, op, None).widening_method for op in self.ops_used if getattr(self.gen, op, None) != None]
+            if not any([wmtd==wm.split_instructions for wmtd in wms]):
+                return ops
+
+        c_index = 2
+
+        result_ops = []
+        for op in ops:
+            has_c = False
+            for i,idx_list in enumerate(op.indices):
+                if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
+                    op.indices[i][1] *=ways
+                    has_c = True
+            if isinstance(op, lsc_addr_add):
+                if op.rtype_idx == c_index:
+                    op.off *= ways
+            if has_c:
+                for i in range(ways):
+                    part_op = copy.deepcopy(op)
+                    for j,idx_list in enumerate(part_op.indices):
+                        if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
+                            part_op.indices[j][1] += i
+                    if isinstance(op, lsc_transformation):
+                        part_op.op += f"{i}"
+                    if isinstance(op, lsc_load) or isinstance(op, lsc_store):
+                        part_op.off = part_op.off*2+i
+                    result_ops.append(part_op)
+            else:
+                result_ops.append(op)
+        return result_ops
