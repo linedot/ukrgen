@@ -309,7 +309,8 @@ def main():
             rar=sched_args.sched_rar_distance,
             raw=sched_args.sched_raw_distance,
             war=sched_args.sched_war_distance,
-            waw=sched_args.sched_waw_distance)
+            waw=sched_args.sched_waw_distance,
+            debug_on=True)
 
     rs_preload = scheduler(preload, loop=False)
     rs_mbpl = scheduler(mainblock+preload_mb)

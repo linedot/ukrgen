@@ -2,8 +2,10 @@ from enum import Enum,auto
 
 
 from ..models.load_store_cpu import (
+        lsc_operation,
         lsc_addr_add as aop,
         lsc_load as lop,
+        lsc_store as sop,
         lsc_zero as zop,
         lsc_transformation as oop,
         tile
@@ -42,12 +44,12 @@ class reg:
 
 
 class lsc_op_access_annotated:
-    def __init__(self, reads : list[reg], writes : list[reg], op : aop|lop|zop|oop):
+    def __init__(self, reads : list[reg], writes : list[reg], op : lsc_operation):
         self.reads = reads
         self.writes = writes
         self.op = op
 
-    def from_mm_op(op : aop|lop|zop|oop):
+    def from_mm_op(op : lsc_operation):
         #TODO: reads/writes from lsc_operation
         reads = []
         writes = []
@@ -57,6 +59,9 @@ class lsc_op_access_annotated:
         elif isinstance(op, lop):
             reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
             writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
+        elif isinstance(op, sop):
+            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
+            reads.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
         elif isinstance(op, zop):
             writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
         elif isinstance(op, oop):
@@ -107,15 +112,19 @@ class simple_dependency_scheduler:
         depends = False
         if checks[0] and len(set(next_op.reads) & set(cur_op.reads))>0:
             move_up = max(move_up,max(0,self.rar - distance))
+            self.debug(f"rar={self.rar-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
         if checks[1] and len(set(next_op.reads) & set(cur_op.writes))>0:
             move_up = max(move_up,max(0,self.raw - distance))
+            self.debug(f"raw={self.raw-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
         if checks[2] and len(set(next_op.writes) & set(cur_op.reads))>0:
             move_up = max(move_up,max(0,self.war - distance))
+            self.debug(f"war={self.war-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
         if checks[3] and len(set(next_op.writes) & set(cur_op.writes))>0:
             move_up = max(move_up,max(0,self.waw - distance))
+            self.debug(f"waw={self.waw-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
         return depends,move_up
 
@@ -172,6 +181,7 @@ class simple_dependency_scheduler:
                 if move_up == 0:
                     midx += 1
                     continue
+                insts_that_move = sum([1 if mup > 0 else 0 for sidx,mup in move_indices])
                 resched_idx,resched_op = scheduled[idx]
                 midx_add = 1
                 for move_idx in range(move_up):
@@ -179,6 +189,8 @@ class simple_dependency_scheduler:
                         # TODO: allow suboptimal solution?
                         raise RuntimeError("Instruction at top of schedule and min distances not satisfied")
                     prev_idx,prev_op = scheduled[idx-1]
+
+
                     # if prev_op is also in move_indices:
                     #  - it has a dependency with same op as this op
                     #  - it was moved to just the minimum distance
@@ -197,21 +209,60 @@ class simple_dependency_scheduler:
                             midx_add = midx_found-midx
                             break
 
+                    max_preceding_to_test = min(cur_idx,
+                                                max(self.rar,self.raw,self.war,self.waw),
+                                                len(scheduled))
+
+                    # check if the previous instruction would depend on a scheduled instruction
+                    # if swapped
+                    prev_breakout = False
+                    add_distance=0
+                    for prev_cur_idx,prev_cur_op in \
+                            enumerate(opslf[cur_idx-max_preceding_to_test:cur_idx+1]):
+                        if prev_cur_op == prev_op:
+                            break
+                        # test prev_op for dependency on cur_op with distance-1
+                        # if that results in a moveup of >0, prepend it to move_indices
+                        # decrement midx and break out
+                        depends,move_up_prev = self.get_move_up(
+                                next_op=prev_cur_op,
+                                cur_op=prev_op,
+                                distance=len(move_indices)-insts_that_move-add_distance+prev_cur_idx)
+                        if move_up_prev > 0:
+                            self.debug(f"{prev_cur_op} depends on {prev_op}")
+                            move_indices.insert(0,(idx-1,move_up_prev))
+                            midx_add = 0
+                            prev_breakout = True
+                            break
+                    if prev_breakout:
+                        break
+                        
+                        
+
                     depends = False
                     move_up_prev_max = 0
                     # test against all to be rescheduled from this one
                     for midx_check,(test_m_idx,move_up_left) in enumerate(move_indices[midx:]):
-                        depends,move_up_prev = \
+                        depends_this,move_up_prev = \
                                 self.get_move_up(
                                         next_op=scheduled[test_m_idx][1],
                                         cur_op=prev_op,
                                         distance=midx_check,
                                         # read-after-read is irrelevant
                                         checks=[False,True,True,True])
+                        if depends_this:
+                            self.debug(f"{scheduled[test_m_idx][1]} depends on {prev_op} (S-check)")
+                        else:
+                            self.debug(f"{scheduled[test_m_idx][1]} does not depend on {prev_op} (S-check)")
+                        depends = any([depends,depends_this])
                         move_up_prev_max = max(move_up_prev_max,move_up_prev)
+
+                        
+                    
                     # We can't swap the instructions, so we need to move
                     # the previous instruction up as well
                     if depends:
+                        self.debug(f"inserting {prev_op} into move list at position {midx}")
                         # TODO: better data structure than list
                         move_indices.insert(midx,(idx-1, max(move_up-move_idx,move_up_prev_max) ))
                         # Don't increment the index (it points to the prev op now)
@@ -245,7 +296,7 @@ class simple_dependency_scheduler:
 
         
 
-    def __call__(self, ops : list[aop|lop|zop|oop], loop : bool = True):
+    def __call__(self, ops : list[lsc_operation], loop : bool = True):
         reordered_ops = []
         queue = []
         ops_aa = [lsc_op_access_annotated.from_mm_op(op) for op in ops]
