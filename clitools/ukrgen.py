@@ -234,7 +234,7 @@ def main():
 
     # Ensure the specializer doesn't generate impossible voffsets for loads/stores of
     # C regs
-    if getattr(gen, args.op).widening_method == wm.split_instructions:
+    if getattr(gen, args.op).widening_method == wm.SPLIT_INSTRUCTIONS:
         for i in range(len(addr_offset_ranges[2])):
             addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],addr_offset_ranges[2][i][1]//ways)
 

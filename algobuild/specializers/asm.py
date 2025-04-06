@@ -73,12 +73,12 @@ class lsc_specializer:
         # TODO: not sure how to better handle it - the mm generator
         #       right now needs the sizes to be the same, but we will
         #       need waysx registers for C
-        #if arith_op.widening_method in [wm.vec_group, wm.vec_multi]:
+        #if arith_op.widening_method in [wm.VEC_GROUP, wm.VEC_MULTI]:
         #    wide_vec_dp = dimension_properties(dt=vec_dt, size=vec_size*ways,
         #                                       sdt=vec_dt, sd_size=vec_size*ways)
 
         # Add the tiles for this triple
-        if arith_op.widening_method == wm.dot_neighbours and\
+        if arith_op.widening_method == wm.DOT_NEIGHBOURS and\
           op == 'fopa' and\
           ways > 1:
             n_dp = dimension_properties(dt=dimension_type.fixed, size=ways,
@@ -93,7 +93,7 @@ class lsc_specializer:
         else:
             raise NotImplementedError(f"Adding tiles for {op} not implemented yet")
 
-        if mod.vf in modifiers:
+        if mod.VF in modifiers:
             b_tile = tile(scalar_dp, scalar_dp)
 
         return a_tile,b_tile,c_tile
@@ -105,13 +105,13 @@ class lsc_specializer:
         additional_args = {}
         additional_args['modifiers'] = modifiers
         if adt_size(dt_narrow) < adt_size(dt_wide):
-            if arith_op.widening_method == wm.split_instructions:
+            if arith_op.widening_method == wm.SPLIT_INSTRUCTIONS:
                 additional_args['part'] = 0
-                additional_args['modifiers'].add(mod.part)
-            elif arith_op.widening_method == wm.vec_multi:
+                additional_args['modifiers'].add(mod.PART)
+            elif arith_op.widening_method == wm.VEC_MULTI:
                 additional_args['cdreg2'] = cdreg2
             # if we're dotting neighbours, we're actually doing mmas
-            elif arith_op.widening_method == wm.dot_neighbours and\
+            elif arith_op.widening_method == wm.DOT_NEIGHBOURS and\
                  op == 'fopa':
                 op_to_append = 'mma'
 
@@ -130,10 +130,6 @@ class lsc_specializer:
     def get_op_capabilities(self):
         av = self.gen.vreg(0)
         bv = self.gen.vreg(1)
-        if self.gen.are_fregs_in_vregs:
-            bf = self.gen.freg(3)
-        else:
-            bf = self.gen.freg(0)
         cv = self.gen.vreg(2)
         cv2 = self.gen.vreg(3)
 
@@ -163,12 +159,21 @@ class lsc_specializer:
             fp_types = [dt for dt in adt if adt_is_float(dt)]
             int_types = [dt for dt in adt if adt_is_int(dt)]
 
-            modifier_sets = [{mod.vf},set()]
+            modifier_sets = [{mod.VF},set()]
             
             for type_list in [fp_types, int_types]:
                 for dt_wide in type_list:
                     for dt_narrow in type_list:
                         for modifiers in modifier_sets:
+                            if mod.VF in modifiers:
+                                if self.gen.are_fregs_in_vregs:
+                                    bdreg = self.gen.freg(3, dt_narrow)
+                                else:
+                                    bdreg = self.gen.freg(0, dt_narrow)
+                            elif op != 'mma':
+                                bdreg = bv
+                            else:
+                                bdreg = self.gen.treg(1)
                             if adt_size(dt_narrow) > adt_size(dt_wide):
                                 continue
                             try:
@@ -203,7 +208,7 @@ class lsc_specializer:
             return ops
         if ways > 1:
             wms = [getattr(self.gen, op, None).widening_method for op in self.ops_used if getattr(self.gen, op, None) != None]
-            if not any([wmtd==wm.split_instructions for wmtd in wms]):
+            if not any([wmtd==wm.SPLIT_INSTRUCTIONS for wmtd in wms]):
                 return ops
 
         c_index = 2
