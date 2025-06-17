@@ -10,12 +10,17 @@ from asmgen.asmblocks.sve import sve
 from asmgen.asmblocks.operations import widening_method as wm
 
 
-from asmgen.registers import asm_data_type as adt,adt_triple,adt_size
-from algobuild.specializers.asm import lsc_specializer
-from algobuild.components import simple_ukr_tile,dimension_type,dimension_properties
-from algobuild.generators.mm import mm,order2D
-from algobuild.models.load_store_cpu import load_store_cpu
-from algobuild.schedulers import simple_dependency_scheduler
+from asmgen.registers import (
+        asm_data_type as adt,
+        adt_triple,
+        adt_size,
+        reg_tracker
+        )
+from ukrgen.specializers.asm import lsc_specializer
+from ukrgen.components import simple_ukr_tile,dimension_type,dimension_properties
+from ukrgen.generators.mm import mm,order2D
+from ukrgen.models.load_store_cpu import load_store_cpu
+from ukrgen.schedulers import simple_dependency_scheduler
 
 
 asmgen_map = {
@@ -69,27 +74,27 @@ def parse_specializer_arguments(specializer : lsc_specializer, op : str, args : 
     ab_type = adt[spec_args.ab_data_type]
     c_type = adt[spec_args.c_data_type]
 
-    op_support_map = [sup for sup in specializer.op_support_map[op] if \
+    op_support_list = [sup for sup in specializer.op_support_map[op] if \
             (ab_type == sup.triple.a and \
              ab_type == sup.triple.b and \
              c_type == sup.triple.c)
             ]
 
     parser.add_argument("--variant", type=int, required=True,
-                        choices=list(range(len(op_support_map))),
+                        choices=list(range(len(op_support_list))),
                         help="Variant to use")
 
     spec_args, rest = parser.parse_known_args(args=args)
 
 
-    return spec_args, rest, op_support_map[spec_args.variant]
+    return spec_args, rest, op_support_list[spec_args.variant]
 
 def parse_fma_args(args : list[str]):
 
     parser = argparse.ArgumentParser(description="Arguments for fma instruction")
 
     parser.add_argument("--fma-b-method", type=str, required=True,
-                        choices=['bcast1','idx','bcastidx'],
+                        choices=['vf','lane_select','lane_bcast'],
                         help="How to access elements in b vector for the fma")
 
     return parser.parse_known_args(args=args)
@@ -156,7 +161,12 @@ def main():
 
     gen = asmgen_map[args.isa]()
 
-    specializer = lsc_specializer(model=None, gen=gen, rt=None)
+    rt = reg_tracker([('greg',gen.max_gregs),
+                      ('freg',gen.max_fregs),
+                      ('vreg',gen.max_vregs),
+                      ('treg',gen.max_tregs(adt.FP64))])
+
+    specializer = lsc_specializer(model=None, gen=gen, rt=rt)
 
     #print("Generator supports following operations:")
     #for k,v in specializer.op_support_map.items():
@@ -170,6 +180,8 @@ def main():
 
     spec_args,rest,sup = parse_specializer_arguments(specializer=specializer, op=args.op, args=rest)
 
+    print("Chosen variant:")
+    print(f"{sup}")
 
     triple = adt_triple(a_dt=adt[spec_args.ab_data_type],
                         b_dt=adt[spec_args.ab_data_type],
@@ -187,11 +199,11 @@ def main():
     nb=n
     if args.op == 'fma' and sup.b_tile.dima == sup.a_tile.dima:
         fma_args, rest = parse_fma_args(args=rest)
-        if 'bcast1' == fma_args.fma_b_method:
+        if 'vf' == fma_args.fma_b_method:
             sup.b_tile.dima = dimension_properties(
                     dt=dimension_type.fixed, size=1,
                     sdt=dimension_type.fixed, sd_size=1)
-        elif fma_args.fma_b_method in ['idx','bcastidx']:
+        elif fma_args.fma_b_method in ['lane_select','lane_bcast']:
             b_into_size = gen.indexable_elements(sup.triple.b)
             nb //= b_into_size
             sup.b_tile.dima = dimension_properties(
@@ -224,11 +236,17 @@ def main():
         [(0,gen.max_load_voff) for i in range(lsc_args.b_addr_regs)], 
         [(0,gen.max_load_voff) for i in range(lsc_args.c_addr_regs)], 
     ]
-    if sup.a_tile.dima.dt == dimension_type.fixed and sup.a_tile.dima.size == 1:
+
+    is_tile_scalar = lambda t : t.dima.dt == dimension_type.fixed and \
+                                t.dima.size == 1 and \
+                                t.dimb.dt == dimension_type.fixed and \
+                                t.dimb.size == 1
+
+    if is_tile_scalar(sup.a_tile):
         addr_offset_ranges[0] = [(0,gen.max_fload_immoff(dt=sup.triple.a)) for i in range(lsc_args.a_addr_regs)]
-    if sup.b_tile.dima.dt == dimension_type.fixed and sup.b_tile.dima.size == 1:
+    if is_tile_scalar(sup.b_tile):
         addr_offset_ranges[1] = [(0,gen.max_fload_immoff(dt=sup.triple.b)) for i in range(lsc_args.b_addr_regs)]
-    if sup.c_tile.dima.dt == dimension_type.fixed and sup.c_tile.dima.size == 1:
+    if is_tile_scalar(sup.c_tile):
         addr_offset_ranges[2] = [(0,gen.max_fload_immoff(dt=sup.triple.c)) for i in range(lsc_args.c_addr_regs)]
 
 
@@ -258,7 +276,8 @@ def main():
                            preload_counts=[lsc_args.a_preload,
                                            lsc_args.b_preload,
                                            lsc_args.c_data_regs],
-                           offset_mappers=[ac_mapper,b_mapper,ac_mapper])
+                           offset_mappers=[ac_mapper,b_mapper,ac_mapper],
+                           op=args.op)
 
     mm_ops_next = genmm.generate(add_dims=[0,0,0,0,0,k])
     #print("\n".join(map(str,inspector(mm_ops_next))))
@@ -267,8 +286,8 @@ def main():
     mainblock = model(mm_ops)
     storeblock = model.store_modified()
     preload_mb = model.preload(mm_ops_next,
-                                   zero_addrs=False,
-                                   ignore_dims=[2])
+                               zero_addrs=False,
+                               ignore_dims=[2])
 
     print("################### PSEUDO-ASM ###################")
     print("\n".join(map(str,preload)))
@@ -327,6 +346,40 @@ def main():
     print("STOREBLOCK ------------------------------")
     print("  "+"\n  ".join(map(str,rs_store)))
     print("ENDSTOREBLOCK ---------------------------")
+
+    initblock = specializer.code_init(triple=triple)
+
+    asm_rs_preload = specializer.specialize(
+            ops=[op.op for op in rs_preload],
+            triple=triple)
+    asm_rs_mbpl = specializer.specialize(
+            ops=[op.op for op in rs_mbpl],
+            triple=triple)
+    asm_rs_store = specializer.specialize(
+            ops=rs_store,
+            triple=triple)
+
+
+
+    finiblock = specializer.code_fini(triple=triple)
+
+    print("################### ASM ###################")
+    print("INIT ------------------------------------")
+    print(initblock)
+    print("PRELOAD ---------------------------------")
+    print("".join(asm_rs_preload))
+    print("MAIN LOOP -------------------------------")
+    print("  "+"  ".join(asm_rs_mbpl))
+    print("END MAIN LOOP ---------------------------")
+    print("STOREBLOCK ------------------------------")
+    print("  "+"  ".join(asm_rs_store))
+    print("ENDSTOREBLOCK ---------------------------")
+    print("FINALIZE --------------------------------")
+    print(finiblock)
+
+
+    print(rt.aliased_regs['greg'])
+
 
 if __name__ == "__main__":
      main()

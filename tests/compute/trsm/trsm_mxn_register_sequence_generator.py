@@ -1,6 +1,6 @@
 import unittest
 
-from algobuild.compute.trsm import trsm_l_rsg_topdown,trsm_u_rsg_topdown
+from ukrgen.compute.trsm import trsm_l_rsg_topdown,trsm_u_rsg_topdown
 
 
 class test_trsm_rsg(unittest.TestCase):

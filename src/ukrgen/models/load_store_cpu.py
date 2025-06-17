@@ -1,11 +1,20 @@
 import copy
 from abc import abstractmethod
 from enum import Enum,auto
-from algobuild.generators import mm_op,tile,dimension_type
 
-from algobuild.components.operation import operation
-from algobuild.components import scalar_tile
+from ..generators import mm_op,tile,dimension_type
+from ..components.operation import operation
+from ..components import scalar_tile
 
+from .load_store_operations import (
+    lsc_addr_add,
+    lsc_debugmsg,
+    lsc_load,
+    lsc_operation,
+    lsc_store,
+    lsc_transformation,
+    lsc_zero,
+)
 
 class lsc_state(Enum):
     clean = auto()
@@ -22,216 +31,6 @@ class tile_offset_mapper:
 #            subidx : int) -> int:
         raise NotImplementedError("tried calling abstract tile offset mapper")
 
-class lsc_reg_type(Enum):
-    address = auto()
-    data = auto()
-
-class lsc_operation:
-    def __init__(self,
-                 tiles : list[tile],
-                 indices: list[list[int]],
-                 reads: list[int],
-                 writes: list[int],
-                 reg_types : list[lsc_reg_type]):
-        self.tiles = tiles
-        self.indices = indices
-        self.reads = reads
-        self.writes = writes
-        self.reg_types = reg_types
-
-class lsc_load(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
-        self.off = off
-
-        tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
-        # read address
-        reads = [0]
-        # write resource
-        writes = [1]
-
-        reg_types = [lsc_reg_type.address, lsc_reg_type.data]
-
-        super(lsc_load, self).__init__(tiles=tiles, indices=indices,
-                                       reads=reads, writes=writes,
-                                       reg_types=reg_types)
-
-    @property
-    def rtype_idx(self):
-        return self.indices[0][0]
-
-    @property
-    def res_idx(self):
-        return self.indices[1][1]
-
-    @property
-    def addr_idx(self):
-        return self.indices[0][1]
-
-    @property
-    def t(self):
-        return self.tiles[1]
-
-    def __str__(self):
-        reg_chars = ['a','b','c']
-        i = self.rtype_idx
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr}"
-
-class lsc_store(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
-        self.off = off
-
-        tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
-        # read resource
-        reads = [0,1]
-        # we write memory, not the address register
-        writes = []
-
-        reg_types = [lsc_reg_type.address, lsc_reg_type.data]
-
-        super(lsc_store, self).__init__(tiles=tiles, indices=indices,
-                                        reads=reads, writes=writes,
-                                        reg_types=reg_types)
-
-    @property
-    def rtype_idx(self):
-        return self.indices[0][0]
-
-    @property
-    def res_idx(self):
-        return self.indices[1][1]
-
-    @property
-    def addr_idx(self):
-        return self.indices[0][1]
-
-    @property
-    def t(self):
-        return self.tiles[1]
-
-    def __str__(self):
-        reg_chars = ['a','b','c']
-        i = self.rtype_idx
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        return f"{reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr} <- STORE {reg_chars[i]}{self.res_idx}"
-
-class lsc_zero(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, t : tile):
-
-        tiles = [t]
-        indices = [[rtype_idx, res_idx]]
-        reads = []
-        # write resource
-        writes = [0]
-
-        reg_types = [lsc_reg_type.data]
-
-        super(lsc_zero, self).__init__(tiles=tiles, indices=indices,
-                                       reads=reads, writes=writes,
-                                       reg_types=reg_types)
-    @property
-    def rtype_idx(self):
-        return self.indices[0][0]
-
-    @property
-    def res_idx(self):
-        return self.indices[0][1]
-
-    @property
-    def t(self):
-        return self.tiles[0]
-
-    def __str__(self):
-        reg_chars = ['a','b','c']
-        return f"{reg_chars[self.rtype_idx]}{self.res_idx} <- 0"
-
-class lsc_addr_add(lsc_operation):
-    def __init__(self, rtype_idx : int, addr_idx : int, off : int, t : tile):
-        self.off = off
-
-        # t is used for calculating address, isn't the tile the address resides in
-        tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx]]
-        # read addr
-        reads = [0]
-        # write addr
-        writes = [0]
-        
-        reg_types = [lsc_reg_type.address]
-
-
-        super(lsc_addr_add, self).__init__(tiles=tiles, indices=indices,
-                                           reads=reads, writes=writes,
-                                           reg_types=reg_types)
-
-    @property
-    def rtype_idx(self):
-        return self.indices[0][0]
-
-    @property
-    def addr_idx(self):
-        return self.indices[0][1]
-
-    @property
-    def t(self):
-        return self.tiles[1]
-
-    def __str__(self):
-        reg_chars = ['a','b','c']
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        ar_str = f"{reg_chars[self.rtype_idx]}a{self.addr_idx}"
-        return f"{ar_str} <- {ar_str} + {self.off}{vlenstr}"
-
-class lsc_debugmsg(lsc_operation):
-    def __init__(self, msg : str):
-        super(lsc_debugmsg, self).__init__(tiles=[], indices=[], reads=[], writes=[], reg_types=[])
-        self.msg = msg
-    def __str__(self):
-        return self.msg
-    
-class lsc_transformation(lsc_operation):
-    def __init__(self, op : str,
-                 res_indices : list[int],
-                 sub_indices : list[int],
-                 tiles : list[tile],
-                 reads : list[int] = [0,1,2],
-                 writes : list[int] = [2]):
-        self.op = op
-        indices = [[i,r,s] for i,(r,s) in enumerate(zip(res_indices,sub_indices))]
-        reg_types = [lsc_reg_type.data for i in range(len(res_indices))]
-        super(lsc_transformation, self).__init__(tiles=tiles, indices=indices,
-                                                 reads=reads, writes=writes,
-                                                 reg_types=reg_types)
-
-    @property
-    def res_indices(self):
-        return [idxlist[1] for idxlist in self.indices]
-
-    @property
-    def sub_indices(self):
-        return [idxlist[2] for idxlist in self.indices]
-
-    def __str__(self):
-        reg_chars = ['a','b','c']
-        elsuf = lambda subidx : f".el[{subidx}]" if None != subidx else ""
-        #TODO: subindices
-        regstrs = [f"{reg_chars[i]}{r}{elsuf(subidx)}" for i,(r,subidx) in\
-                enumerate(zip(self.res_indices,self.sub_indices))]
-        out = f"{regstrs[-1]} <- {self.op}("
-        out += ", ".join(regstrs)
-        out += ")"
-        return out
 
 class load_store_cpu:
     def __init__(self,
@@ -537,7 +336,11 @@ class load_store_cpu:
         preload_dos = [{} for i in range(len(self.res_counts))]
         # NOTE: gotta copy the dicts explicitly, otherwise they'll be references
         preload_addr_reg_offsets = [d.copy() for d in self.addr_reg_offsets]
-        preload_addr_reg_last_used_offsets = [[None]*count for count in self.addr_counts]
+
+        # initialize with currently saved values
+        preload_addr_reg_last_used_offsets = \
+            [[loff-1]*count for loff,count in zip(self.load_offsets,self.addr_counts)]
+
         preload_addr_reg_last_used_tile = [ [None]*count for count in self.addr_counts]
         i = 0
         reg_chars = ['a','b','c']
@@ -558,17 +361,13 @@ class load_store_cpu:
                 if self.preload_counts[op.rtype_idx] <= preloads_done[op.rtype_idx]:
                     continue
                 if isinstance(op, lsc_addr_add):
-                    if op.rtype_idx not in zero_dims:
-                        subresults.append(op)
                     caoff = self.addr_reg_offsets[op.rtype_idx][op.addr_idx]
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff + op.off
                     preload_addr_reg_last_used_tile[op.rtype_idx][op.addr_idx] = op.t
-                if isinstance(op, lsc_load):
-                    if op.rtype_idx in zero_dims:
-                        subresults.append(lsc_zero(
-                            rtype_idx=op.rtype_idx, res_idx=op.res_idx, t=op.t))
-                    else:
+
+                    if op.rtype_idx not in zero_dims:
                         subresults.append(op)
+                if isinstance(op, lsc_load):
                     caoff = self.addr_reg_offsets[op.rtype_idx][op.addr_idx]
                     # Some updates to offsets are implicit, therefore update
                     preload_addr_reg_offsets[op.rtype_idx][op.addr_idx] = caoff
@@ -578,42 +377,75 @@ class load_store_cpu:
                     tsize = op.t.dima.size*op.t.dimb.size
                     preload_addr_reg_last_used_offsets[op.rtype_idx][op.addr_idx] = op.off
                     preload_addr_reg_last_used_tile[op.rtype_idx][op.addr_idx] = op.t
+
                     preloads_done[op.rtype_idx] += 1
-
-                # reached required number of preloads, copy state
-                #if self.preload_counts[op.rtype_idx] <= preloads_done[op.rtype_idx]:
-                #    preload_addr_reg_offsets[op.rtype_idx] = \
-                #        self.addr_reg_offsets[op.rtype_idx].copy()
-            # Debug preloads:
-            #print(", ".join(f"{d}/{p}" for d,p in zip(preloads_done,self.preload_counts)))
-
+                    if op.rtype_idx in zero_dims:
+                        subresults.append(lsc_zero(
+                            rtype_idx=op.rtype_idx, res_idx=op.res_idx, t=op.t))
+                    else:
+                        subresults.append(op)
 
             results.extend(subresults)
             i+= 1
+
         if update_addrs:
-            for i,(addr_count,off) in enumerate(zip(self.addr_counts,self.load_offsets)):
+            for i,addr_count in enumerate(self.addr_counts):
                 # No address updates if data was just zeroed out
                 if i in zero_dims:
                     continue
                 # assumption: caoff_max+off+start are the correct offsets for the preloads
+
+                # Find the register holding the highest address, use that as new zero
                 max_idx = 0
                 caoff_max = preload_addr_reg_offsets[i][max_idx]
                 for addr_idx,caoff in preload_addr_reg_offsets[i].items():
                     if caoff > caoff_max:
                         caoff_max = caoff
                         max_idx = addr_idx
+
+                # the imm offset this address register has been used with
                 off = preload_addr_reg_last_used_offsets[i][max_idx]
-                # TODO: figure out how this can happen
+
+                # no loads happened, therefore no offset
+                # 0 would mean a load happened with offset 0 further down,
+                # so set to -1 to make (off+1)==0
                 if None == off:
-                    off = 0
+                    off = -1
                 t = preload_addr_reg_last_used_tile[i][max_idx]
-                # TODO: figure out how this can happen
+
+                # no loads happaned, therefor no tile used for a load
+                # Tile will have been set for a tranform, use it
                 if None == t:
                     t = self.last_tile_used[i]
                 for addr_idx,start in zip(range(addr_count),self.addr_starts[i]):
                     caoff = preload_addr_reg_offsets[i][addr_idx]
 
-                    add_off = caoff_max-caoff+off+t.dima.size*t.dimb.size+start
+
+                    # example:
+                    # aa0 holds ptr + caoff 2, was used with imm off 3
+                    # aa1 holds ptr + caoff 4, was used with imm off 3
+                    # caoff_max = 4
+                    # aa0.caoff = 2, aa1.caoff = 4
+                    # aa0.off=aa1.off=3
+                    # all tile sizes are 1
+                    # aa0.start=0, aa1.start=2
+
+                    add_off = caoff_max-caoff+(off+1)*t.dima.size*t.dimb.size+start
+
+                    #aa0.add_off = 4-2+3*1+0 = 5
+                    #aa1.add_off = 4-4+3*1+2 = 5
+
+                    # After:
+                    # aa0.caoff = 2+5 = 7
+                    # aa1.caoff = 4+5 = 9
+
+                    # print(f"rtype_idx: {i}")
+                    # print(f"add_off: {add_off}, caoff_max: {caoff_max}, off: {off}")
+                    # print(f"caoff: {caoff}")
+                    # print(f"tsz: {t.dima.size,t.dimb.size}, start: {start}")
+
+                    if add_off == 0:
+                        continue
                     results.append(lsc_addr_add(rtype_idx=i, addr_idx=addr_idx, off=add_off, t=t))
                     preload_addr_reg_offsets[i][addr_idx] = caoff+add_off
 

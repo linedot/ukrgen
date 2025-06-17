@@ -1,7 +1,7 @@
 import unittest
 
 
-from algobuild.components import (
+from ukrgen.components import (
         dimension_properties,
         dimension_type,
         simple_ukr_tile,
@@ -12,9 +12,9 @@ from algobuild.components import (
         vla_vector,
         x4_vector
         )
-from algobuild.generators import mm,order2D
-from algobuild.models import load_store_cpu
-from algobuild.schedulers import simple_dependency_scheduler
+from ukrgen.generators import mm,order2D
+from ukrgen.models import load_store_cpu
+from ukrgen.schedulers import simple_dependency_scheduler
 
 # i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
 #     SVE FP64 vector group(x4) is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=4,sdt=fixed,sd_size=1)
@@ -794,7 +794,7 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_mainblock,  list(map(str,mainblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
-        scheduler = simple_dependency_scheduler(rar=0,raw=8,war=0,waw=6)
+        scheduler = simple_dependency_scheduler(rar=0,raw=4,war=0,waw=2)
 
         rs_preload = scheduler(preload, loop=False)
         rs_mbpl = scheduler(mainblock+preload_mb)

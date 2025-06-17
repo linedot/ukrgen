@@ -1,6 +1,6 @@
 import unittest
 
-from algobuild.components import (
+from ukrgen.components import (
         dimension_properties,
         dimension_type,
         simple_ukr_tile,
@@ -11,15 +11,17 @@ from algobuild.components import (
         vla_vector,
         x4_vector
         )
-from algobuild.generators import mm,order2D
-from algobuild.models import load_store_cpu
+from ukrgen.generators import mm,order2D
+from ukrgen.models import load_store_cpu
 
-from algobuild.specializers.asm import lsc_specializer
+from ukrgen.specializers.asm import lsc_specializer
 
 
 from asmgen.asmblocks.rvv import rvv
 from asmgen.asmblocks.sme import sme
 from asmgen.asmblocks.sve import sve
+
+from asmgen.registers import reg_tracker
 
 class test_lsc_specializer(unittest.TestCase):
     def test_addr_add_analysis(self):
@@ -61,7 +63,14 @@ class test_lsc_specializer(unittest.TestCase):
 
         gen = rvv()
 
-        specializer = lsc_specializer(model=machine, gen=gen, rt=None)
+        rt = reg_tracker(
+                reg_type_init_list=[
+                    ('greg', gen.max_gregs),
+                    ('freg', gen.max_fregs),
+                    ('vreg', gen.max_vregs)
+            ])
+
+        specializer = lsc_specializer(model=machine, gen=gen, rt=rt)
 
         #print("Generator supports following operations:")
         #for k,v in specializer.op_support_map.items():
@@ -72,4 +81,4 @@ class test_lsc_specializer(unittest.TestCase):
         specializer.analyse(ops=preload+mainblock+storeblock+preload_mb)
 
         self.assertEqual(specializer.byteadds, set([8,3]))
-        self.assertEqual(specializer.vlenadds, set([1,2]))
+        self.assertEqual(specializer.vlenadds, set([2]))

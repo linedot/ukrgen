@@ -254,6 +254,7 @@ class simple_dependency_scheduler:
                             self.debug(f"{scheduled[test_m_idx][1]} depends on {prev_op} (S-check)")
                         else:
                             self.debug(f"{scheduled[test_m_idx][1]} does not depend on {prev_op} (S-check)")
+                        # op is dependent if it depends on ANY ops from move_indices
                         depends = any([depends,depends_this])
                         move_up_prev_max = max(move_up_prev_max,move_up_prev)
 

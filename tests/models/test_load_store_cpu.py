@@ -1,7 +1,7 @@
 import unittest
 
 
-from algobuild.components import (
+from ukrgen.components import (
         dimension_properties,
         dimension_type,
         simple_ukr_tile,
@@ -12,9 +12,9 @@ from algobuild.components import (
         vla_vector,
         x4_vector
         )
-from algobuild.generators import mm,order2D
-from algobuild.generators.mm import string_mapper
-from algobuild.models import load_store_cpu
+from ukrgen.generators import mm,order2D
+from ukrgen.generators.mm import string_mapper
+from ukrgen.models import load_store_cpu
 
 class test_load_store_cpu(unittest.TestCase):
     def test_resolve_order(self):
