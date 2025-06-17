@@ -1,3 +1,9 @@
+# ------------------------------------------------------------------------------
+# SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@fz-juelich.de>
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
+# ------------------------------------------------------------------------------
+
 # See: addr_resolver.md
 
 from copy import deepcopy
@@ -22,7 +28,6 @@ class addr_resolver:
         self.current_offsets=deepcopy(self.starting_offsets) 
         self.offset_ranges=offset_ranges
         self.steps = steps
-        self.toff_max = 
 
     def toff_in_range(self, caoff : int, toff : int,
                       offset_range : tuple[int,int]):

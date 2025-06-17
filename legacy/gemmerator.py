@@ -1,3 +1,9 @@
+# ------------------------------------------------------------------------------
+# SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@fz-juelich.de>
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
+# ------------------------------------------------------------------------------
+
 #!/usr/bin/env python3
 from nanogemm import nanogemm,gemm_params,prefetch_options,mem_use_type,kernel_layout,bvec_strategy_type,avec_strategy_type
 from asmgen.registers import asm_data_type,adt_size
