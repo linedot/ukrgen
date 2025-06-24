@@ -4,7 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
-from typing import Self
+from typing import Self,Callable
 from enum import Enum,auto
 from ..components.tile import tile,scalar_tile
 from ..components.operation import dimension_type
@@ -34,9 +34,27 @@ class lsc_offset:
         self.vlen_strides = vlen_strides
         self.immoff = immoff
 
+    @classmethod
+    def adjust_offlists(cls, one, other):
+        l1 = len(one.reg_strides)
+        l2 = len(other.reg_strides)
+        if l1 > l2:
+            other.reg_strides.extend([0 for i in range(l2,l1)])
+        if l2 > l1:
+            one.reg_strides.extend([0 for i in range(l1,l2)])
+
+        l1 = len(one.vlen_strides)
+        l2 = len(other.vlen_strides)
+        if l1 > l2:
+            other.vlen_strides.extend([0 for i in range(l2,l1)])
+        if l2 > l1:
+            one.vlen_strides.extend([0 for i in range(l1,l2)])
+
     def __add__(self, other : Self):
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't add lsc_offset and {type(other)}")
+
+        lsc_offset.adjust_offlists(self,other)
 
         return lsc_offset(
             reg_strides=[s+o for s,o in zip(self.reg_strides,other.reg_strides)],
@@ -48,10 +66,59 @@ class lsc_offset:
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't subtract {type(other)} from lsc_offset")
 
+        lsc_offset.adjust_offlists(self,other)
+
         return lsc_offset(
             reg_strides=[s-o for s,o in zip(self.reg_strides,other.reg_strides)],
             vlen_strides=[s-o for s,o in zip(self.vlen_strides,other.vlen_strides)],
             immoff=self.immoff-other.immoff)
+
+    def allcompare(self, other : Self,
+                   comparison : Callable[[Self,Self],bool]):
+        
+        lsc_offset.adjust_offlists(self,other)
+
+        return all([comparison(s,o) for s,o in \
+                   zip(self.reg_strides,other.reg_strides)]) and \
+               all([comparison(s,o) for s,o in \
+                   zip(self.vlen_strides, other.vlen_strides)]) and \
+               (comparison(self.immoff,other.immoff))
+
+    def anycompare(self, other : Self,
+                   comparison : Callable[[Self,Self],bool]):
+        
+        lsc_offset.adjust_offlists(self,other)
+
+        return any([comparison(s,o) for s,o in \
+                   zip(self.reg_strides,other.reg_strides)]) or \
+               any([comparison(s,o) for s,o in \
+                   zip(self.vlen_strides, other.vlen_strides)]) or \
+               (comparison(self.immoff,other.immoff))
+
+
+    def __lt__(self, other : Self):
+        # NOTE: this is sketchy. It's used in addr_resolver,
+        #       perhaps this should be removed and a more elaborate check that
+        #       takes the required offset to target into account should be 
+        #       implemented?
+        return self.allcompare(other, lambda s,o : s <= o) and \
+               self.anycompare(other, lambda s,o : s < o)
+
+    def __eq__(self, other : Self):
+        return self.allcompare(other, lambda s,o : s == o)
+
+    def __str__(self):
+        result = ""
+        if self.reg_strides:
+            rstr = "+".join([f"{o}*stride{i}" for i,o in enumerate(self.reg_strides) if o != 0])
+            if rstr:
+                result += f"({rstr})+"
+        if self.vlen_strides:
+            vstr = "+".join([f"{o}*VLEN^{i+1}" for i,o in enumerate(self.vlen_strides) if o != 0])
+            if vstr:
+                result += f"({vstr})+"
+        
+        return f"{result}{self.immoff}"
 
 
 class lsc_operation:

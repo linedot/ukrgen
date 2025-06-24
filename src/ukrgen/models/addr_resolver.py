@@ -6,6 +6,8 @@
 
 # See: addr_resolver.md
 
+import string
+from typing import Self
 from copy import deepcopy
 
 from .load_store_operations import lsc_offset
@@ -15,8 +17,21 @@ class addr_add:
     def __init__(self, rtype_idx : int, addr_idx : int,
                  offset : lsc_offset):
         self.rtype_idx = rtype_idx
-        self.addr_idx = addr_idx,
+        self.addr_idx = addr_idx
         self.offset = offset
+
+    def __eq__(self, other : Self):
+        return self.rtype_idx == other.rtype_idx and \
+               self.addr_idx == other.addr_idx and \
+               self.offset == other.offset
+
+    def __str__(self):
+
+        rtype_char = string.ascii_lowercase[self.rtype_idx]
+        return f"{rtype_char}a{self.addr_idx} += {self.offset}"
+
+    def __repr__(self):
+        return self.__str__()
 
 class addr_resolver:
     def __init__(self,
@@ -31,13 +46,13 @@ class addr_resolver:
                 if not isinstance(off, lsc_offset):
                     raise ValueError("starting offsets are not lsc_offset")
 
-        for rlist in starting_offsets:
+        for rlist in offset_ranges:
             for minoff,maxoff in rlist:
                 if not isinstance(minoff, lsc_offset)\
                    or not isinstance(maxoff, lsc_offset):
                     raise ValueError("offset ranges are not lsc_offset")
 
-        for slist in starting_offsets:
+        for slist in steps:
             for off in slist:
                 if not isinstance(off, lsc_offset):
                     raise ValueError("step offsets are not lsc_offset")
@@ -45,12 +60,18 @@ class addr_resolver:
         self.indices=indices
         self.starting_offsets=starting_offsets
         self.current_offsets=deepcopy(self.starting_offsets) 
-        self.ffset_ranges=offset_ranges
+        self.offset_ranges=offset_ranges
         self.steps = steps
         self.max_incs = 2
 
+
     def toff_in_range(self, caoff : lsc_offset, toff : lsc_offset,
                       offset_range : tuple[lsc_offset,lsc_offset]):
+
+
+        lsc_offset.adjust_offlists(caoff,toff)
+        lsc_offset.adjust_offlists(caoff,offset_range[0])
+        lsc_offset.adjust_offlists(caoff,offset_range[1])
 
         immoffset_in_range = \
             (toff.immoff >=(caoff.immoff-offset_range[0].immoff)) and \
@@ -77,8 +98,7 @@ class addr_resolver:
 
     def resolve_addr(self, 
                      rtype_idx : int,
-                     toff : lsc_offset,
-                     t : tile) -> tuple[list[addr_add], int, lsc_offset]:
+                     toff : lsc_offset) -> tuple[list[addr_add], int, lsc_offset]:
         """
         :rtype: tuple[list[addr_add],int,lsc_offset]
         :return: tuple consisting of a list of addr_add structure for address 
@@ -90,14 +110,17 @@ class addr_resolver:
         addr_adds = []
 
         addr_reg_count = len(self.indices[rtype_idx])
-        current_offsets = self.current_offsets[rtype_idx]
         addr_idx_to_use = -1
         incs_to_do = self.max_incs
+        off = lsc_offset(reg_strides=[],
+                         vlen_strides=[],
+                         immoff=0)
         while -1 == addr_idx_to_use and 0 < incs_to_do:
 
             # Start with first reg
             caoff_min_list_idx = 0
-            current_offsets[caoff_min_list_idx]
+            current_offsets = self.current_offsets[rtype_idx]
+            offset_min = current_offsets[caoff_min_list_idx]
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
@@ -110,13 +133,17 @@ class addr_resolver:
                     offset_min = caoff
                     caoff_min_list_idx = addr_list_idx
                 
-                if self.is_in_range(caoff=caoff,
-                               toff=toff,
-                               offset_range=offset_range):
+                if self.toff_in_range(caoff=caoff,
+                                      toff=toff,
+                                      offset_range=offset_range):
                     off = toff-caoff
-                    addr_idx_to_use = addr_idx
+                    addr_idx_to_use = addr_list_idx
+                    break
+
+
             if -1 != addr_idx_to_use:
                 break
+
 
             if incs_to_do <= 0:
                 raise RuntimeError(f"Target offset not in range after {self.max_incs} address adds")
@@ -133,4 +160,4 @@ class addr_resolver:
             self.current_offsets[rtype_idx][caoff_min_list_idx] += add_value
             incs_to_do -= 1
 
-        return addr_adds,addr_idx_to_use,offset
+        return addr_adds,addr_idx_to_use,off
