@@ -16,11 +16,14 @@ from .load_store_operations import (
     lsc_addr_add,
     lsc_debugmsg,
     lsc_load,
+    lsc_offset,
     lsc_operation,
     lsc_store,
     lsc_transformation,
     lsc_zero,
 )
+
+from .addr_resolver import addr_resolver
 
 class lsc_state(Enum):
     clean = auto()
@@ -32,7 +35,7 @@ class tile_offset_mapper:
     @abstractmethod
     def __call__(
             tile : tile,
-            idx : (int,int)) -> int:
+            idx : (int,int)) -> lsc_offset:
 # I don't think we need the subindex for data origins
 #            subidx : int) -> int:
         raise NotImplementedError("tried calling abstract tile offset mapper")
@@ -45,6 +48,7 @@ class load_store_cpu:
                  addr_counts : list[int],
                  addr_offset_ranges : list[list[tuple[int,int]]],
                  addr_starts : list[list[int]],
+                 ar : addr_resolver,
                  preload_counts : list[int],
                  offset_mappers : list[tile_offset_mapper],
                  resolve_order : list[int] = [0,1,2],

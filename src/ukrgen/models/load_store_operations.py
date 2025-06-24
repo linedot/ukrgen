@@ -44,6 +44,15 @@ class lsc_offset:
             immoff=self.immoff+other.immoff)
 
 
+    def __sub__(self, other : Self):
+        if not isinstance(other, lsc_offset):
+            raise NotImplementedError(f"can't subtract {type(other)} from lsc_offset")
+
+        return lsc_offset(
+            reg_strides=[s-o for s,o in zip(self.reg_strides,other.reg_strides)],
+            vlen_strides=[s-o for s,o in zip(self.vlen_strides,other.vlen_strides)],
+            immoff=self.immoff-other.immoff)
+
 
 class lsc_operation:
     def __init__(self,
