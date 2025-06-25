@@ -4,6 +4,12 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import re
+from typing import Self,Callable,Union
+
+import traceback
+import string
+
 from asmgen.asmblocks.noarch import asmgen
 from asmgen.registers import (
     reg_tracker,
@@ -20,11 +26,8 @@ from ..components import *
 from ..generators import *
 from ..models import *
 
+from ..models.load_store_operations import lsc_reg_type
 
-from typing import Self,Callable,Union
-
-import traceback
-import string
 
 
 from .special_treg_ldst import special_treg_ldst,lsc_treg_row_store,lsc_treg_row_load
@@ -104,6 +107,8 @@ class lsc_specializer:
     def transform_transform(self, op : lsc_transformation, triple : adt_triple):
 
         dregs = []
+
+        dreg_tags = []
         
         for i,(residx,subidx,t) in enumerate(zip(op.res_indices, op.sub_indices, op.tiles)):
             rtype_char = string.ascii_lowercase[i]
@@ -118,13 +123,35 @@ class lsc_specializer:
                 dreg = getattr(self.gen,dreg_tag)(residx)
 
             dregs.append(dreg)
+            dreg_tags.append(dreg_tag)
 
             # TODO: subidx
 
-        arith_op = getattr(self.gen,op.op)
+        more_args = dict()
+        modifiers = set()
+
+        opstr = op.op
+        # If there is a number at the end of the str, that's a partial instruction
+        numbers = re.findall(r'\d+',opstr)
+        if numbers:
+            modifiers.add(mod.PART)
+            more_args['part'] = int(numbers[0])-1
+
+            for number in numbers:
+                opstr = opstr.replace(number, '')
+
+        #if there is only 1 freg, this is a VF operation
+        if 1 == dreg_tags.count('freg'):
+            modifiers.add(mod.VF)
+        
+            
+
+
+        arith_op = getattr(self.gen,opstr)
 
         return arith_op(adreg=dregs[0],bdreg=dregs[1],cdreg=dregs[2],
-                        a_dt = triple.a, b_dt = triple.b, c_dt = triple.c)
+                        a_dt = triple.a, b_dt = triple.b, c_dt = triple.c,
+                        modifiers=modifiers, **more_args)
 
         #return self.gen.asmwrap(f"dummy {op.op}")
 
@@ -568,6 +595,9 @@ class lsc_specializer:
                 for i,idx_list in enumerate(op.indices):
                     if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
                         op.indices[i][1] *=ways
+                        self.data_registers[c_index].add(op.indices[i][1])
+                        for wayreg in range(1,ways):
+                            self.data_registers[c_index].add(op.indices[i][1]+wayreg)
                         has_c = True
                 if isinstance(op, lsc_addr_add):
                     if op.rtype_idx == c_index:
