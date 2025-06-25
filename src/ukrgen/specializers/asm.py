@@ -157,6 +157,8 @@ class lsc_specializer:
         aregidx = self.rt.aliased_regs['greg'][f"{rtype_char}areg{op.addr_idx}"]
         areg = self.gen.greg(aregidx)
         data_t = op.tiles[1]
+        dt = triple[op.rtype_idx]
+        dt_bytes = adt_size(dt)
         if data_t.dima.dt == dimension_type.vla or\
            data_t.dimb.dt == dimension_type.vla:
             factor = op.off
@@ -177,7 +179,7 @@ class lsc_specializer:
 
         return self.gen.add_greg_imm(
             reg=areg,
-            imm=op.off)
+            imm=op.off*dt_bytes)
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
                        triple : adt_triple,
