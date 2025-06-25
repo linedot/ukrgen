@@ -135,7 +135,7 @@ class lsc_specializer:
         numbers = re.findall(r'\d+',opstr)
         if numbers:
             modifiers.add(mod.PART)
-            more_args['part'] = int(numbers[0])-1
+            more_args['part'] = int(numbers[0])
 
             for number in numbers:
                 opstr = opstr.replace(number, '')
