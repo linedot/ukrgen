@@ -612,8 +612,8 @@ class lsc_specializer:
                             part_op.indices[j][1] += i
                     if isinstance(op, lsc_transformation):
                         part_op.op += f"{i}"
-                    if isinstance(op, lsc_load) or isinstance(op, lsc_store):
-                        part_op.off = part_op.off*2+i
+                    if isinstance(op, (lsc_load,lsc_store)):
+                        part_op.off = part_op.off*ways+i
                     result_ops.append(part_op)
             else:
                 result_ops.append(op)
