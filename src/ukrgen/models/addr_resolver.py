@@ -141,18 +141,25 @@ class addr_resolver:
                          vlen_strides=[],
                          immoff=0)
         
-        print(f"Current {rtype_char} offsets:")
-        for addr_list_idx in range(addr_reg_count):
-            caoff = self.current_offsets[rtype_idx][addr_list_idx]
-            print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+        #print(f"Current {rtype_char} offsets:")
+        #for addr_list_idx in range(addr_reg_count):
+        #    caoff = self.current_offsets[rtype_idx][addr_list_idx]
+        #    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
         
-        print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
+        #print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
         while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
             caoff_min_list_idx = 0
             current_offsets = self.current_offsets[rtype_idx]
             offset_min = current_offsets[caoff_min_list_idx]
+
+            # if the first one is also in range, we can use it
+            distance_min = toff-offset_min
+            if self.toff_in_range(caoff=offset_min,
+                                  toff=toff,
+                                  offset_range=self.offset_ranges[rtype_idx][caoff_min_list_idx]):
+                addr_idx_to_use = caoff_min_list_idx
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
@@ -168,34 +175,35 @@ class addr_resolver:
                 if self.toff_in_range(caoff=caoff,
                                       toff=toff,
                                       offset_range=offset_range):
-                    off = toff-caoff
-                    addr_idx_to_use = addr_list_idx
-                    break
-
+                    # replace only if the offset would be smaller
+                    if distance_min > (toff-caoff):
+                        distance_min = toff-caoff
+                        addr_idx_to_use = addr_list_idx
 
             if not addr_idx_to_use is None:
+                off=distance_min
                 break
 
             incs_to_do -= 1
             if incs_to_do <= 0:
-                print("current offsets:")
-                for addr_list_idx in range(addr_reg_count):
-                    caoff = current_offsets[addr_list_idx]
-                    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+                #print("current offsets:")
+                #for addr_list_idx in range(addr_reg_count):
+                #    caoff = current_offsets[addr_list_idx]
+                #    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
 
-                print(f"Target offset: {toff}")
-                print(f"offset ranges:")
-                for addr_list_idx in range(addr_reg_count):
-                    minoff = self.offset_ranges[rtype_idx][addr_list_idx][0]
-                    maxoff = self.offset_ranges[rtype_idx][addr_list_idx][1]
-                    print(f"  {rtype_char}a{addr_list_idx} : [{minoff},{maxoff}]")
+                #print(f"Target offset: {toff}")
+                #print(f"offset ranges:")
+                #for addr_list_idx in range(addr_reg_count):
+                #    minoff = self.offset_ranges[rtype_idx][addr_list_idx][0]
+                #    maxoff = self.offset_ranges[rtype_idx][addr_list_idx][1]
+                #    print(f"  {rtype_char}a{addr_list_idx} : [{minoff},{maxoff}]")
                 raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
             # this could be an alternative cotnrolled by a parameter?
             # add_value = toff - offset_min
 
             add_value = self.steps[rtype_idx][caoff_min_list_idx]
-            print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
+            #print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
             new_add = addr_add(rtype_idx=rtype_idx,
                                addr_idx=self.indices[rtype_idx][caoff_min_list_idx],
                                offset=add_value)

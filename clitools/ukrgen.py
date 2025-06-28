@@ -28,6 +28,7 @@ from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
 from ukrgen.models.load_store_operations import lsc_offset
 from ukrgen.models.addr_resolver import addr_resolver
+from ukrgen.models.tile_offset_mapper import flat_mapper
 from ukrgen.schedulers import simple_dependency_scheduler
 
 
@@ -313,29 +314,24 @@ def main():
     # C regs
     if getattr(gen, args.op).widening_method == wm.SPLIT_INSTRUCTIONS:
         for i in range(len(addr_offset_ranges[2])):
-            addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],addr_offset_ranges[2][i][1]//ways)
+            maxoff = addr_offset_ranges[2][i][1]
+            maxoff.vlen_strides = [v//ways for v in maxoff.vlen_strides]
+            maxoff.reg_strides = [r//ways for r in maxoff.reg_strides]
+            maxoff.immoff //= ways
+            addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],
+                                        maxoff)
 
-    def flat_mapper(t : tile, flat_idx : int):
-        if (t.dima.dt == dimension_type.vla) != \
-           (t.dimb.dt == dimension_type.vla):
-               return lsc_offset([],[flat_idx],0)
-        elif (t.dima.dt == dimension_type.vla) and \
-             (t.dimb.dt == dimension_type.vla):
-               return lsc_offset([],[0,flat_idx],0)
-        elif (t.dima.dt != dimension_type.vla) and \
-             (t.dimb.dt != dimension_type.vla):
-               return lsc_offset([],[],flat_idx)
+        for i,_ in enumerate(addr_offset_steps[2]):
+            addr_offset_steps[2][i].vlen_strides = \
+                [v//ways for v in addr_offset_steps[2][i].vlen_strides]
+            addr_offset_steps[2][i].reg_strides = \
+                [r//ways for r in addr_offset_steps[2][i].reg_strides]
+            addr_offset_steps[2][i].immoff //= ways
 
-        raise ValueError("Unhandled case in tile offset mapper")
 
     # Everything contiguous
-    def ac_mapper(t : tile, idx : tuple[int,int]):
-        flat_idx = t.dima.size*m*idx[1]+idx[0]
-        return flat_mapper(t,flat_idx)
-
-    def b_mapper(t : tile, idx : tuple[int,int]):
-        flat_idx = t.dima.size*n*idx[0]+idx[1]
-        return flat_mapper(t,flat_idx)
+    ac_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
+    b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
 
     #ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
     #b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]

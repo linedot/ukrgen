@@ -121,6 +121,9 @@ class lsc_offset:
         
         return f"{result}{self.immoff}"
 
+    def __hash__(self):
+        return hash(self.__str__())
+
     @classmethod
     def zero_offset(cls):
         return cls([],[],0)
@@ -174,11 +177,7 @@ class lsc_load(lsc_operation):
     def __str__(self):
         reg_chars = ['a','b','c']
         i = self.rtype_idx
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr}"
+        return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}"
 
 class lsc_store(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
@@ -216,11 +215,7 @@ class lsc_store(lsc_operation):
     def __str__(self):
         reg_chars = ['a','b','c']
         i = self.rtype_idx
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        return f"{reg_chars[i]}a{self.addr_idx} + {self.off}{vlenstr} <- STORE {reg_chars[i]}{self.res_idx}"
+        return f"{reg_chars[i]}a{self.addr_idx} + {self.off} <- STORE {reg_chars[i]}{self.res_idx}"
 
 class lsc_zero(lsc_operation):
     def __init__(self, rtype_idx : int, res_idx : int, t : tile):

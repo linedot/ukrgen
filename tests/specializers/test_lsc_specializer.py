@@ -18,7 +18,9 @@ from ukrgen.components import (
         x4_vector
         )
 from ukrgen.generators import mm,order2D
-from ukrgen.models import load_store_cpu
+from ukrgen.models import load_store_cpu,addr_resolver
+from ukrgen.models.load_store_operations import lsc_offset
+from ukrgen.models.tile_offset_mapper import flat_mapper
 
 from ukrgen.specializers.asm import lsc_specializer
 
@@ -28,6 +30,7 @@ from asmgen.asmblocks.sme import sme
 from asmgen.asmblocks.sve import sve
 
 from asmgen.registers import reg_tracker
+
 
 class test_lsc_specializer(unittest.TestCase):
     def test_addr_add_analysis(self):
@@ -45,27 +48,46 @@ class test_lsc_specializer(unittest.TestCase):
 
 
         mm_ops = mmgen.generate()
-        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
-        b_mapper = lambda tile, idx : n*idx[0]+idx[1]
-        
+        # Everything contiguous
+        ac_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
+        b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
+
+
+        zo = lsc_offset.zero_offset()
+        o1v = lsc_offset([],[1],0)
+        o2v = lsc_offset([],[2],0)
+        o7i = lsc_offset([],[],7)
+        o8i = lsc_offset([],[],8)
+                
+        ar = addr_resolver(indices=[[0,1],[0],[0]],
+                           starting_offsets=[[zo,o1v],[zo],[zo]],
+                           offset_ranges=[
+                               [(zo,zo),(zo,zo)],
+                               [(zo,o7i)],
+                               [(zo,zo)]
+                           ],
+                           steps=[[o2v,o2v],
+                                  [o8i],
+                                  [o1v]
+                           ])
 
         machine = load_store_cpu(
                      res_counts=[4,4,8],
                      res_steps=[1,1,1],
-                     addr_counts=[2,1,1],
-                     addr_offset_ranges=[[(0,0),(0,0)],[(0,7)],[(0,0)]],
-                     addr_starts=[[0,1],[0],[0]],
+                     ar=ar,
                      preload_counts=[2,3,8],
                      offset_mappers = [ac_mapper,b_mapper,ac_mapper])
 
-        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        mm_ops_p1k = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        mm_ops_p2k = mmgen.generate(add_dims=[0,0,0,0,0,k*2])
 
-        preload = machine.preload(mm_ops)
+        preload = machine.preload(mm_ops,mm_ops_p1k)
         mainblock = machine(mm_ops)
+        preload_mb = machine.preload(mm_ops_p1k,
+                                     mm_ops_p2k,
+                                     zero_addrs=False,
+                                     ignore_dims=[2])
         storeblock = machine.store_modified()
-        preload_mb = machine.preload(mm_ops_next,
-                                       zero_addrs=False,
-                                       ignore_dims=[2])
 
         gen = rvv()
 
@@ -86,5 +108,10 @@ class test_lsc_specializer(unittest.TestCase):
 
         specializer.analyse(ops=preload+mainblock+storeblock+preload_mb)
 
-        self.assertEqual(specializer.byteadds, set([8,3]))
-        self.assertEqual(specializer.vlenadds, set([2]))
+        self.assertEqual(specializer.byteadds, 
+                         set([
+                             o8i,
+                             lsc_offset([],[],3)]))
+        self.assertEqual(specializer.vlenadds,
+                         set([
+                             o2v]))

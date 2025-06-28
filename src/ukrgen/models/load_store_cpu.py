@@ -24,6 +24,8 @@ from .load_store_operations import (
     lsc_zero,
 )
 
+from .tile_offset_mapper import tile_offset_mapper
+
 from .addr_resolver import addr_resolver
 
 class lsc_state(Enum):
@@ -32,15 +34,6 @@ class lsc_state(Enum):
     loaded = auto()
     modified = auto()
 
-
-class tile_offset_mapper:
-    @abstractmethod
-    def __call__(
-            tile : tile,
-            idx : (int,int)) -> lsc_offset:
-# I don't think we need the subindex for data origins
-#            subidx : int) -> int:
-        raise NotImplementedError("tried calling abstract tile offset mapper")
 
 
 class load_store_cpu:
@@ -103,7 +96,7 @@ class load_store_cpu:
         if (not corg is None) and \
                 (not lsc_state.invalid == self.states[rtype_idx][res_idx]):
             if corg == toff:
-                print(f"{rtype_char}{res_idx} already has offset {toff}")
+                #print(f"{rtype_char}{res_idx} already has offset {toff}")
                 return result
 
         # store if dirty
@@ -128,7 +121,7 @@ class load_store_cpu:
                                        off=add.offset,
                                        t=t))
 
-        print(f"Updating {rtype_char}{res_idx} off to {toff}")
+        #print(f"Updating {rtype_char}{res_idx} off to {toff}")
         self.cdos[rtype_idx][res_idx] = toff
         self.states[rtype_idx][res_idx] = lsc_state.loaded
 
@@ -318,7 +311,7 @@ class load_store_cpu:
                 rtype_char = string.ascii_lowercase[op.rtype_idx]
                 pc = self.preload_counts[op.rtype_idx]
                 pd = preloads_done[op.rtype_idx]
-                print(f"Preloads for {rtype_char}: {pd}/{pc}")
+                #print(f"Preloads for {rtype_char}: {pd}/{pc}")
                 if pc+1 <= pd:
                     continue
                 if isinstance(op, lsc_store):
@@ -343,7 +336,7 @@ class load_store_cpu:
                     # Some updates to offsets are implicit, therefore update
                     new_do = caoff + op.off
                     if is_next_preload(op.rtype_idx):
-                        print(f"Next offset for {rtype_char}: {new_do}")
+                        #print(f"Next offset for {rtype_char}: {new_do}")
                         preload_next_offsets[op.rtype_idx] = new_do
                         preloads_done[op.rtype_idx] += 1
                         continue
@@ -386,6 +379,8 @@ class load_store_cpu:
                                             addr_idx=add.addr_idx,
                                             off=add.offset,
                                             t=t))
+                # Add to tracked offset
+                self.ar.current_offsets[add.rtype_idx][add.addr_idx] += add.offset
 
         # use the original dos and assign the preloaded data
         self.cdos = copy.deepcopy(initial_cdos)
@@ -393,46 +388,48 @@ class load_store_cpu:
             for res_idx,orig in dos.items():
                 self.cdos[i][res_idx] = orig
 
-        print("dos after preload:")
-        for i,dos in enumerate(self.cdos):
-            rtype_char = string.ascii_lowercase[i]
-            for res_idx,do in dos.items():
-                print(f"  {rtype_char}{res_idx} : {do}")
+        #print("dos after preload:")
+        #for i,dos in enumerate(self.cdos):
+        #    rtype_char = string.ascii_lowercase[i]
+        #    for res_idx,do in dos.items():
+        #        print(f"  {rtype_char}{res_idx} : {do}")
 
-        print("tracked pre offsets after preload:")
-        for i,idx_list in enumerate(self.ar.indices):
-            rtype_char = string.ascii_lowercase[i]
-            for idx in idx_list:
-                off = preload_addr_reg_offsets[i][idx]
-                print(f"  {rtype_char}a{idx} : {off}")
+        #print("tracked pre offsets after preload:")
+        #for i,idx_list in enumerate(self.ar.indices):
+        #    rtype_char = string.ascii_lowercase[i]
+        #    for idx in idx_list:
+        #        off = preload_addr_reg_offsets[i][idx]
+        #        print(f"  {rtype_char}a{idx} : {off}")
 
-        print("addr offsets after preload:")
-        for i,idx_list in enumerate(self.ar.indices):
-            rtype_char = string.ascii_lowercase[i]
-            for idx in idx_list:
-                off = self.ar.current_offsets[i][idx]
-                print(f"  {rtype_char}a{idx} : {off}")
+        #print("addr offsets after preload:")
+        #for i,idx_list in enumerate(self.ar.indices):
+        #    rtype_char = string.ascii_lowercase[i]
+        #    for idx in idx_list:
+        #        off = self.ar.current_offsets[i][idx]
+        #        print(f"  {rtype_char}a{idx} : {off}")
 
-        print("next offsets after preload:")
-        for i,idx_list in enumerate(self.ar.indices):
-            rtype_char = string.ascii_lowercase[i]
-            off = preload_next_offsets[i]
-            print(f"  {rtype_char} : {off}")
+        #print("next offsets after preload:")
+        #for i,idx_list in enumerate(self.ar.indices):
+        #    rtype_char = string.ascii_lowercase[i]
+        #    off = preload_next_offsets[i]
+        #    print(f"  {rtype_char} : {off}")
 
         # set the reg states
         self.states = copy.deepcopy(preload_states)
 
         # reset the indices
-        self.res_indices = [ 0 for i in self.res_indices]
+        # self.res_indices = [ 0 for i in self.res_indices]
+        self.res_indices = [ d%count for d,count in\
+                zip(self.preload_counts,self.res_counts)]
         return results
 
     def __call__(self, ops : list[mm_op]) -> list[str]:
 
-        print("dos before main call:")
-        for i,dos in enumerate(self.cdos):
-            rtype_char = string.ascii_lowercase[i]
-            for res_idx,do in dos.items():
-                print(f"  {rtype_char}{res_idx} : {do}")
+        #print("dos before main call:")
+        #for i,dos in enumerate(self.cdos):
+        #    rtype_char = string.ascii_lowercase[i]
+        #    for res_idx,do in dos.items():
+        #        print(f"  {rtype_char}{res_idx} : {do}")
         result = []
         for op in ops:
             result.extend(self.map_one(

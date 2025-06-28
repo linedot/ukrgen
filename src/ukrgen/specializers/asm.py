@@ -161,13 +161,14 @@ class lsc_specializer:
            data_t.dimb.dt == dimension_type.vla:
             factor = op.off
 
-            if factor < self.gen.max_add_voff:
+            if factor.vlen_strides[0] < self.gen.max_add_voff:
                 return self.gen.add_greg_voff(reg=areg, 
-                                              offset=factor, 
+                                              offset=factor.vlen_strides[0], 
                                               dt=triple[op.rtype_idx])
 
             vxnalias = "vlen"
-            if op.off > 1:
+            o1v = lsc_offset([], [1], 0)
+            if op.off > o1v:
                 vxnalias = f"vlenx{factor}"
             vlen_idx = self.rt.aliased_regs['greg'][vxnalias]
             vlenreg = self.gen.greg(vlen_idx)
@@ -211,7 +212,8 @@ class lsc_specializer:
         # - differentiate voffset,immoffset, nonoffset, ...
         # - differentiate tile/vreg/freg
 
-        if 0 == op.off:
+        
+        if lsc_offset.zero_offset() == op.off:
             if 'treg' == dreg_tag:
                 lsfunc = getattr(self.gen, f"{action}_tile")
                 return lsfunc(areg=areg,treg=dreg,dt=dt)
@@ -221,19 +223,22 @@ class lsc_specializer:
 
         if 'freg' == dreg_tag:
             lsfunc = getattr(self.gen, f"{action}_scalar_immoff")
+
+            byteoff = op.off
+            byteoff.immoff *=dt_bytes
             return lsfunc(
                     areg=areg,
-                    offset=op.off*dt_bytes,
+                    offset=byteoff.immoff,
                     freg=dreg,
                     dt=dt)
 
         if 'vreg' == dreg_tag:
             if vlenmul > 0:
                 lsfunc = getattr(self.gen, f"{action}_vector_voff")
-                return lsfunc(areg=areg, voffset=op.off, vreg=dreg, dt=dt)
+                return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
             else:
                 lsfunc = getattr(self.gen, f"{action}_vector_immoff")
-                return lsfunc(areg=areg, offset=op.off, vreg=dreg, dt=dt)
+                return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
 
 
 
@@ -479,16 +484,18 @@ class lsc_specializer:
 
             if isinstance(op, lsc_addr_add):
 
+                o1v = lsc_offset([], [1], 0)
+                oaddmaxv = lsc_offset([], [self.gen.max_add_voff], 0)
                 # vlen/byte adds
                 if op.t.dima.dt == dimension_type.vla\
                     or op.t.dimb.dt == dimension_type.vla:
                     if op.off not in self.vlenadds:
-                        if 1 == op.off:
+                        if o1v == op.off:
                             continue
-                        if self.gen.max_add_voff > op.off:
+                        if oaddmaxv > op.off:
                             continue
                         self.vlenadds.add(op.off)
-                        print(f"aliasing vlenx{op.off}")
+                        #print(f"aliasing vlenx{op.off}")
                         regidx = self.rt.reserve_any_reg('greg')
                         self.rt.alias_reg('greg',
                                           f"vlenx{op.off}",

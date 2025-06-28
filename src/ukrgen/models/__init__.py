@@ -5,3 +5,4 @@
 # ------------------------------------------------------------------------------
 
 from .load_store_cpu import *
+from .addr_resolver import *

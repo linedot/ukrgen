@@ -20,6 +20,9 @@ from ukrgen.components import (
         )
 from ukrgen.generators import mm,order2D
 from ukrgen.models import load_store_cpu
+from ukrgen.models.tile_offset_mapper import flat_mapper
+from ukrgen.models.load_store_operations import lsc_offset
+from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.schedulers import simple_dependency_scheduler
 
 # i.e SVE FP64 vector           is dima=(dt=vla,size=1,sdt=fixed,sd_size=2), dimb=(dt=fixed,size=1,sdt=fixed,sd_size=1)
@@ -122,31 +125,53 @@ class test_mm(unittest.TestCase):
         ]
         self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
-        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
-        b_mapper = lambda tile, idx : k*idx[0]+idx[1]
+        zo = lsc_offset.zero_offset()
+        o7i = lsc_offset([],[],7)
+        o8i = lsc_offset([],[],8)
+                
+        ar = addr_resolver(indices=[[0],[0],[0]],
+                           starting_offsets=[[zo],[zo],[zo]],
+                           offset_ranges=[
+                               [(zo,o7i)],
+                               [(zo,o7i)],
+                               [(zo,o7i)]
+                           ],
+                           steps=[[o8i],
+                                  [o8i],
+                                  [o8i]
+                           ])
+
+        ac_mapper = flat_mapper(lambda t, idx : m*idx[1]+idx[0])
+        b_mapper = flat_mapper(lambda t, idx : n*idx[0]+idx[1])
         machine = load_store_cpu(
                      res_counts=[2,4,8],
                      res_steps=[1,1,1],
-                     addr_counts=[1,1,1],
-                     addr_offset_ranges=[[(0,7)],[(0,7)],[(0,7)]],
-                     addr_starts=[[0],[0],[0]],
+                     ar=ar,
                      preload_counts=[0,0,8],
                      offset_mappers = [ac_mapper,b_mapper,ac_mapper])
 
         expected_sequence = [
             "a0 <- LOAD aa0 + 0",
             "b0 <- LOAD ba0 + 0",
+            "c0 <- LOAD ca0 + 0",
             "c0 <- fma(a0, b0, c0)",
             "a1 <- LOAD aa0 + 1",
+            "c1 <- LOAD ca0 + 1",
             "c1 <- fma(a1, b0, c1)",
             "b1 <- LOAD ba0 + 1",
+            "c2 <- LOAD ca0 + 2",
             "c2 <- fma(a0, b1, c2)",
+            "c3 <- LOAD ca0 + 3",
             "c3 <- fma(a1, b1, c3)",
             "b2 <- LOAD ba0 + 2",
+            "c4 <- LOAD ca0 + 4",
             "c4 <- fma(a0, b2, c4)",
+            "c5 <- LOAD ca0 + 5",
             "c5 <- fma(a1, b2, c5)",
             "b3 <- LOAD ba0 + 3",
+            "c6 <- LOAD ca0 + 6",
             "c6 <- fma(a0, b3, c6)",
+            "c7 <- LOAD ca0 + 7",
             "c7 <- fma(a1, b3, c7)"
         ]
         self.assertEqual(expected_sequence, list(map(str,machine(mm_ops))))
@@ -222,34 +247,51 @@ class test_mm(unittest.TestCase):
         ]
         self.assertEqual(expected_sequence, list(map(str,alpha_scale_ops)))
 
-        ac_mapper = lambda tile, idx : m*idx[1]+idx[0]
-        b_mapper = lambda tile, idx : n*idx[0]+idx[1]
-        
+        ac_mapper = flat_mapper(lambda t, idx : m*idx[1]+idx[0])
+        b_mapper = flat_mapper(lambda t, idx : n*idx[0]+idx[1])
+ 
+        zo = lsc_offset.zero_offset()
+        o1v = lsc_offset([],[1],0)
+        o2v = lsc_offset([],[2],0)
+        o7i = lsc_offset([],[],7)
+        o8i = lsc_offset([],[],8)
+                
+        ar = addr_resolver(indices=[[0,1],[0],[0]],
+                           starting_offsets=[[zo,o1v],[zo],[zo]],
+                           offset_ranges=[
+                               [(zo,o1v),(zo,o1v)],
+                               [(zo,o7i)],
+                               [(zo,zo)]
+                           ],
+                           steps=[[o2v,o2v],
+                                  [o8i],
+                                  [o1v]
+                           ])       
 
         machine = load_store_cpu(
                      res_counts=[4,4,8],
                      res_steps=[1,1,1],
-                     addr_counts=[2,1,1],
-                     addr_offset_ranges=[[(0,0),(0,0)],[(0,7)],[(0,0)]],
-                     addr_starts=[[0,1],[0],[0]],
+                     ar=ar,
                      preload_counts=[2,3,8],
                      offset_mappers = [ac_mapper,b_mapper,ac_mapper])
 
-        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
-        #print("\n".join(map(str,inspector(mm_ops_next))))
+        mm_ops_p1k = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        mm_ops_p2k = mmgen.generate(add_dims=[0,0,0,0,0,2*k])
+        #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
-        preload = machine.preload(mm_ops)
+        preload = machine.preload(mm_ops, mm_ops_p1k)
         mainblock = machine(mm_ops)
+        preload_mb = machine.preload(mm_ops_p1k,
+                                     mm_ops_p2k,
+                                     zero_addrs=False,
+                                     ignore_dims=[2])
         storeblock = machine.store_modified()
-        preload_mb = machine.preload(mm_ops_next,
-                                       zero_addrs=False,
-                                       ignore_dims=[2])
 
         expected_preload = [
-            "a0 <- LOAD aa0 + 0*VLEN",
+            "a0 <- LOAD aa0 + 0",
             "b0 <- LOAD ba0 + 0",
             "c0 <- 0",
-            "a1 <- LOAD aa1 + 0*VLEN",
+            "a1 <- LOAD aa1 + 0",
             "c1 <- 0",
             "b1 <- LOAD ba0 + 1",
             "c2 <- 0",
@@ -259,8 +301,8 @@ class test_mm(unittest.TestCase):
             "c5 <- 0",
             "c6 <- 0",
             "c7 <- 0",
-            "aa0 <- aa0 + 2*VLEN",
-            "aa1 <- aa1 + 2*VLEN",
+            "aa0 <- aa0 + (2*VLEN^1)+0",
+            "aa1 <- aa1 + (2*VLEN^1)+0",
             "ba0 <- ba0 + 3",
         ]
         expected_mainblock = [
@@ -273,10 +315,10 @@ class test_mm(unittest.TestCase):
             "b3 <- LOAD ba0 + 0",
             "c6 <- fma(a0, b3, c6)",
             "c7 <- fma(a1, b3, c7)",
-            "a2 <- LOAD aa0 + 0*VLEN",
+            "a2 <- LOAD aa0 + 0",
             "b0 <- LOAD ba0 + 1",
             "c0 <- fma(a2, b0, c0)",
-            "a3 <- LOAD aa1 + 0*VLEN",
+            "a3 <- LOAD aa1 + 0",
             "c1 <- fma(a3, b0, c1)",
             "b1 <- LOAD ba0 + 2",
             "c2 <- fma(a2, b1, c2)",
@@ -289,33 +331,32 @@ class test_mm(unittest.TestCase):
             "c7 <- fma(a3, b3, c7)",
         ]
         expected_preload_mb = [
-            "aa0 <- aa0 + 2*VLEN",
-            "a0 <- LOAD aa0 + 0*VLEN",
+            "a0 <- LOAD aa1 + (1*VLEN^1)+0",
             "b0 <- LOAD ba0 + 5",
-            "aa1 <- aa1 + 2*VLEN",
-            "a1 <- LOAD aa1 + 0*VLEN",
+            "aa0 <- aa0 + (2*VLEN^1)+0",
+            "a1 <- LOAD aa0 + (1*VLEN^1)+0",
             "b1 <- LOAD ba0 + 6",
             "b2 <- LOAD ba0 + 7",
-            "aa0 <- aa0 + 2*VLEN",
-            "aa1 <- aa1 + 2*VLEN",
+            "aa0 <- aa0 + (2*VLEN^1)+0",
+            "aa1 <- aa1 + (4*VLEN^1)+0",
             "ba0 <- ba0 + 8",
         ]
         expected_storeblock = [
-            "ca0 + 0*VLEN <- STORE c0",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c1",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c2",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c3",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c4",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c5",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c6",
-            "ca0 <- ca0 + 1*VLEN",
-            "ca0 + 0*VLEN <- STORE c7",
+            "ca0 + 0 <- STORE c0",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c1",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c2",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c3",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c4",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c5",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c6",
+            "ca0 <- ca0 + (1*VLEN^1)+0",
+            "ca0 + 0 <- STORE c7",
         ]
         
         #print("\n".join(map(str,preload)))
@@ -333,7 +374,7 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_storeblock,  list(map(str,storeblock)))
         self.assertEqual(expected_preload_mb, list(map(str,preload_mb)))
 
-        scheduler = simple_dependency_scheduler(rar=0,raw=6,war=0,waw=6)
+        scheduler = simple_dependency_scheduler(rar=0,raw=5,war=0,waw=5)
 
         rs_preload = scheduler(preload, loop=False)
         rs_mbpl = scheduler(mainblock+preload_mb)
@@ -341,40 +382,42 @@ class test_mm(unittest.TestCase):
         expected_rs_preload = list(map(str,preload))
 
         expected_rs_mbpl = [
-            "b3 <- LOAD ba0 + 0",
             "c0 <- fma(a0, b0, c0)",
+            "b3 <- LOAD ba0 + 0",
             "c1 <- fma(a1, b0, c1)",
-            "a2 <- LOAD aa0 + 0*VLEN",
-            "b0 <- LOAD ba0 + 1",
             "c2 <- fma(a0, b1, c2)",
-            "a3 <- LOAD aa1 + 0*VLEN",
+            "a2 <- LOAD aa0 + 0",
+            "b0 <- LOAD ba0 + 1",
             "c3 <- fma(a1, b1, c3)",
-            "b1 <- LOAD ba0 + 2",
+            "a3 <- LOAD aa1 + 0",
             "c4 <- fma(a0, b2, c4)",
+            "b1 <- LOAD ba0 + 2",
             "c5 <- fma(a1, b2, c5)",
-            "b2 <- LOAD ba0 + 3",
             "c6 <- fma(a0, b3, c6)",
+            "b2 <- LOAD ba0 + 3",
             "c7 <- fma(a1, b3, c7)",
-            "b3 <- LOAD ba0 + 4",
             "c0 <- fma(a2, b0, c0)",
+            "b3 <- LOAD ba0 + 4",
             "c1 <- fma(a3, b0, c1)",
-            "aa0 <- aa0 + 2*VLEN",
             "c2 <- fma(a2, b1, c2)",
             "c3 <- fma(a3, b1, c3)",
-            "aa1 <- aa1 + 2*VLEN",
             "c4 <- fma(a2, b2, c4)",
+            "aa0 <- aa0 + (2*VLEN^1)+0",
             "c5 <- fma(a3, b2, c5)",
+            "c6 <- fma(a2, b3, c6)",
+            "a0 <- LOAD aa1 + (1*VLEN^1)+0",
             "b0 <- LOAD ba0 + 5",
             "b1 <- LOAD ba0 + 6",
             "b2 <- LOAD ba0 + 7",
             "ba0 <- ba0 + 8",
-            "a0 <- LOAD aa0 + 0*VLEN",
-            "a1 <- LOAD aa1 + 0*VLEN",
-            "aa0 <- aa0 + 2*VLEN",
-            "c6 <- fma(a2, b3, c6)",
+            "a1 <- LOAD aa0 + (1*VLEN^1)+0",
             "c7 <- fma(a3, b3, c7)",
-            "aa1 <- aa1 + 2*VLEN",
+            "aa0 <- aa0 + (2*VLEN^1)+0",
+            "aa1 <- aa1 + (4*VLEN^1)+0",
         ]
+
+        #print("RSMBPL ------------------------------")
+        #print("  "+"\n  ".join(map(str,rs_mbpl)))
 
         self.assertEqual(expected_rs_preload,    list(map(str,rs_preload)))
         self.assertEqual(expected_rs_mbpl,  list(map(str,rs_mbpl)))
@@ -462,15 +505,15 @@ class test_mm(unittest.TestCase):
                      preload_counts=[2,2,8],
                      offset_mappers = [ac_mapper,b_mapper,ac_mapper])
 
-        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
-        #print("\n".join(map(str,inspector(mm_ops_next))))
+        mm_ops_p1k = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
         preload = machine.preload(mm_ops)
         mainblock = machine(mm_ops)
-        storeblock = machine.store_modified()
-        preload_mb = machine.preload(mm_ops_next,
+        preload_mb = machine.preload(mm_ops_p1k,
                                        zero_addrs=False,
                                        ignore_dims=[2])
+        storeblock = machine.store_modified()
 
         #print("\n".join(map(str,preload)))
         #print("MAIN LOOP -------------------------------")
@@ -724,12 +767,12 @@ class test_mm(unittest.TestCase):
                      offset_mappers = [ac_mapper,b_mapper,ac_mapper],
                      op="opa")
 
-        mm_ops_next = mmgen.generate(add_dims=[0,0,0,0,0,k])
-        #print("\n".join(map(str,inspector(mm_ops_next))))
+        mm_ops_p1k = mmgen.generate(add_dims=[0,0,0,0,0,k])
+        #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
         preload = machine.preload(mm_ops)
         mainblock = machine(mm_ops)
-        preload_mb = machine.preload(mm_ops_next,
+        preload_mb = machine.preload(mm_ops_p1k,
                                        zero_addrs=False,
                                        ignore_dims=[2])
         
