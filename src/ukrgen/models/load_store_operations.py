@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import string
 from typing import Self,Callable
 from enum import Enum,auto
 from ..components.tile import tile,scalar_tile
@@ -120,6 +121,9 @@ class lsc_offset:
         
         return f"{result}{self.immoff}"
 
+    @classmethod
+    def zero_offset(cls):
+        return cls([],[],0)
 
 class lsc_operation:
     def __init__(self,
@@ -249,7 +253,9 @@ class lsc_zero(lsc_operation):
         return f"{reg_chars[self.rtype_idx]}{self.res_idx} <- 0"
 
 class lsc_addr_add(lsc_operation):
-    def __init__(self, rtype_idx : int, addr_idx : int, off : int, t : tile):
+    def __init__(self, rtype_idx : int, addr_idx : int, off : lsc_offset, t : tile):
+        if not isinstance(off, lsc_offset):
+            raise ValueError(f"offset {off} is not an lsc_offset")
         self.off = off
 
         # t is used for calculating address, isn't the tile the address resides in
@@ -280,13 +286,9 @@ class lsc_addr_add(lsc_operation):
         return self.tiles[1]
 
     def __str__(self):
-        reg_chars = ['a','b','c']
-        vladims = sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ])
-        vlenstr = ""
-        if 0 < vladims:
-            vlenstr = "*VLEN"*vladims
-        ar_str = f"{reg_chars[self.rtype_idx]}a{self.addr_idx}"
-        return f"{ar_str} <- {ar_str} + {self.off}{vlenstr}"
+        rtype_char = string.ascii_lowercase[self.rtype_idx]
+        ar_str = f"{rtype_char}a{self.addr_idx}"
+        return f"{ar_str} <- {ar_str} + {self.off}"
 
 class lsc_debugmsg(lsc_operation):
     def __init__(self, msg : str):

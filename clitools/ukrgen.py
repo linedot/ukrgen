@@ -23,9 +23,11 @@ from asmgen.registers import (
         reg_tracker
         )
 from ukrgen.specializers.asm import lsc_specializer
-from ukrgen.components import simple_ukr_tile,dimension_type,dimension_properties
+from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_properties
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
+from ukrgen.models.load_store_operations import lsc_offset
+from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.schedulers import simple_dependency_scheduler
 
 
@@ -237,11 +239,35 @@ def main():
 
     lsc_args,rest = parse_lsc_args(args=rest)
 
+
+    addr_indices = [[i for i in range(count)]
+                    for count in [lsc_args.a_addr_regs,
+                                  lsc_args.b_addr_regs,
+                                  lsc_args.c_addr_regs]]
+
+    zo = lsc_offset.zero_offset()
+
+    off_vmax = lsc_offset([],[gen.max_load_voff],0)
+    off_vmaxp1 = lsc_offset([],[gen.max_load_voff+1],0)
     addr_offset_ranges=[
-        [(0,gen.max_load_voff) for i in range(lsc_args.a_addr_regs)], 
-        [(0,gen.max_load_voff) for i in range(lsc_args.b_addr_regs)], 
-        [(0,gen.max_load_voff) for i in range(lsc_args.c_addr_regs)], 
+        [(zo,off_vmax) for i in range(count)] \
+            for count in [lsc_args.a_addr_regs,
+                          lsc_args.b_addr_regs,
+                          lsc_args.c_addr_regs]
     ]
+    addr_offset_steps=[
+        [off_vmaxp1 for i in range(count)] \
+            for count in [lsc_args.a_addr_regs,
+                          lsc_args.b_addr_regs,
+                          lsc_args.c_addr_regs]
+    ]
+    addr_offset_starts=[
+        [lsc_offset([],[i*t.dima.size],0) for i in addr_regs]
+        for t,addr_regs in zip(
+            [sup.a_tile,sup.b_tile,sup.c_tile],
+            addr_indices
+            )
+        ]
 
     is_tile_scalar = lambda t : t.dima.dt == dimension_type.fixed and \
                                 t.dima.size == 1 and \
@@ -249,11 +275,38 @@ def main():
                                 t.dimb.size == 1
 
     if is_tile_scalar(sup.a_tile):
-        addr_offset_ranges[0] = [(0,gen.max_fload_immoff(dt=sup.triple.a)) for i in range(lsc_args.a_addr_regs)]
+        addr_offset_ranges[0] = [(zo,
+                                  lsc_offset([],[],
+                                             gen.max_fload_immoff(dt=sup.triple.a)))\
+                                                     for i in range(lsc_args.a_addr_regs)]
+        addr_offset_steps[0] = [lsc_offset([],[],
+                                           gen.max_fload_immoff(dt=sup.triple.a)+1)\
+                                                 for i in range(lsc_args.a_addr_regs)]
+        addr_offset_starts[0] = [lsc_offset([],[],
+                                            i*sup.a_tile.dima.size) \
+                                                    for i in addr_indices[0]]
     if is_tile_scalar(sup.b_tile):
-        addr_offset_ranges[1] = [(0,gen.max_fload_immoff(dt=sup.triple.b)) for i in range(lsc_args.b_addr_regs)]
+        addr_offset_ranges[1] = [(zo,
+                                  lsc_offset([],[],
+                                             gen.max_fload_immoff(dt=sup.triple.b)))\
+                                                     for i in range(lsc_args.b_addr_regs)]
+        addr_offset_steps[1] = [lsc_offset([],[],
+                                           gen.max_fload_immoff(dt=sup.triple.b)+1)\
+                                                 for i in range(lsc_args.b_addr_regs)]
+        addr_offset_starts[1] = [lsc_offset([],[],
+                                            i*sup.b_tile.dima.size) \
+                                                    for i in addr_indices[1]]
     if is_tile_scalar(sup.c_tile):
-        addr_offset_ranges[2] = [(0,gen.max_fload_immoff(dt=sup.triple.c)) for i in range(lsc_args.c_addr_regs)]
+        addr_offset_ranges[2] = [(zo,
+                                  lsc_offset([],[],
+                                             gen.max_fload_immoff(dt=sup.triple.c)))\
+                                                     for i in range(lsc_args.c_addr_regs)]
+        addr_offset_steps[2] = [lsc_offset([],[],
+                                           gen.max_fload_immoff(dt=sup.triple.c)+1)\
+                                                 for i in range(lsc_args.c_addr_regs)]
+        addr_offset_starts[2] = [lsc_offset([],[],
+                                            i*sup.c_tile.dima.size) \
+                                                    for i in addr_indices[2]]
 
 
     # Ensure the specializer doesn't generate impossible voffsets for loads/stores of
@@ -262,38 +315,61 @@ def main():
         for i in range(len(addr_offset_ranges[2])):
             addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],addr_offset_ranges[2][i][1]//ways)
 
+    def flat_mapper(t : tile, flat_idx : int):
+        if (t.dima.dt == dimension_type.vla) != \
+           (t.dimb.dt == dimension_type.vla):
+               return lsc_offset([],[flat_idx],0)
+        elif (t.dima.dt == dimension_type.vla) and \
+             (t.dimb.dt == dimension_type.vla):
+               return lsc_offset([],[0,flat_idx],0)
+        elif (t.dima.dt != dimension_type.vla) and \
+             (t.dimb.dt != dimension_type.vla):
+               return lsc_offset([],[],flat_idx)
 
-    ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
-    b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]
+        raise ValueError("Unhandled case in tile offset mapper")
 
+    # Everything contiguous
+    def ac_mapper(t : tile, idx : tuple[int,int]):
+        flat_idx = t.dima.size*m*idx[1]+idx[0]
+        return flat_mapper(t,flat_idx)
+
+    def b_mapper(t : tile, idx : tuple[int,int]):
+        flat_idx = t.dima.size*n*idx[0]+idx[1]
+        return flat_mapper(t,flat_idx)
+
+    #ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
+    #b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]
+
+    ar = addr_resolver(indices=addr_indices,
+                       starting_offsets=addr_offset_starts,
+                       offset_ranges = addr_offset_ranges,
+                       steps=addr_offset_steps)
     model = load_store_cpu(res_counts=[lsc_args.a_data_regs,
                                        lsc_args.b_data_regs,
                                        lsc_args.c_data_regs],
                            res_steps=[1,1,1],
-                           addr_counts=[lsc_args.a_addr_regs,
-                                       lsc_args.b_addr_regs,
-                                       lsc_args.c_addr_regs],
-                           addr_offset_ranges=addr_offset_ranges,
-                           addr_starts=[
-                               [i*sup.a_tile.dima.size for i in range(lsc_args.a_addr_regs)],
-                               [i*sup.b_tile.dima.size for i in range(lsc_args.b_addr_regs)],
-                               [i*sup.c_tile.dima.size for i in range(lsc_args.c_addr_regs)]
-                               ],
+                           ar=ar,
                            preload_counts=[lsc_args.a_preload,
                                            lsc_args.b_preload,
                                            lsc_args.c_data_regs],
                            offset_mappers=[ac_mapper,b_mapper,ac_mapper],
                            op=args.op)
 
-    mm_ops_next = genmm.generate(add_dims=[0,0,0,0,0,k])
-    #print("\n".join(map(str,inspector(mm_ops_next))))
+    mm_ops_p1k = genmm.generate(add_dims=[0,0,0,0,0,k])
+    mm_ops_p2k = genmm.generate(add_dims=[0,0,0,0,0,2*k])
+    #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
-    preload = model.preload(mm_ops)
+    print("DEBUG: TRANSFORMING PRELOAD")
+    preload = model.preload(ops=mm_ops,next_ops=mm_ops_p1k)
+    print("DEBUG: TRANSFORMING MAIN BLOCK")
     mainblock = model(mm_ops)
-    storeblock = model.store_modified()
-    preload_mb = model.preload(mm_ops_next,
+    print("DEBUG: TRANSFORMING NEXTITER PRELOAD")
+    preload_mb = model.preload(mm_ops_p1k,
+                               mm_ops_p2k,
                                zero_addrs=False,
                                ignore_dims=[2])
+    print("DEBUG: TRANSFORMING STORE BLOCK")
+    storeblock = model.store_modified()
 
     print("################### PSEUDO-ASM ###################")
     print("\n".join(map(str,preload)))

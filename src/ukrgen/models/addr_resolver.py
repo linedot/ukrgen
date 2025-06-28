@@ -60,9 +60,33 @@ class addr_resolver:
         self.indices=indices
         self.starting_offsets=starting_offsets
         self.current_offsets=deepcopy(self.starting_offsets) 
+        self.last_resolved_offsets=[ { i : None \
+                for i in idx_list} \
+                for idx_list in self.indices]
         self.offset_ranges=offset_ranges
         self.steps = steps
-        self.max_incs = 2
+        self.max_incs = max_incs
+
+    def zero_current_offsets(self):
+        zo = lsc_offset.zero_offset()
+        self.current_offsets = [[zo for i in offlist ] for offlist in self.current_offsets]
+
+    def get_addr_adds_for_new_offsets(self, start_list : list[int] = None):
+        if None == start_list:
+            new_offsets=deepcopy(self.starting_offsets)
+        else:
+            new_offsets = [
+                [first+start if first else start for start in start_list] \
+                for first,start_list in zip(start_list, self.starting_offsets)
+            ]
+
+        result = []
+        for rtype_idx,(newlist,oldlist) in enumerate(zip(new_offsets,self.current_offsets)):
+            for idx,coff,toff in zip(self.indices[rtype_idx],oldlist,newlist):
+                if toff != coff:
+                    result.append(addr_add(rtype_idx=rtype_idx,addr_idx=idx,offset=toff-coff))
+
+        return result
 
 
     def toff_in_range(self, caoff : lsc_offset, toff : lsc_offset,
@@ -108,14 +132,22 @@ class addr_resolver:
         """
 
         addr_adds = []
+        rtype_char = string.ascii_lowercase[rtype_idx]
 
         addr_reg_count = len(self.indices[rtype_idx])
-        addr_idx_to_use = -1
+        addr_idx_to_use = None
         incs_to_do = self.max_incs
         off = lsc_offset(reg_strides=[],
                          vlen_strides=[],
                          immoff=0)
-        while -1 == addr_idx_to_use and 0 < incs_to_do:
+        
+        print(f"Current {rtype_char} offsets:")
+        for addr_list_idx in range(addr_reg_count):
+            caoff = self.current_offsets[rtype_idx][addr_list_idx]
+            print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+        
+        print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
+        while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
             caoff_min_list_idx = 0
@@ -141,23 +173,37 @@ class addr_resolver:
                     break
 
 
-            if -1 != addr_idx_to_use:
+            if not addr_idx_to_use is None:
                 break
 
-
+            incs_to_do -= 1
             if incs_to_do <= 0:
-                raise RuntimeError(f"Target offset not in range after {self.max_incs} address adds")
+                print("current offsets:")
+                for addr_list_idx in range(addr_reg_count):
+                    caoff = current_offsets[addr_list_idx]
+                    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+
+                print(f"Target offset: {toff}")
+                print(f"offset ranges:")
+                for addr_list_idx in range(addr_reg_count):
+                    minoff = self.offset_ranges[rtype_idx][addr_list_idx][0]
+                    maxoff = self.offset_ranges[rtype_idx][addr_list_idx][1]
+                    print(f"  {rtype_char}a{addr_list_idx} : [{minoff},{maxoff}]")
+                raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
             # this could be an alternative cotnrolled by a parameter?
             # add_value = toff - offset_min
 
             add_value = self.steps[rtype_idx][caoff_min_list_idx]
+            print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
             new_add = addr_add(rtype_idx=rtype_idx,
                                addr_idx=self.indices[rtype_idx][caoff_min_list_idx],
                                offset=add_value)
             addr_adds.append(new_add)
 
             self.current_offsets[rtype_idx][caoff_min_list_idx] += add_value
-            incs_to_do -= 1
+
+
+        self.last_resolved_offsets[rtype_idx][addr_idx_to_use] = off
 
         return addr_adds,addr_idx_to_use,off
