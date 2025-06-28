@@ -188,11 +188,11 @@ class lsc_specializer:
         dt_bytes = adt_size(dt)
         if data_t.dima.dt == dimension_type.vla or\
            data_t.dimb.dt == dimension_type.vla:
-            factor = op.off
+            factor = op.off.vlen_strides[0]
 
-            if factor.vlen_strides[0] < self.gen.max_add_voff:
+            if factor < self.gen.max_add_voff:
                 return self.gen.add_greg_voff(reg=areg, 
-                                              offset=factor.vlen_strides[0], 
+                                              offset=factor, 
                                               dt=triple[op.rtype_idx])
 
             vxnalias = "vlen"
@@ -207,7 +207,7 @@ class lsc_specializer:
 
         return self.gen.add_greg_imm(
             reg=areg,
-            imm=op.off*dt_bytes)
+            imm=op.off.immoff*dt_bytes)
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
                        triple : adt_triple,
@@ -523,14 +523,14 @@ class lsc_specializer:
                             continue
                         if oaddmaxv > op.off:
                             continue
-                        self.vlenadds.add(op.off)
+                        self.vlenadds.add(op.off.vlen_strides[0])
                         #print(f"aliasing vlenx{op.off}")
                         regidx = self.rt.reserve_any_reg('greg')
                         self.rt.alias_reg('greg',
-                                          f"vlenx{op.off}",
+                                          f"vlenx{op.off.vlen_strides[0]}",
                                           regidx)
                 else:
-                    self.byteadds.add(op.off)
+                    self.byteadds.add(op.off.immoff)
             elif isinstance(op, lsc_transformation):
                 self.ops_used.append(op.op)
                 for i,(residx,t) in enumerate(zip(op.res_indices,op.tiles)):
