@@ -246,68 +246,56 @@ def main():
                                   lsc_args.b_addr_regs,
                                   lsc_args.c_addr_regs]]
 
-    zo = lsc_offset.zero_offset()
-
-    off_vmax = lsc_offset([],[gen.max_load_voff],0)
-    off_vmaxp1 = lsc_offset([],[gen.max_load_voff+1],0)
-    addr_offset_ranges=[
-        [(zo,off_vmax) for i in range(count)] \
-            for count in [lsc_args.a_addr_regs,
-                          lsc_args.b_addr_regs,
-                          lsc_args.c_addr_regs]
-    ]
-    addr_offset_steps=[
-        [off_vmaxp1 for i in range(count)] \
-            for count in [lsc_args.a_addr_regs,
-                          lsc_args.b_addr_regs,
-                          lsc_args.c_addr_regs]
-    ]
-    addr_offset_starts=[
-        [lsc_offset([],[i*t.dima.size],0) for i in addr_regs]
-        for t,addr_regs in zip(
-            [sup.a_tile,sup.b_tile,sup.c_tile],
-            addr_indices
-            )
-        ]
 
     is_tile_scalar = lambda t : t.dima.dt == dimension_type.fixed and \
                                 t.dima.size == 1 and \
                                 t.dimb.dt == dimension_type.fixed and \
                                 t.dimb.size == 1
 
-    if is_tile_scalar(sup.a_tile):
-        addr_offset_ranges[0] = [(zo,
-                                  lsc_offset([],[],
-                                             gen.max_fload_immoff(dt=sup.triple.a)))\
-                                                     for i in range(lsc_args.a_addr_regs)]
-        addr_offset_steps[0] = [lsc_offset([],[],
-                                           gen.max_fload_immoff(dt=sup.triple.a)+1)\
-                                                 for i in range(lsc_args.a_addr_regs)]
-        addr_offset_starts[0] = [lsc_offset([],[],
-                                            i*sup.a_tile.dima.size) \
-                                                    for i in addr_indices[0]]
-    if is_tile_scalar(sup.b_tile):
-        addr_offset_ranges[1] = [(zo,
-                                  lsc_offset([],[],
-                                             gen.max_fload_immoff(dt=sup.triple.b)))\
-                                                     for i in range(lsc_args.b_addr_regs)]
-        addr_offset_steps[1] = [lsc_offset([],[],
-                                           gen.max_fload_immoff(dt=sup.triple.b)+1)\
-                                                 for i in range(lsc_args.b_addr_regs)]
-        addr_offset_starts[1] = [lsc_offset([],[],
-                                            i*sup.b_tile.dima.size) \
-                                                    for i in addr_indices[1]]
-    if is_tile_scalar(sup.c_tile):
-        addr_offset_ranges[2] = [(zo,
-                                  lsc_offset([],[],
-                                             gen.max_fload_immoff(dt=sup.triple.c)))\
-                                                     for i in range(lsc_args.c_addr_regs)]
-        addr_offset_steps[2] = [lsc_offset([],[],
-                                           gen.max_fload_immoff(dt=sup.triple.c)+1)\
-                                                 for i in range(lsc_args.c_addr_regs)]
-        addr_offset_starts[2] = [lsc_offset([],[],
-                                            i*sup.c_tile.dima.size) \
-                                                    for i in addr_indices[2]]
+    is_tile_vla_vector = lambda t : (t.dima.dt == dimension_type.vla and \
+                                     t.dima.size == 1 and \
+                                     t.dimb.dt == dimension_type.fixed and \
+                                     t.dimb.size == 1) or \
+                                    (t.dima.dt == dimension_type.fixed and \
+                                     t.dima.size == 1 and \
+                                     t.dimb.dt == dimension_type.vla and \
+                                     t.dimb.size == 1)
+
+    is_tile_vla_tile = lambda t : (t.dima.dt == dimension_type.vla and \
+                                   t.dima.size == 1 and \
+                                   t.dimb.dt == dimension_type.vla and \
+                                   t.dimb.size == 1)
+
+    zo = lsc_offset.zero_offset()
+    addr_offset_ranges=[]
+    addr_offset_steps=[]
+    addr_offset_starts=[]
+    for i,(t,dt,count) in enumerate(zip(
+        [sup.a_tile,
+         sup.b_tile,
+         sup.c_tile],
+        [sup.triple.a,
+         sup.triple.b,
+         sup.triple.c],
+        [lsc_args.a_addr_regs,
+         lsc_args.b_addr_regs,
+         lsc_args.c_addr_regs]
+        )):
+        if is_tile_vla_tile(t):
+            vmax=gen.max_load_voff
+            addr_offset_ranges.append([(zo, lsc_offset([],[0,vmax],0)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset([],[0,(vmax+1)*count],0) for j in range(count)])
+            addr_offset_starts.append([lsc_offset([],[0,j*t.dima.size],0) for j in addr_indices[i]])
+        elif is_tile_vla_vector(t):
+            vmax=gen.max_load_voff
+            addr_offset_ranges.append([(zo, lsc_offset([],[vmax],0)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset([],[(vmax+1)*count],0) for j in range(count)])
+            addr_offset_starts.append([lsc_offset([],[j*t.dima.size],0) for j in addr_indices[i]])
+        elif is_tile_scalar(t):
+            imax=gen.max_fload_immoff(dt=dt)
+            addr_offset_ranges.append([(zo, lsc_offset([],[],imax)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset([],[],(imax+1)*count) for j in range(count)])
+            addr_offset_starts.append([lsc_offset([],[],j*t.dima.size) for j in addr_indices[i]])
 
 
     # Ensure the specializer doesn't generate impossible voffsets for loads/stores of
