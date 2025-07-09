@@ -75,6 +75,9 @@ class lsc_specializer:
         self.transformations[lsc_treg_row_load] = self.transform_trow_load
         self.transformations[lsc_treg_row_store] = self.transform_trow_store
 
+    def set_model(self, model : load_store_cpu):
+        self.model = model
+
     def determine_dreg_tag(self, dima : dimension_properties, dimb : dimension_properties) -> str:
 
         dreg_tag = 'vreg'
@@ -196,7 +199,7 @@ class lsc_specializer:
                                               dt=triple[op.rtype_idx])
 
             vxnalias = "vlen"
-            o1v = lsc_offset([], [1], 0)
+            o1v = lsc_offset({},[], [1], 0)
             if op.off > o1v:
                 vxnalias = f"vlenx{factor}"
             vlen_idx = self.rt.aliased_regs['greg'][vxnalias]
@@ -513,8 +516,8 @@ class lsc_specializer:
 
             if isinstance(op, lsc_addr_add):
 
-                o1v = lsc_offset([], [1], 0)
-                oaddmaxv = lsc_offset([], [self.gen.max_add_voff], 0)
+                o1v = lsc_offset({},[], [1], 0)
+                oaddmaxv = lsc_offset({},[], [self.gen.max_add_voff], 0)
                 # vlen/byte adds
                 if op.t.dima.dt == dimension_type.vla\
                     or op.t.dimb.dt == dimension_type.vla:
@@ -557,16 +560,23 @@ class lsc_specializer:
         #   like in RVV everywhere where you need multiple of ways as reg index
         ways = adt_size(triple.c)//adt_size(triple.a)
         split_instructions = False
+        vec_groups = False
         if ways > 1:
             wms = [getattr(self.gen, op, None).widening_method for op in self.ops_used if getattr(self.gen, op, None) != None]
             if any([wmtd==wm.SPLIT_INSTRUCTIONS for wmtd in wms]):
                 split_instructions = True
+            if any([wmtd==wm.VEC_GROUP for wmtd in wms]):
+                vec_groups = True
 
         c_index = 2
 
 
         stls = special_treg_ldst()
         need_stls = False
+
+
+        # Hack, needs addr_resolve rewrite to accomodate offset modification
+        modified_c_offsets = {}
 
         result_ops = []
         for op in ops:
@@ -598,7 +608,10 @@ class lsc_specializer:
 
                     continue
             has_c = False
-            if split_instructions:
+            for i,idx_list in enumerate(op.indices):
+                if idx_list[0] == c_index:
+                    has_c = True
+            if split_instructions or vec_groups:
                 for i,idx_list in enumerate(op.indices):
                     if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
                         op.indices[i][1] *=ways
@@ -608,7 +621,17 @@ class lsc_specializer:
                         has_c = True
                 if isinstance(op, lsc_addr_add):
                     if op.rtype_idx == c_index:
-                        op.off *= ways
+                        multoff = sum([deepcopy(op.off) for j in \
+                                range(ways)],lsc_offset.zero_offset())
+                        self.vlenadds.add(multoff.vlen_strides[0])
+                        op.off = multoff
+            # Part of the offset hack that needs addr_resolver rework
+            if has_c and isinstance(op, (lsc_load,lsc_store,lsc_addr_add)):
+                if op.addr_idx in modified_c_offsets.keys():
+                    modoff = modified_c_offsets[op.addr_idx]
+                    if lsc_offset.zero_offset() != modoff:
+                        op.off -= modoff
+                        modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
             if has_c and split_instructions:
                 if need_stls:
                     raise NotImplementedError("split instruction and special tile ld/st not implemented")
@@ -620,8 +643,47 @@ class lsc_specializer:
                     if isinstance(op, lsc_transformation):
                         part_op.op += f"{i}"
                     if isinstance(op, (lsc_load,lsc_store)):
-                        part_op.off = part_op.off*ways+i
+                        baseoff = sum([part_op.off for j in range(ways)])
+                        addoff = sum([part_op.off for j in range(i)])
+                        part_op.off = baseoff+addoff
                     result_ops.append(part_op)
+            if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
+                for i in range(ways):
+                    group_op = copy.deepcopy(op)
+                    for j,idx_list in enumerate(group_op.indices):
+                        if idx_list[0] == c_index and \
+                                lsc_reg_type.data == group_op.reg_types[j]:
+                            group_op.indices[j][1] += i
+
+                    if isinstance(op, (lsc_load,lsc_store)):
+                        baseoff = sum([group_op.off for j in \
+                                range(ways)],lsc_offset.zero_offset())
+
+                        one_off= self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
+
+                        # TODO: mechanism for sending this back to addr_resolver.
+                        #       For now assume this works
+                        addoff = sum([one_off for j in \
+                                range(i)],lsc_offset.zero_offset())
+                        allowed = self.model.ar.toff_in_range(
+                            caoff=baseoff,
+                            toff=baseoff+addoff,
+                            offset_range=self.model.ar.offset_ranges[group_op.rtype_idx][group_op.addr_idx])
+                        if not allowed:
+                            result_ops.append(
+                                    lsc_addr_add(
+                                        op.rtype_idx,
+                                        op.addr_idx,
+                                        addoff,
+                                        group_op.t))
+                            group_op.off = baseoff
+                            if op.addr_idx not in modified_c_offsets:
+                                modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
+                            modified_c_offsets[op.addr_idx] += addoff
+                        else:
+                            group_op.off = baseoff+addoff
+                        # Dang, now the next offset add will be wrong...
+                    result_ops.append(group_op)
             else:
                 result_ops.append(op)
         if need_stls:
@@ -683,13 +745,16 @@ class lsc_specializer:
                 # asmblock += f"// todo: init {reg_alias}\n"
                 asmblock += self.gen.asmwrap(f"; {self.gen.greg(aregidx)} = {reg_alias}")
 
+
         # reserve data registers
         for rtype_idx in self.data_registers.keys():
+
             rtype_char = string.ascii_lowercase[rtype_idx]
-            for aidx in self.data_registers[rtype_idx]:
-                reg_alias = f"{rtype_char}{aidx}"
+            for didx in self.data_registers[rtype_idx]:
+                reg_alias = f"{rtype_char}{didx}"
                 dreg_tag = self.data_tags[rtype_idx]
                 dregidx = self.rt.reserve_any_reg(dreg_tag)
+
                 self.rt.alias_reg(dreg_tag, reg_alias, dregidx)
 
                 dt = triple.__dict__[string.ascii_lowercase[rtype_idx]]

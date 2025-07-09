@@ -20,7 +20,7 @@ from ukrgen.components import (
 from ukrgen.generators import mm,order2D
 from ukrgen.models import load_store_cpu,addr_resolver
 from ukrgen.models.load_store_operations import lsc_offset
-from ukrgen.models.tile_offset_mapper import flat_mapper
+from ukrgen.models.offset_mapper import flat_mapper
 
 from ukrgen.specializers.asm import lsc_specializer
 

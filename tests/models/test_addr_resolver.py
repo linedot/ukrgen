@@ -11,9 +11,8 @@ from ukrgen.models.load_store_operations import lsc_offset
 from ukrgen.models.addr_resolver import addr_resolver,addr_add
 
 class test_addr_resolver(unittest.TestCase):
-    zero_offset = lsc_offset(reg_strides=[], vlen_strides=[], immoff=0)
     def test_zerorange(self):
-        zo = self.zero_offset
+        zo = lsc_offset.zero_offset()
 
         ar = addr_resolver(indices=[[0,1]],
                            starting_offsets=[[zo,zo]],
@@ -29,9 +28,9 @@ class test_addr_resolver(unittest.TestCase):
 
     def test_s2v_r1v(self):
 
-        zo = self.zero_offset
-        o2v = lsc_offset([], [2], 0)
-        o1v = lsc_offset([], [1], 0)
+        zo = lsc_offset.zero_offset()
+        o2v = lsc_offset({}, [], [2], 0)
+        o1v = lsc_offset({}, [], [1], 0)
 
         ar = addr_resolver(indices=[[0]],
                            starting_offsets=[[zo]],
@@ -52,7 +51,7 @@ class test_addr_resolver(unittest.TestCase):
         ]
 
         for i in range(0,8):
-            toff = lsc_offset([], [i], 0)
+            toff = lsc_offset({}, [], [i], 0)
 
             addr_adds,idx,off = ar.resolve_addr(0, toff)
             e_addr_adds,e_idx,e_off = expected_tuples[i]
@@ -64,10 +63,10 @@ class test_addr_resolver(unittest.TestCase):
 
     def test_a2_s4v_r1v_so2v(self):
 
-        zo = self.zero_offset
-        o4v = lsc_offset([], [4], 0)
-        o2v = lsc_offset([], [2], 0)
-        o1v = lsc_offset([], [1], 0)
+        zo = lsc_offset.zero_offset()
+        o4v = lsc_offset({},[], [4], 0)
+        o2v = lsc_offset({},[], [2], 0)
+        o1v = lsc_offset({},[], [1], 0)
 
         ar = addr_resolver(indices=[[0,1]],
                            starting_offsets=[[zo,o2v]],
@@ -89,7 +88,7 @@ class test_addr_resolver(unittest.TestCase):
         ]
 
         for i in range(0,8):
-            toff = lsc_offset([], [i], 0)
+            toff = lsc_offset({},[], [i], 0)
 
             addr_adds,idx,off = ar.resolve_addr(0, toff)
             e_addr_adds,e_idx,e_off = expected_tuples[i]
@@ -100,12 +99,12 @@ class test_addr_resolver(unittest.TestCase):
 
     def test_a4_s8v_r1v_so2v(self):
 
-        zo = self.zero_offset
-        o8v = lsc_offset([], [8], 0)
-        o6v = lsc_offset([], [6], 0)
-        o4v = lsc_offset([], [4], 0)
-        o2v = lsc_offset([], [2], 0)
-        o1v = lsc_offset([], [1], 0)
+        zo = lsc_offset.zero_offset()
+        o8v = lsc_offset({},[], [8], 0)
+        o6v = lsc_offset({},[], [6], 0)
+        o4v = lsc_offset({},[], [4], 0)
+        o2v = lsc_offset({},[], [2], 0)
+        o1v = lsc_offset({},[], [1], 0)
 
         ar = addr_resolver(indices=[[0,1,2,3]],
                            starting_offsets=[[zo,o2v,o4v,o6v]],
@@ -127,7 +126,7 @@ class test_addr_resolver(unittest.TestCase):
         ]
 
         for i in range(0,8):
-            toff = lsc_offset([], [i], 0)
+            toff = lsc_offset({},[], [i], 0)
 
             addr_adds,idx,off = ar.resolve_addr(0, toff)
             e_addr_adds,e_idx,e_off = expected_tuples[i]
@@ -138,12 +137,12 @@ class test_addr_resolver(unittest.TestCase):
 
     def test_a4_s8v_r1v_so2v_16iter(self):
 
-        zo = self.zero_offset
-        o8v = lsc_offset([], [8], 0)
-        o6v = lsc_offset([], [6], 0)
-        o4v = lsc_offset([], [4], 0)
-        o2v = lsc_offset([], [2], 0)
-        o1v = lsc_offset([], [1], 0)
+        zo = lsc_offset.zero_offset()
+        o8v = lsc_offset({},[], [8], 0)
+        o6v = lsc_offset({},[], [6], 0)
+        o4v = lsc_offset({},[], [4], 0)
+        o2v = lsc_offset({},[], [2], 0)
+        o1v = lsc_offset({},[], [1], 0)
 
         ar = addr_resolver(indices=[[0,1,2,3]],
                            starting_offsets=[[zo,o2v,o4v,o6v]],
@@ -175,7 +174,7 @@ class test_addr_resolver(unittest.TestCase):
         ]
 
         for i in range(0,8):
-            toff = lsc_offset([], [i], 0)
+            toff = lsc_offset({},[], [i], 0)
 
             addr_adds,idx,off = ar.resolve_addr(0, toff)
             e_addr_adds,e_idx,e_off = expected_tuples[i]
@@ -186,15 +185,15 @@ class test_addr_resolver(unittest.TestCase):
 
     def test_abc_a211_s4v2i2v_r3v1i1v_so2v1i1v(self):
 
-        zo = self.zero_offset
-        o8v = lsc_offset([], [8], 0)
-        o6v = lsc_offset([], [6], 0)
-        o4v = lsc_offset([], [4], 0)
-        o2v = lsc_offset([], [2], 0)
-        o1v = lsc_offset([], [1], 0)
+        zo = lsc_offset.zero_offset()
+        o8v = lsc_offset({},[], [8], 0)
+        o6v = lsc_offset({},[], [6], 0)
+        o4v = lsc_offset({},[], [4], 0)
+        o2v = lsc_offset({},[], [2], 0)
+        o1v = lsc_offset({},[], [1], 0)
 
-        o2i = lsc_offset([],[],2)
-        o1i = lsc_offset([],[],1)
+        o2i = lsc_offset({},[],[],2)
+        o1i = lsc_offset({},[],[],1)
 
         ar = addr_resolver(indices=[[0,1],[0],[0]],
                            starting_offsets=[[zo,o2v],[zo],[zo]],
@@ -240,7 +239,7 @@ class test_addr_resolver(unittest.TestCase):
         ]
 
         for i in range(0,8):
-            toff = lsc_offset([], [i], 0)
+            toff = lsc_offset({},[], [i], 0)
             addr_adds,idx,off = ar.resolve_addr(0, toff)
             rtype_char = string.ascii_lowercase[0]
             e_addr_adds,e_idx,e_off = expected_a_tuples[i]
@@ -248,7 +247,7 @@ class test_addr_resolver(unittest.TestCase):
             self.assertEqual(idx, e_idx)
             self.assertEqual(off, e_off)
 
-            toff = lsc_offset([], [], i)
+            toff = lsc_offset({},[], [], i)
             addr_adds,idx,off = ar.resolve_addr(1, toff)
             rtype_char = string.ascii_lowercase[1]
             e_addr_adds,e_idx,e_off = expected_b_tuples[i]
@@ -256,7 +255,7 @@ class test_addr_resolver(unittest.TestCase):
             self.assertEqual(idx, e_idx)
             self.assertEqual(off, e_off)
 
-            toff = lsc_offset([], [], i//2)
+            toff = lsc_offset({},[], [], i//2)
             addr_adds,idx,off = ar.resolve_addr(2, toff)
             rtype_char = string.ascii_lowercase[2]
             e_addr_adds,e_idx,e_off = expected_c_tuples[i]

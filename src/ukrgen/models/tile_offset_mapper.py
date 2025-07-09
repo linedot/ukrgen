@@ -22,13 +22,13 @@ class flat_mapper(tile_offset_mapper):
     def get_idx(self, t : tile, flat_idx : int):
         if (t.dima.dt == dimension_type.vla) != \
            (t.dimb.dt == dimension_type.vla):
-               return lsc_offset([],[flat_idx],0)
+               return lsc_offset({},[],[flat_idx],0)
         elif (t.dima.dt == dimension_type.vla) and \
              (t.dimb.dt == dimension_type.vla):
-               return lsc_offset([],[0,flat_idx],0)
+               return lsc_offset({},[],[0,flat_idx],0)
         elif (t.dima.dt != dimension_type.vla) and \
              (t.dimb.dt != dimension_type.vla):
-               return lsc_offset([],[],flat_idx)
+               return lsc_offset({},[],[],flat_idx)
 
         raise ValueError("Unhandled case in tile offset mapper")
 

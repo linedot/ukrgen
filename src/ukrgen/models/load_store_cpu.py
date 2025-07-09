@@ -24,7 +24,7 @@ from .load_store_operations import (
     lsc_zero,
 )
 
-from .tile_offset_mapper import tile_offset_mapper
+from .offset_mapper import offset_mapper
 
 from .addr_resolver import addr_resolver
 
@@ -42,7 +42,7 @@ class load_store_cpu:
                  res_steps : list[int],
                  ar : addr_resolver,
                  preload_counts : list[int],
-                 offset_mappers : list[tile_offset_mapper],
+                 offset_mappers : list[offset_mapper],
                  resolve_order : list[int] = [0,1,2],
                  op : str = "fma"):
 
@@ -93,10 +93,12 @@ class load_store_cpu:
         #    self.cdos[rtype_idx][res_idx] = toff
         #    corg = toff
         rtype_char = string.ascii_lowercase[rtype_idx]
+
+        print(f"Resolving {toff} into {rtype_char}{res_idx}")
         if (not corg is None) and \
                 (not lsc_state.invalid == self.states[rtype_idx][res_idx]):
             if corg == toff:
-                #print(f"{rtype_char}{res_idx} already has offset {toff}")
+                print(f"{rtype_char}{res_idx} already has offset {toff}")
                 return result
 
         # store if dirty
@@ -121,7 +123,7 @@ class load_store_cpu:
                                        off=add.offset,
                                        t=t))
 
-        #print(f"Updating {rtype_char}{res_idx} off to {toff}")
+        print(f"Updating {rtype_char}{res_idx} off to {toff}")
         self.cdos[rtype_idx][res_idx] = toff
         self.states[rtype_idx][res_idx] = lsc_state.loaded
 
@@ -189,7 +191,7 @@ class load_store_cpu:
             b_idx = (b_idx[0], b_idx[1]+n_subidx)
 
         indices = [a_idx,b_idx,c_idx]
-        target_offsets = [ mapper(tile,idx) for  mapper,tile,idx in\
+        target_offsets = [ mapper.map_tile_idx(tile,idx) for  mapper,tile,idx in\
                 zip(self.offset_mappers,tiles,indices)]
 
         result = []
@@ -210,10 +212,14 @@ class load_store_cpu:
 
             #result.append(lsc_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
 
+            rtype_char = string.ascii_lowercase[i]
             # check if any of the registers have the data
             for j in range(res_count):
+                print(f"Looking for {toff}, {rtype_char}{j} has {dos[j]}")
                 if dos[j] is None:
                     continue
+                print(f"toff-caoff ={toff-dos[j]}")
+                print(f"{dos[j].sxv_strides.keys()}")
                 if (toff == dos[j]):
                     res_idx = j
                     break

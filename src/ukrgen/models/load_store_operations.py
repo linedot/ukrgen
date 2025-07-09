@@ -14,6 +14,26 @@ class lsc_reg_type(Enum):
     address = auto()
     data = auto()
 
+# TODO: fractional offsets
+class fraction:
+    def __init__(self, nom : int, div : int = 1):
+        self.nom = nom
+        self.div = div
+
+
+class stridexvlen:
+    def __init__(self, stride_id : int, vlen_pow_id : int):
+        self.stride_id = stride_id
+        self.vlen_pow_id = vlen_pow_id
+
+    def __eq__(self, other):
+        return self.stride_id == other.stride_id and \
+               self.vlen_pow_id == other.vlen_pow_id
+    def __str__(self):
+        return f"stride{self.stride_id}*VLEN^{self.vlen_pow_id}"
+    def __hash__(self):
+        return hash(str(self))
+
 class lsc_offset:
     """Offset for addresses
 
@@ -28,15 +48,26 @@ class lsc_offset:
 
     """
     def __init__(self,
+                 sxv_strides : dict[stridexvlen,int],
                  reg_strides : list[int],
                  vlen_strides : list[int],
                  immoff : int):
+        self.sxv_strides = sxv_strides
         self.reg_strides = reg_strides
         self.vlen_strides = vlen_strides
         self.immoff = immoff
 
     @classmethod
     def adjust_offlists(cls, one, other):
+
+        for key in one.sxv_strides.keys():
+            if key not in other.sxv_strides:
+                other.sxv_strides[key] = 0
+
+        for key in other.sxv_strides.keys():
+            if key not in one.sxv_strides:
+                one.sxv_strides[key] = 0
+
         l1 = len(one.reg_strides)
         l2 = len(other.reg_strides)
         if l1 > l2:
@@ -58,6 +89,8 @@ class lsc_offset:
         lsc_offset.adjust_offlists(self,other)
 
         return lsc_offset(
+            sxv_strides={key : self.sxv_strides[key]+other.sxv_strides[key]\
+                    for key in self.sxv_strides.keys()},
             reg_strides=[s+o for s,o in zip(self.reg_strides,other.reg_strides)],
             vlen_strides=[s+o for s,o in zip(self.vlen_strides,other.vlen_strides)],
             immoff=self.immoff+other.immoff)
@@ -70,6 +103,8 @@ class lsc_offset:
         lsc_offset.adjust_offlists(self,other)
 
         return lsc_offset(
+            sxv_strides={key : self.sxv_strides[key]-other.sxv_strides[key]\
+                    for key in self.sxv_strides.keys()},
             reg_strides=[s-o for s,o in zip(self.reg_strides,other.reg_strides)],
             vlen_strides=[s-o for s,o in zip(self.vlen_strides,other.vlen_strides)],
             immoff=self.immoff-other.immoff)
@@ -79,7 +114,9 @@ class lsc_offset:
         
         lsc_offset.adjust_offlists(self,other)
 
-        return all([comparison(s,o) for s,o in \
+        return all([comparison(self.sxv_strides[key],other.sxv_strides[key]) \
+                for key in self.sxv_strides]) and \
+               all([comparison(s,o) for s,o in \
                    zip(self.reg_strides,other.reg_strides)]) and \
                all([comparison(s,o) for s,o in \
                    zip(self.vlen_strides, other.vlen_strides)]) and \
@@ -90,7 +127,9 @@ class lsc_offset:
         
         lsc_offset.adjust_offlists(self,other)
 
-        return any([comparison(s,o) for s,o in \
+        return any([comparison(self.sxv_strides[key],other.sxv_strides[key]) \
+                for key in self.sxv_strides]) or \
+               any([comparison(s,o) for s,o in \
                    zip(self.reg_strides,other.reg_strides)]) or \
                any([comparison(s,o) for s,o in \
                    zip(self.vlen_strides, other.vlen_strides)]) or \
@@ -110,6 +149,11 @@ class lsc_offset:
 
     def __str__(self):
         result = ""
+        if self.sxv_strides:
+            rstr = "+".join([f"{val}*{key}" for key,val \
+                    in self.sxv_strides.items() if val != 0])
+            if rstr:
+                result += f"({rstr})+"
         if self.reg_strides:
             rstr = "+".join([f"{o}*stride{i}" for i,o in enumerate(self.reg_strides) if o != 0])
             if rstr:
@@ -126,7 +170,7 @@ class lsc_offset:
 
     @classmethod
     def zero_offset(cls):
-        return cls([],[],0)
+        return cls(dict(),[],[],0)
 
 class lsc_operation:
     def __init__(self,

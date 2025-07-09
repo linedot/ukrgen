@@ -20,7 +20,7 @@ from ukrgen.components import (
         )
 from ukrgen.generators import mm,order2D
 from ukrgen.models import load_store_cpu
-from ukrgen.models.tile_offset_mapper import flat_mapper
+from ukrgen.models.offset_mapper import flat_mapper
 from ukrgen.models.load_store_operations import lsc_offset
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.schedulers import simple_dependency_scheduler
@@ -126,8 +126,8 @@ class test_mm(unittest.TestCase):
         self.assertEqual(expected_sequence, list(map(str,mm_ops)))
 
         zo = lsc_offset.zero_offset()
-        o7i = lsc_offset([],[],7)
-        o8i = lsc_offset([],[],8)
+        o7i = lsc_offset({},[],[],7)
+        o8i = lsc_offset({},[],[],8)
                 
         ar = addr_resolver(indices=[[0],[0],[0]],
                            starting_offsets=[[zo],[zo],[zo]],
@@ -251,10 +251,10 @@ class test_mm(unittest.TestCase):
         b_mapper = flat_mapper(lambda t, idx : n*idx[0]+idx[1])
  
         zo = lsc_offset.zero_offset()
-        o1v = lsc_offset([],[1],0)
-        o2v = lsc_offset([],[2],0)
-        o7i = lsc_offset([],[],7)
-        o8i = lsc_offset([],[],8)
+        o1v = lsc_offset({},[],[1],0)
+        o2v = lsc_offset({},[],[2],0)
+        o7i = lsc_offset({},[],[],7)
+        o8i = lsc_offset({},[],[],8)
                 
         ar = addr_resolver(indices=[[0,1],[0],[0]],
                            starting_offsets=[[zo,o1v],[zo],[zo]],
@@ -496,11 +496,11 @@ class test_mm(unittest.TestCase):
         b_mapper = flat_mapper(lambda t, idx : n*idx[0]+idx[1])
  
         zo = lsc_offset.zero_offset()
-        o4i = lsc_offset([],[],4)
-        o7i = lsc_offset([],[],7)
-        o8i = lsc_offset([],[],8)
-        o255i = lsc_offset([],[],255)
-        o256i = lsc_offset([],[],256)
+        o4i = lsc_offset({},[],[],4)
+        o7i = lsc_offset({},[],[],7)
+        o8i = lsc_offset({},[],[],8)
+        o255i = lsc_offset({},[],[],255)
+        o256i = lsc_offset({},[],[],256)
                 
         ar = addr_resolver(indices=[[0,1],[0],[0]],
                            starting_offsets=[[zo,o4i],[zo],[zo]],
@@ -769,9 +769,9 @@ class test_mm(unittest.TestCase):
         b_mapper = flat_mapper(lambda t, idx : n*idx[0]+idx[1])
  
         zo = lsc_offset.zero_offset()
-        o1v2 = lsc_offset([],[0,1],0)
-        o7v = lsc_offset([],[7],0)
-        o8v = lsc_offset([],[8],0)
+        o1v2 = lsc_offset({},[],[0,1],0)
+        o7v = lsc_offset({},[],[7],0)
+        o8v = lsc_offset({},[],[8],0)
                 
         ar = addr_resolver(indices=[[0],[0],[0]],
                            starting_offsets=[[zo],[zo],[zo]],

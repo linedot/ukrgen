@@ -137,16 +137,14 @@ class addr_resolver:
         addr_reg_count = len(self.indices[rtype_idx])
         addr_idx_to_use = None
         incs_to_do = self.max_incs
-        off = lsc_offset(reg_strides=[],
-                         vlen_strides=[],
-                         immoff=0)
+        off = lsc_offset.zero_offset()
         
-        #print(f"Current {rtype_char} offsets:")
-        #for addr_list_idx in range(addr_reg_count):
-        #    caoff = self.current_offsets[rtype_idx][addr_list_idx]
-        #    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+        print(f"Current {rtype_char} offsets:")
+        for addr_list_idx in range(addr_reg_count):
+            caoff = self.current_offsets[rtype_idx][addr_list_idx]
+            print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
         
-        #print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
+        print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
         while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
@@ -202,8 +200,12 @@ class addr_resolver:
             # this could be an alternative cotnrolled by a parameter?
             # add_value = toff - offset_min
 
-            add_value = self.steps[rtype_idx][caoff_min_list_idx]
-            #print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
+            if toff.sxv_strides or toff.reg_strides:
+                # For now always add toff-current when this happens
+                add_value = toff - self.current_offsets[rtype_idx][caoff_min_list_idx]
+            else:
+                add_value = self.steps[rtype_idx][caoff_min_list_idx]
+            print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
             new_add = addr_add(rtype_idx=rtype_idx,
                                addr_idx=self.indices[rtype_idx][caoff_min_list_idx],
                                offset=add_value)

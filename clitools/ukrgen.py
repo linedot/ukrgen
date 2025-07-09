@@ -28,7 +28,7 @@ from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
 from ukrgen.models.load_store_operations import lsc_offset
 from ukrgen.models.addr_resolver import addr_resolver
-from ukrgen.models.tile_offset_mapper import flat_mapper
+from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
 from ukrgen.schedulers import simple_dependency_scheduler
 
 
@@ -122,6 +122,19 @@ def parse_ukr_args(args : list[str]):
     parser.add_argument("--order", type=str,
                         default="mnkMNK",
                         help="Loop order (default=mnkMNK)")
+
+    return parser.parse_known_args(args=args)
+
+def parse_stride_args(args : list[str]):
+
+    parser = argparse.ArgumentParser(description="Arguments for stride specification")
+
+    parser.add_argument("--column-strides", type=str, nargs="+", required=False,
+                        choices=['a','b','c'],
+                        help="components with general column strides")
+    parser.add_argument("--row-strides", type=str, nargs="+", required=False,
+                        choices=['a','b','c'],
+                        help="components with general row strides")
 
     return parser.parse_known_args(args=args)
 
@@ -238,6 +251,8 @@ def main():
     for op in mm_ops:
         print(str(op))
 
+    stride_args,rest = parse_stride_args(args=rest)
+
     lsc_args,rest = parse_lsc_args(args=rest)
 
 
@@ -283,19 +298,19 @@ def main():
         )):
         if is_tile_vla_tile(t):
             vmax=gen.max_load_voff
-            addr_offset_ranges.append([(zo, lsc_offset([],[0,vmax],0)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset([],[0,(vmax+1)*count],0) for j in range(count)])
-            addr_offset_starts.append([lsc_offset([],[0,j*t.dima.size],0) for j in addr_indices[i]])
+            addr_offset_ranges.append([(zo, lsc_offset({},[],[0,vmax],0)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset({},[],[0,(vmax+1)*count],0) for j in range(count)])
+            addr_offset_starts.append([lsc_offset({},[],[0,j*t.dima.size],0) for j in addr_indices[i]])
         elif is_tile_vla_vector(t):
             vmax=gen.max_load_voff
-            addr_offset_ranges.append([(zo, lsc_offset([],[vmax],0)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset([],[(vmax+1)*count],0) for j in range(count)])
-            addr_offset_starts.append([lsc_offset([],[j*t.dima.size],0) for j in addr_indices[i]])
+            addr_offset_ranges.append([(zo, lsc_offset({},[],[vmax],0)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset({},[],[(vmax+1)*count],0) for j in range(count)])
+            addr_offset_starts.append([lsc_offset({},[],[j*t.dima.size],0) for j in addr_indices[i]])
         elif is_tile_scalar(t):
             imax=gen.max_fload_immoff(dt=dt)
-            addr_offset_ranges.append([(zo, lsc_offset([],[],imax)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset([],[],(imax+1)*count) for j in range(count)])
-            addr_offset_starts.append([lsc_offset([],[],j*t.dima.size) for j in addr_indices[i]])
+            addr_offset_ranges.append([(zo, lsc_offset({},[],[],imax)) for j in range(count)])
+            addr_offset_steps.append([lsc_offset({},[],[],(imax+1)*count) for j in range(count)])
+            addr_offset_starts.append([lsc_offset({},[],[],j*t.dima.size) for j in addr_indices[i]])
 
 
     # Ensure the specializer doesn't generate impossible voffsets for loads/stores of
@@ -316,10 +331,30 @@ def main():
                 [r//ways for r in addr_offset_steps[2][i].reg_strides]
             addr_offset_steps[2][i].immoff //= ways
 
+    if not stride_args.column_strides and not stride_args.row_strides:
+        # Everything contiguous
+        a_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
+        b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
+        c_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
+    else:
+        strides = {k : (None,None) for k in ['a','b','c']}
+        i = 0
+        for char in ['a','b','c']:
+            comp_slist = [None,None]
+            if stride_args.row_strides:
+                if char in stride_args.row_strides:
+                    comp_slist[0] = i
+                    i+= 1
+            if stride_args.column_strides:
+                if char in stride_args.column_strides:
+                    comp_slist[1] = i
+                    i+= 1
 
-    # Everything contiguous
-    ac_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
-    b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
+            strides[char] = tuple(comp_slist)
+
+        a_mapper = strided_mapper((1,1), strides['a'])
+        b_mapper = strided_mapper((1,1), strides['b'])
+        c_mapper = strided_mapper((1,1), strides['c'])
 
     #ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
     #b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]
@@ -336,8 +371,11 @@ def main():
                            preload_counts=[lsc_args.a_preload,
                                            lsc_args.b_preload,
                                            lsc_args.c_data_regs],
-                           offset_mappers=[ac_mapper,b_mapper,ac_mapper],
+                           offset_mappers=[a_mapper,b_mapper,c_mapper],
                            op=args.op)
+
+
+    specializer.set_model(model=model)
 
     mm_ops_p1k = genmm.generate(add_dims=[0,0,0,0,0,k])
     mm_ops_p2k = genmm.generate(add_dims=[0,0,0,0,0,2*k])
@@ -363,7 +401,7 @@ def main():
     print("  "+"\n  ".join(map(str,preload_mb)))
     print("END MAIN LOOP ---------------------------")
     print("STOREBLOCK ------------------------------")
-    print("  "+"\n  ".join(map(str,storeblock)))
+    print("\n".join(map(str,storeblock)))
     print("ENDSTOREBLOCK ---------------------------")
 
     specializer.analyse(preload)
@@ -384,7 +422,7 @@ def main():
     print("  "+"\n  ".join(map(str,preload_mb)))
     print("END MAIN LOOP ---------------------------")
     print("STOREBLOCK ------------------------------")
-    print("  "+"\n  ".join(map(str,storeblock)))
+    print("\n".join(map(str,storeblock)))
     print("ENDSTOREBLOCK ---------------------------")
 
 
@@ -410,7 +448,7 @@ def main():
     print("  "+"\n  ".join(map(str,rs_mbpl)))
     print("END MAIN LOOP ---------------------------")
     print("STOREBLOCK ------------------------------")
-    print("  "+"\n  ".join(map(str,rs_store)))
+    print("\n".join(map(str,rs_store)))
     print("ENDSTOREBLOCK ---------------------------")
 
     initblock = specializer.code_init(triple=triple)
@@ -438,7 +476,7 @@ def main():
     print("  "+"  ".join(asm_rs_mbpl))
     print("END MAIN LOOP ---------------------------")
     print("STOREBLOCK ------------------------------")
-    print("  "+"  ".join(asm_rs_store))
+    print("".join(asm_rs_store))
     print("ENDSTOREBLOCK ---------------------------")
     print("FINALIZE --------------------------------")
     print(finiblock)
