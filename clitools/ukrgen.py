@@ -5,6 +5,7 @@
 # ------------------------------------------------------------------------------
 
 import argparse
+import sys
 
 from asmgen.asmblocks.avx_fma import fma128,fma256,avx512
 from asmgen.asmblocks.neon import neon
@@ -43,11 +44,19 @@ asmgen_map = {
     'sme' : sme,
 }
 
-def parse_main_arguments():
+helpargs=['-h','--help']
+
+def helpexit_if_last_parser(rest : list[str], parser : argparse.ArgumentParser):
+    if any(a in rest for a in helpargs):
+        if not [a for a in rest if a not in helpargs]:
+            parser.print_help()
+            sys.exit(0)
+
+
+def parse_main_arguments(parser : argparse.ArgumentParser):
 
     operations = ['fma','dota','fopa','mma']
 
-    parser = argparse.ArgumentParser(description="ukrgen compute kernel generator")
     parser.add_argument("--isa", type=str,
                         choices=asmgen_map.keys(),
                         required=True, help="ISA to use")
@@ -55,12 +64,16 @@ def parse_main_arguments():
                         choices=operations,
                         required=True, help="Arithmetic operation")
 
-    return parser.parse_known_args()
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
 
-def parse_specializer_arguments(specializer : lsc_specializer, op : str, args : list[str]):
+def parse_specializer_arguments(
+        specializer : lsc_specializer,
+        op : str,
+        parser : argparse.ArgumentParser):
 
-    parser = argparse.ArgumentParser(description="Arguments for kernel specialization")
     narrow_choices = []
     for sup in specializer.op_support_map[op]:
         narrow_choices.append(str(sup.triple.a).replace("asm_data_type.",""))
@@ -76,7 +89,7 @@ def parse_specializer_arguments(specializer : lsc_specializer, op : str, args : 
                         choices=wide_choices, help="Type to use for A/B tiles")
 
 
-    spec_args, rest = parser.parse_known_args(args=args)
+    spec_args, rest = parser.parse_known_args()
 
     
 
@@ -93,24 +106,24 @@ def parse_specializer_arguments(specializer : lsc_specializer, op : str, args : 
                         choices=list(range(len(op_support_list))),
                         help="Variant to use")
 
-    spec_args, rest = parser.parse_known_args(args=args)
+    spec_args, rest = parser.parse_known_args()
 
-
+    helpexit_if_last_parser(rest=rest, parser=parser)
     return spec_args, rest, op_support_list[spec_args.variant]
 
-def parse_fma_args(args : list[str]):
+def parse_fma_args(parser : argparse.ArgumentParser):
 
-    parser = argparse.ArgumentParser(description="Arguments for fma instruction")
 
     parser.add_argument("--fma-b-method", type=str, required=True,
                         choices=['vf','lane_select','lane_bcast'],
                         help="How to access elements in b vector for the fma")
 
-    return parser.parse_known_args(args=args)
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
-def parse_ukr_args(args : list[str]):
+def parse_ukr_args(parser : argparse.ArgumentParser):
 
-    parser = argparse.ArgumentParser(description="Arguments for kernel generation")
 
     parser.add_argument("--m", type=int, required=True,
                         help="m dimension in tiles")
@@ -123,11 +136,12 @@ def parse_ukr_args(args : list[str]):
                         default="mnkMNK",
                         help="Loop order (default=mnkMNK)")
 
-    return parser.parse_known_args(args=args)
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
-def parse_stride_args(args : list[str]):
+def parse_stride_args(parser : argparse.ArgumentParser):
 
-    parser = argparse.ArgumentParser(description="Arguments for stride specification")
 
     parser.add_argument("--column-strides", type=str, nargs="+", required=False,
                         choices=['a','b','c'],
@@ -136,10 +150,11 @@ def parse_stride_args(args : list[str]):
                         choices=['a','b','c'],
                         help="components with general row strides")
 
-    return parser.parse_known_args(args=args)
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
-def parse_lsc_args(args : list[str]):
-    parser = argparse.ArgumentParser(description="Arguments for the lsc machine model")
+def parse_lsc_args(parser : argparse.ArgumentParser):
 
     parser.add_argument("--a-data-regs", type=int, required=True,
                         help="number of data registers to use for the a tiles")
@@ -161,10 +176,11 @@ def parse_lsc_args(args : list[str]):
     parser.add_argument("--b-preload", type=int, required=True,
                         help="number of b data registers to preload")
 
-    return parser.parse_known_args(args=args)
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
-def parse_sched_args(args : list[str]):
-    parser = argparse.ArgumentParser(description="Arguments for the lsc scheduler")
+def parse_sched_args(parser : argparse.ArgumentParser):
 
     parser.add_argument("--sched-rar-distance", type=int, default=0,
                         help="Minimum read-after-read distance")
@@ -175,11 +191,17 @@ def parse_sched_args(args : list[str]):
     parser.add_argument("--sched-waw-distance", type=int, default=0,
                         help="Minimum write-after-waw distance")
 
-    return parser.parse_known_args(args=args)
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
 
 def main():
 
-    args,rest = parse_main_arguments()
+    parser = argparse.ArgumentParser(
+            description="ukrgen compute kernel generator",
+            add_help=False)
+
+    args,rest = parse_main_arguments(parser=parser)
 
     gen = asmgen_map[args.isa]()
 
@@ -200,7 +222,8 @@ def main():
     #    print(f"{sup}")
 
 
-    spec_args,rest,sup = parse_specializer_arguments(specializer=specializer, op=args.op, args=rest)
+    spec_args,rest,sup = parse_specializer_arguments(
+            specializer=specializer, op=args.op, parser=parser)
 
     print("Chosen variant:")
     print(f"{sup}")
@@ -212,7 +235,7 @@ def main():
     ways = adt_size(triple.c)//adt_size(triple.a)
 
 
-    ukr_args,rest = parse_ukr_args(args=rest)
+    ukr_args,rest = parse_ukr_args(parser=parser)
 
     m,n,k = ukr_args.m,ukr_args.n,ukr_args.k
     order = order2D(ukr_args.order)
@@ -220,7 +243,7 @@ def main():
     nc=n
     nb=n
     if args.op == 'fma' and sup.b_tile.dima == sup.a_tile.dima:
-        fma_args, rest = parse_fma_args(args=rest)
+        fma_args, rest = parse_fma_args(parser=parser)
         if 'vf' == fma_args.fma_b_method:
             sup.b_tile.dima = dimension_properties(
                     dt=dimension_type.fixed, size=1,
@@ -251,9 +274,9 @@ def main():
     for op in mm_ops:
         print(str(op))
 
-    stride_args,rest = parse_stride_args(args=rest)
+    stride_args,rest = parse_stride_args(parser=parser)
 
-    lsc_args,rest = parse_lsc_args(args=rest)
+    lsc_args,rest = parse_lsc_args(parser=parser)
 
 
     addr_indices = [[i for i in range(count)]
@@ -426,7 +449,15 @@ def main():
     print("ENDSTOREBLOCK ---------------------------")
 
 
-    sched_args,rest = parse_sched_args(args=rest)
+    sched_args,rest = parse_sched_args(parser=parser)
+
+    # TODO: handle help in a better way
+    # This was the last parser so check for help string
+    if any(a in rest for a in helpargs):
+        if [a for a in rest if a not in helpargs]:
+            print(f"uknown arguments: {rest}")
+        parser.print_help()
+        sys.exit(0)
     
     scheduler = simple_dependency_scheduler(
             rar=sched_args.sched_rar_distance,
