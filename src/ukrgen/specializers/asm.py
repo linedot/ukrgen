@@ -189,8 +189,8 @@ class lsc_specializer:
         data_t = op.tiles[1]
         dt = triple[op.rtype_idx]
         dt_bytes = adt_size(dt)
-        if data_t.dima.dt == dimension_type.vla or\
-           data_t.dimb.dt == dimension_type.vla:
+        if (data_t.dima.dt == dimension_type.vla) !=\
+           (data_t.dimb.dt == dimension_type.vla):
             factor = op.off.vlen_strides[0]
 
             if factor < self.gen.max_add_voff:
@@ -208,9 +208,13 @@ class lsc_specializer:
                                           reg1=areg,
                                           reg2=vlenreg)
 
-        return self.gen.add_greg_imm(
-            reg=areg,
-            imm=op.off.immoff*dt_bytes)
+        elif (data_t.dima.dt == dimension_type.fixed) and\
+             (data_t.dimb.dt == dimension_type.fixed):
+            return self.gen.add_greg_imm(
+                reg=areg,
+                imm=op.off.immoff*dt_bytes)
+
+        raise NotImplementedError("Only vectors and immediates are implemented")
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
                        triple : adt_triple,

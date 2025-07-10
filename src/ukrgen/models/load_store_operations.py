@@ -22,15 +22,24 @@ class fraction:
 
 
 class stridexvlen:
-    def __init__(self, stride_id : int, vlen_pow_id : int):
-        self.stride_id = stride_id
-        self.vlen_pow_id = vlen_pow_id
+    def __init__(self, stride_ids : set[int], vlen_ids : set[int]):
+        self.stride_ids = stride_ids
+        self.vlen_ids = vlen_ids
 
     def __eq__(self, other):
-        return self.stride_id == other.stride_id and \
-               self.vlen_pow_id == other.vlen_pow_id
+        return self.stride_ids == other.stride_ids and \
+               self.vlen_ids == other.vlen_ids
     def __str__(self):
-        return f"stride{self.stride_id}*VLEN^{self.vlen_pow_id}"
+        sstr = ""
+        vstr = ""
+        if self.stride_ids:
+            sstr = "*".join([f"stride{id}" for id in self.stride_ids])
+            sstr += "*"
+        if self.vlen_ids:
+            vstr =  "*".join([f"VLEN{id}" for id in self.vlen_ids])
+
+
+        return f"{sstr}{vstr}"
     def __hash__(self):
         return hash(str(self))
 
@@ -159,7 +168,7 @@ class lsc_offset:
             if rstr:
                 result += f"({rstr})+"
         if self.vlen_strides:
-            vstr = "+".join([f"{o}*VLEN^{i+1}" for i,o in enumerate(self.vlen_strides) if o != 0])
+            vstr = "+".join([f"{o}*VLEN{i+1}" for i,o in enumerate(self.vlen_strides) if o != 0])
             if vstr:
                 result += f"({vstr})+"
         

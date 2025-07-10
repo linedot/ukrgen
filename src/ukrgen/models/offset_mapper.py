@@ -89,18 +89,19 @@ class strided_mapper(offset_mapper):
         isscalar = (t.dima.dt != dimension_type.vla) and \
                    (t.dimb.dt != dimension_type.vla)
 
+        if istile:
+            strides = set([s for s in [s0,s1] if s is not None])
+            result += lsc_offset(
+               {
+                   stridexvlen(strides, {0,1}) : first*second
+               },[],[],0)
 
         for stride, value in zip([s0,s1],[first,second]):
             if stride is not None:
-                if istile:
+                if isvector:
                        result += lsc_offset(
                                {
-                                   stridexvlen(stride, 1) : value
-                               },[],[],0)
-                elif isvector:
-                       result += lsc_offset(
-                               {
-                                   stridexvlen(stride, 0) : value
+                                   stridexvlen(set([stride]), set([0])) : value
                                },[],[],0)
                 elif isscalar:
                     #list at least as big as this index and
@@ -109,9 +110,7 @@ class strided_mapper(offset_mapper):
                     stridelist[stride] = value
                     result += lsc_offset({},stridelist,[],0)
             else:
-                if istile:
-                       result += lsc_offset({},[],[0,value],0)
-                elif isvector:
+                if isvector:
                        result += lsc_offset({},[],[value],0)
                 elif isscalar:
                        result += lsc_offset({},[],[],value)
