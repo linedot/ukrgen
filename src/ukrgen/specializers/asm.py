@@ -52,6 +52,42 @@ class op_support:
     def __repr__(self):
         return self.__str__()
 
+
+class op_modification:
+    """ modification of an lsc_operation
+    :param op_match: which operations this modification applies to
+    :param rtype_idx_match: which components this modification applies to (0=a,1=b,2=c)
+    :param modification: function that accepts the original operation as it's first
+                         argument and appends the resulting modified operation(s) to
+                         the list that is passed as the second argument. This function
+                         should returns True if the modification should be removed
+                         from the list or False if the modification should stay
+                         in the list
+    """
+    def __init__(op_match : set[type[lsc_operation]],
+                 rtype_idx_match : set[int],
+                 reg_type_match : set[lsc_reg_type],
+                 modification : Callable[
+                     [lsc_operation,list[lsc_operation]],
+                     bool]):
+        self.op_match = op_match
+        self.rtype_idx_match = rtype_idx_match
+        self.reg_type_match = reg_type_match
+        self.modification = modification
+
+    def __call__(op : lsc_operation, result_ops : list[lsc_operation]) -> bool:
+
+        if not isinstance(op,tuple(self.op_match)):
+            return False
+
+        indices = [i for i,ilist in enumerate(op.indices) \
+                if ilist[0] in self.rtype_idx_match]
+
+        if any(op.reg_types[i] in self.reg_type_match for i in indices):
+            return self.modification(op, result_ops)
+        return False
+
+
 class lsc_specializer:
     def __init__(self, model : load_store_cpu, gen : asmgen, rt : reg_tracker):
         self.model = model
@@ -62,6 +98,7 @@ class lsc_specializer:
 
         self.op_support_map = {}
         self.get_op_capabilities()
+
 
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
@@ -580,7 +617,9 @@ class lsc_specializer:
 
 
         # Hack, needs addr_resolve rewrite to accomodate offset modification
-        modified_c_offsets = {}
+        # modified_c_offsets = {}
+
+        modifications=[]
 
         result_ops = []
         for op in ops:
@@ -615,6 +654,7 @@ class lsc_specializer:
             for i,idx_list in enumerate(op.indices):
                 if idx_list[0] == c_index:
                     has_c = True
+
             if split_instructions or vec_groups:
                 for i,idx_list in enumerate(op.indices):
                     if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
@@ -629,13 +669,20 @@ class lsc_specializer:
                                 range(ways)],lsc_offset.zero_offset())
                         self.vlenadds.add(multoff.vlen_strides[0])
                         op.off = multoff
+
             # Part of the offset hack that needs addr_resolver rework
-            if has_c and isinstance(op, (lsc_load,lsc_store,lsc_addr_add)):
-                if op.addr_idx in modified_c_offsets.keys():
-                    modoff = modified_c_offsets[op.addr_idx]
-                    if lsc_offset.zero_offset() != modoff:
-                        op.off -= modoff
-                        modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
+            #if has_c and isinstance(op, (lsc_load,lsc_store,lsc_addr_add)):
+            #    if op.addr_idx in modified_c_offsets.keys():
+            #        modoff = modified_c_offsets[op.addr_idx]
+            #        if lsc_offset.zero_offset() != modoff:
+            #            op.off -= modoff
+            #            modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
+            mod_ops = []
+            remove_list = [i for i,mod in enumerate(modifications)\
+                    if mod(op, result_ops)]
+            for i in remove_list:
+                modifications.pop(index=i)
+
             if has_c and split_instructions:
                 if need_stls:
                     raise NotImplementedError("split instruction and special tile ld/st not implemented")
@@ -681,15 +728,30 @@ class lsc_specializer:
                                         addoff,
                                         group_op.t))
                             group_op.off = baseoff
-                            if op.addr_idx not in modified_c_offsets:
-                                modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
-                            modified_c_offsets[op.addr_idx] += addoff
+
+                            mod_idx = op.addr_idx
+                            def subtract_addoff(op, results):
+                                if op.addr_idx == mod_idx:
+                                    op.off -= addoff
+                                    return True
+                                return False
+
+                            modifications.append(
+                                    op_modification(
+                                        rtype_idx_match={2}, 
+                                        reg_type_match={lsc_reg_type.address},
+                                        modification=subtract_addoff)
+                                    )
+                            #if op.addr_idx not in modified_c_offsets:
+                            #    modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
+                            #modified_c_offsets[op.addr_idx] += addoff
                         else:
                             group_op.off = baseoff+addoff
                         # Dang, now the next offset add will be wrong...
                     result_ops.append(group_op)
             else:
                 result_ops.append(op)
+            result_ops.extend(mod_ops)
         if need_stls:
             result_ops.extend(stls.flush_load())
             result_ops.extend(stls.flush_store())
