@@ -545,10 +545,11 @@ class lsc_specializer:
     def register_complex_offset(self, off: lsc_offset):
         if off in self.complex_offsets:
             return
-
         self.complex_offsets.add(off)
-        regidx = self.rt.reserve_any_reg('greg')
-        self.rt.alias_reg('greg', str(off), regidx)
+
+        # Do this in code_init
+        #regidx = self.rt.reserve_any_reg('greg')
+        #self.rt.alias_reg('greg', str(off), regidx)
 
     def register_offset(self, off : lsc_offset):
 
@@ -849,9 +850,10 @@ class lsc_specializer:
         asmblock += self.init_vlenregs(triple=triple)
 
 
-        # print offset registers
+        # reserve offset registers
         for off in self.complex_offsets:
-            regidx = self.rt.aliased_regs['greg'][str(off)]
+            regidx = self.rt.reserve_any_reg('greg')
+            self.rt.alias_reg('greg', str(off), regidx)
             asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {off}")
 
         # reserve address registers
