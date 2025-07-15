@@ -78,11 +78,6 @@ class strided_mapper(offset_mapper):
             second = t.dimb.size*self.dims[1]*idx[1]
 
         result = lsc_offset.zero_offset()
-        
-        # M*STRIDE*VLEN^N is also a stride, so it can be saved in a register
-        # but we need to encode the information to construct it with ASM instructions
-        # in code_init()
-
 
         s0 = self.stride_indices[0]
         s1 = self.stride_indices[1]
@@ -103,13 +98,21 @@ class strided_mapper(offset_mapper):
                    stridexvlen(strides, {0,1}) : first*second
                },[],[],0)
 
-        for stride, value in zip([s0,s1],[first,second]):
+        for stride, value, dimt in zip([s0,s1],
+                                       [first,second],
+                                       [t.dima.dt,t.dimb.dt]):
             if stride is not None:
+                # TODO: evaluate if a simple if dimt vla/ else is enough
                 if isvector:
-                       result += lsc_offset(
+                    if dimt == dimension_type.vla:
+                        result += lsc_offset(
                                {
                                    stridexvlen(set([stride]), set([0])) : value
                                },[],[],0)
+                    else:
+                        stridelist = [0 for i in range(stride+1)]
+                        stridelist[stride] = value
+                        result += lsc_offset({},stridelist,[],0)
                 elif isscalar:
                     #list at least as big as this index and
                     # set the value with that index
