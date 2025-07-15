@@ -118,6 +118,35 @@ class lsc_offset:
             vlen_strides=[s-o for s,o in zip(self.vlen_strides,other.vlen_strides)],
             immoff=self.immoff-other.immoff)
 
+    def colin(self, other : Self):
+        """
+        Return the "colinear" part of this offset with the other offset
+        All different strides/vlens/strides*vlens are treated as independent
+        For example if this offset is 2*stride0*vlen1 + 3*vlen1 and
+        the other offset is 1*vlen1, this returns 3*vlen1
+
+        :param other: The other offset
+        :return: Part of this offset that is colinear with other
+        """
+        lsc_offset.adjust_offlists(self,other)
+
+        result = lsc_offset.zero_offset()
+
+        for key in self.sxv_strides:
+            if (0 != self.sxv_strides[key]) and (0 != other.sxv_strides):
+                result.sxv_strides[key] = other.sxv_strides[key]
+
+        result.reg_strides = [o if (s!=0 and o!=0) else 0 for s,o in \
+                zip(self.reg_strides,other.reg_strides)]
+
+        result.vlen_strides = [o if (s!=0 and o!=0) else 0 for s,o in \
+                zip(self.vlen_strides,other.vlen_strides)]
+
+        if (self.immoff != 0) and (other.immoff != 0):
+            result.immoff = other.immoff
+
+        return result
+
     def allcompare(self, other : Self,
                    comparison : Callable[[Self,Self],bool]):
         

@@ -390,6 +390,7 @@ class lsc_specializer:
         return asmblock
 
     def reset_analysis(self):
+        self.regadds = set()
         self.vlenadds = set()
         self.byteadds = set()
         self.ops_used = []
@@ -532,6 +533,14 @@ class lsc_specializer:
                                 #print(e)
                                 #print(traceback.format_exc())
                                 pass
+    def add_complex_offset(self, off : lsc_offset):
+        # Check if complex offset already exists
+        # If not:
+        #   Reserve a GP register
+        #   Add complex offset to list
+        #
+        # (asm generation for offset computation will be done later)
+        
 
     def analyse(self, ops : list[lsc_operation]):
         for op in ops:
@@ -559,9 +568,22 @@ class lsc_specializer:
 
                 o1v = lsc_offset({},[], [1], 0)
                 oaddmaxv = lsc_offset({},[], [self.gen.max_add_voff], 0)
+
+                # if there is an sxv or a reg stride
+                # or if there are both vlen strides and an imm stride
+                # or if there are 2 or more vlen strides
+                # this is a complex offset
+                if any([v != 0 for k,v in op.off.sxv_strides.items()]) or\
+                   any([v != 0 for v in op.off.reg_strides]) or\
+                   (any([v != 0 for v in op.off.vlen_strides]) and\
+                    0 != op.off.immstride) or\
+                   1 < sum([1 for v in op.off.vlen_strides if v != 0]):
+                    self.add_complex_offset(op.off)
+                    continue
                 # vlen/byte adds
-                if op.t.dima.dt == dimension_type.vla\
-                    or op.t.dimb.dt == dimension_type.vla:
+                # TODO: this is only correct if the first vlen stride is nonzero
+                #       and others are zero
+                if any([0 != o for o in op.off.vlen_strides]):
                     if op.off not in self.vlenadds:
                         if o1v == op.off:
                             continue
@@ -665,10 +687,14 @@ class lsc_specializer:
                         has_c = True
                 if isinstance(op, lsc_addr_add):
                     if op.rtype_idx == c_index:
-                        multoff = sum([deepcopy(op.off) for j in \
-                                range(ways)],lsc_offset.zero_offset())
-                        self.vlenadds.add(multoff.vlen_strides[0])
-                        op.off = multoff
+
+                        mapper = self.model.offset_mappers[op.rtype_idx]
+                        sizeoff = mapper.get_ldst_size(op.t)
+                        multoff = op.off.colin(sizeoff)
+                        addoff = sum([deepcopy(multoff) for j in \
+                                range(ways-1)],lsc_offset.zero_offset())
+                        op.off += addoff
+                        self.vlenadds.add(op.off.vlen_strides[0])
 
             # Part of the offset hack that needs addr_resolver rework
             #if has_c and isinstance(op, (lsc_load,lsc_store,lsc_addr_add)):
