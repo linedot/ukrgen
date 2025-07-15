@@ -94,11 +94,11 @@ class load_store_cpu:
         #    corg = toff
         rtype_char = string.ascii_lowercase[rtype_idx]
 
-        print(f"Resolving {toff} into {rtype_char}{res_idx}")
+        #print(f"Resolving {toff} into {rtype_char}{res_idx}")
         if (not corg is None) and \
                 (not lsc_state.invalid == self.states[rtype_idx][res_idx]):
             if corg == toff:
-                print(f"{rtype_char}{res_idx} already has offset {toff}")
+                #print(f"{rtype_char}{res_idx} already has offset {toff}")
                 return result
 
         # store if dirty
@@ -123,7 +123,7 @@ class load_store_cpu:
                                        off=add.offset,
                                        t=t))
 
-        print(f"Updating {rtype_char}{res_idx} off to {toff}")
+        #print(f"Updating {rtype_char}{res_idx} off to {toff}")
         self.cdos[rtype_idx][res_idx] = toff
         self.states[rtype_idx][res_idx] = lsc_state.loaded
 
@@ -215,11 +215,11 @@ class load_store_cpu:
             rtype_char = string.ascii_lowercase[i]
             # check if any of the registers have the data
             for j in range(res_count):
-                print(f"Looking for {toff}, {rtype_char}{j} has {dos[j]}")
+                #print(f"Looking for {toff}, {rtype_char}{j} has {dos[j]}")
                 if dos[j] is None:
                     continue
-                print(f"toff-caoff ={toff-dos[j]}")
-                print(f"{dos[j].sxv_strides.keys()}")
+                #print(f"toff-caoff ={toff-dos[j]}")
+                #print(f"{dos[j].sxv_strides.keys()}")
                 if (toff == dos[j]):
                     res_idx = j
                     break

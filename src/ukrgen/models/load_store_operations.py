@@ -91,6 +91,34 @@ class lsc_offset:
         if l2 > l1:
             one.vlen_strides.extend([0 for i in range(l1,l2)])
 
+
+    def is_scalar(self) -> bool:
+        result = False
+        if self.immoff != 0:
+            result = True
+        if any([v != 0 for v in self.vlen_strides]):
+            result = False
+        if any([v != 0 for k,v in self.sxv_strides.items()]):
+            result = False
+        if any([v != 0 for v in self.reg_strides]):
+            result = False
+
+        return result
+
+    def is_vector(self) -> bool:
+        result = False
+        if 1 == sum([1 for v in self.vlen_strides if 0 != v]):
+            result = True
+
+        if any([v != 0 for k,v in self.sxv_strides.items()]):
+            result = False
+        if any([v != 0 for v in self.reg_strides]):
+            result = False
+        if self.immoff != 0:
+            result = False
+
+        return result
+
     def __add__(self, other : Self):
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't add lsc_offset and {type(other)}")
@@ -133,17 +161,17 @@ class lsc_offset:
         result = lsc_offset.zero_offset()
 
         for key in self.sxv_strides:
-            if (0 != self.sxv_strides[key]) and (0 != other.sxv_strides):
-                result.sxv_strides[key] = other.sxv_strides[key]
+            if (0 != self.sxv_strides[key]) and (0 != other.sxv_strides[key]):
+                result.sxv_strides[key] = self.sxv_strides[key]
 
-        result.reg_strides = [o if (s!=0 and o!=0) else 0 for s,o in \
+        result.reg_strides = [s if (s!=0 and o!=0) else 0 for s,o in \
                 zip(self.reg_strides,other.reg_strides)]
 
-        result.vlen_strides = [o if (s!=0 and o!=0) else 0 for s,o in \
+        result.vlen_strides = [s if (s!=0 and o!=0) else 0 for s,o in \
                 zip(self.vlen_strides,other.vlen_strides)]
 
         if (self.immoff != 0) and (other.immoff != 0):
-            result.immoff = other.immoff
+            result.immoff = self.immoff
 
         return result
 

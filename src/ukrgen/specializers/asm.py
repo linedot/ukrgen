@@ -64,7 +64,8 @@ class op_modification:
                          from the list or False if the modification should stay
                          in the list
     """
-    def __init__(op_match : set[type[lsc_operation]],
+    def __init__(self,
+                 op_match : set[type[lsc_operation]],
                  rtype_idx_match : set[int],
                  reg_type_match : set[lsc_reg_type],
                  modification : Callable[
@@ -75,7 +76,7 @@ class op_modification:
         self.reg_type_match = reg_type_match
         self.modification = modification
 
-    def __call__(op : lsc_operation, result_ops : list[lsc_operation]) -> bool:
+    def __call__(self, op : lsc_operation, result_ops : list[lsc_operation]) -> bool:
 
         if not isinstance(op,tuple(self.op_match)):
             return False
@@ -99,6 +100,7 @@ class lsc_specializer:
         self.op_support_map = {}
         self.get_op_capabilities()
 
+        self.complex_offsets = set()
 
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
@@ -226,8 +228,8 @@ class lsc_specializer:
         data_t = op.tiles[1]
         dt = triple[op.rtype_idx]
         dt_bytes = adt_size(dt)
-        if (data_t.dima.dt == dimension_type.vla) !=\
-           (data_t.dimb.dt == dimension_type.vla):
+
+        if op.off.is_vector():
             factor = op.off.vlen_strides[0]
 
             if factor < self.gen.max_add_voff:
@@ -245,8 +247,7 @@ class lsc_specializer:
                                           reg1=areg,
                                           reg2=vlenreg)
 
-        elif (data_t.dima.dt == dimension_type.fixed) and\
-             (data_t.dimb.dt == dimension_type.fixed):
+        elif op.off.is_scalar():
             return self.gen.add_greg_imm(
                 reg=areg,
                 imm=op.off.immoff*dt_bytes)
@@ -533,14 +534,40 @@ class lsc_specializer:
                                 #print(e)
                                 #print(traceback.format_exc())
                                 pass
-    def add_complex_offset(self, off : lsc_offset):
-        # Check if complex offset already exists
-        # If not:
-        #   Reserve a GP register
-        #   Add complex offset to list
-        #
-        # (asm generation for offset computation will be done later)
-        
+
+    def register_complex_offset(self, off: lsc_offset):
+        if off in self.complex_offsets:
+            return
+
+        self.complex_offsets.add(off)
+        regidx = self.rt.reserve_any_reg('greg')
+        self.rt.alias_reg('greg', str(off), regidx)
+
+    def register_offset(self, off : lsc_offset):
+
+        o1v = lsc_offset({},[], [1], 0)
+        oaddmaxv = lsc_offset({},[], [self.gen.max_add_voff], 0)
+
+        # vlen/byte adds
+        # TODO: this is only correct if the first vlen stride is nonzero
+        #       and others are zero
+        if off.is_vector():
+            if off not in self.vlenadds:
+                if o1v == off:
+                    return
+                if oaddmaxv > off:
+                    return
+                self.vlenadds.add(off.vlen_strides[0])
+                #print(f"aliasing vlenx{op.off}")
+                regidx = self.rt.reserve_any_reg('greg')
+                self.rt.alias_reg('greg',
+                                  f"vlenx{off.vlen_strides[0]}",
+                                  regidx)
+        elif off.is_scalar():
+            self.byteadds.add(off.immoff)
+        else:
+            self.register_complex_offset(off)
+
 
     def analyse(self, ops : list[lsc_operation]):
         for op in ops:
@@ -566,37 +593,7 @@ class lsc_specializer:
 
             if isinstance(op, lsc_addr_add):
 
-                o1v = lsc_offset({},[], [1], 0)
-                oaddmaxv = lsc_offset({},[], [self.gen.max_add_voff], 0)
-
-                # if there is an sxv or a reg stride
-                # or if there are both vlen strides and an imm stride
-                # or if there are 2 or more vlen strides
-                # this is a complex offset
-                if any([v != 0 for k,v in op.off.sxv_strides.items()]) or\
-                   any([v != 0 for v in op.off.reg_strides]) or\
-                   (any([v != 0 for v in op.off.vlen_strides]) and\
-                    0 != op.off.immstride) or\
-                   1 < sum([1 for v in op.off.vlen_strides if v != 0]):
-                    self.add_complex_offset(op.off)
-                    continue
-                # vlen/byte adds
-                # TODO: this is only correct if the first vlen stride is nonzero
-                #       and others are zero
-                if any([0 != o for o in op.off.vlen_strides]):
-                    if op.off not in self.vlenadds:
-                        if o1v == op.off:
-                            continue
-                        if oaddmaxv > op.off:
-                            continue
-                        self.vlenadds.add(op.off.vlen_strides[0])
-                        #print(f"aliasing vlenx{op.off}")
-                        regidx = self.rt.reserve_any_reg('greg')
-                        self.rt.alias_reg('greg',
-                                          f"vlenx{op.off.vlen_strides[0]}",
-                                          regidx)
-                else:
-                    self.byteadds.add(op.off.immoff)
+                self.register_offset(op.off)
             elif isinstance(op, lsc_transformation):
                 self.ops_used.append(op.op)
                 for i,(residx,t) in enumerate(zip(op.res_indices,op.tiles)):
@@ -637,14 +634,52 @@ class lsc_specializer:
         stls = special_treg_ldst()
         need_stls = False
 
-
-        # Hack, needs addr_resolve rewrite to accomodate offset modification
-        # modified_c_offsets = {}
-
         modifications=[]
+
+        def widen_data_regs(op : lsc_operation, result_ops : list[lsc_operation]):
+            for i, idx_list in enumerate(op.indices):
+                if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
+                    op.indices[i][1] *= ways
+                    self.data_registers[c_index].add(op.indices[i][1])
+                    for wayreg in range(1,ways):
+                        self.data_registers[c_index].add(op.indices[i][1]+wayreg)
+            return False
+
+        def widen_offsets(op : lsc_operation, result_ops : list[lsc_operation]):
+            if op.rtype_idx == c_index:
+                mapper = self.model.offset_mappers[op.rtype_idx]
+                sizeoff = mapper.get_ldst_size(op.t)
+                multoff = op.off.colin(sizeoff)
+                addoff = sum([deepcopy(multoff) for j in \
+                        range(ways-1)], lsc_offset.zero_offset())
+
+                print(f"widening {op.off} by adding {addoff}")
+                op.off += addoff
+                self.register_offset(op.off)
+            return False
+
+        if split_instructions or vec_groups:
+            modifications.append(op_modification(
+                {lsc_load,lsc_store,lsc_transformation,lsc_zero},
+                {c_index},
+                {lsc_reg_type.data},
+                widen_data_regs))
+            modifications.append(op_modification(
+                {lsc_load,lsc_store,lsc_addr_add},
+                {c_index},
+                {lsc_reg_type.address},
+                widen_offsets))
 
         result_ops = []
         for op in ops:
+
+            # Apply modifications
+            mod_ops = []
+            remove_list = [i for i,mod in enumerate(modifications)\
+                    if mod(op, result_ops)]
+            for i in remove_list:
+                modifications.pop(i)
+
             if need_stls:
                 if stls.check_load_flush(op):
                     result_ops.extend(stls.flush_load())
@@ -670,48 +705,21 @@ class lsc_specializer:
                         need_stls = True
                         addfunc = getattr(stls, f"add_treg_{action}")
                         addfunc(op, triple[op.rtype_idx])
-
                     continue
+
             has_c = False
             for i,idx_list in enumerate(op.indices):
                 if idx_list[0] == c_index:
                     has_c = True
 
-            if split_instructions or vec_groups:
-                for i,idx_list in enumerate(op.indices):
-                    if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
-                        op.indices[i][1] *=ways
-                        self.data_registers[c_index].add(op.indices[i][1])
-                        for wayreg in range(1,ways):
-                            self.data_registers[c_index].add(op.indices[i][1]+wayreg)
-                        has_c = True
-                if isinstance(op, lsc_addr_add):
-                    if op.rtype_idx == c_index:
-
-                        mapper = self.model.offset_mappers[op.rtype_idx]
-                        sizeoff = mapper.get_ldst_size(op.t)
-                        multoff = op.off.colin(sizeoff)
-                        addoff = sum([deepcopy(multoff) for j in \
-                                range(ways-1)],lsc_offset.zero_offset())
-                        op.off += addoff
-                        self.vlenadds.add(op.off.vlen_strides[0])
-
-            # Part of the offset hack that needs addr_resolver rework
-            #if has_c and isinstance(op, (lsc_load,lsc_store,lsc_addr_add)):
-            #    if op.addr_idx in modified_c_offsets.keys():
-            #        modoff = modified_c_offsets[op.addr_idx]
-            #        if lsc_offset.zero_offset() != modoff:
-            #            op.off -= modoff
-            #            modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
-            mod_ops = []
-            remove_list = [i for i,mod in enumerate(modifications)\
-                    if mod(op, result_ops)]
-            for i in remove_list:
-                modifications.pop(index=i)
 
             if has_c and split_instructions:
                 if need_stls:
                     raise NotImplementedError("split instruction and special tile ld/st not implemented")
+                
+                baseoff = deepcopy(op.off)
+                sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
+                extent_off = baseoff.colin(sizeoff)
                 for i in range(ways):
                     part_op = copy.deepcopy(op)
                     for j,idx_list in enumerate(part_op.indices):
@@ -720,11 +728,12 @@ class lsc_specializer:
                     if isinstance(op, lsc_transformation):
                         part_op.op += f"{i}"
                     if isinstance(op, (lsc_load,lsc_store)):
-                        baseoff = sum([part_op.off for j in range(ways)])
-                        addoff = sum([part_op.off for j in range(i)])
+                        baseoff += sum([extent_off for j in range(ways)])
+                        addoff = sum([sizeoff for j in range(i)])
                         part_op.off = baseoff+addoff
                     result_ops.append(part_op)
             if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
+
                 for i in range(ways):
                     group_op = copy.deepcopy(op)
                     for j,idx_list in enumerate(group_op.indices):
@@ -733,14 +742,15 @@ class lsc_specializer:
                             group_op.indices[j][1] += i
 
                     if isinstance(op, (lsc_load,lsc_store)):
-                        baseoff = sum([group_op.off for j in \
+                        baseoff = deepcopy(group_op.off)
+                        sizeoff = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
+                        extent_off = baseoff.colin(sizeoff)
+                        baseoff += sum([extent_off for j in \
                                 range(ways)],lsc_offset.zero_offset())
-
-                        one_off= self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
 
                         # TODO: mechanism for sending this back to addr_resolver.
                         #       For now assume this works
-                        addoff = sum([one_off for j in \
+                        addoff = sum([sizeoff for j in \
                                 range(i)],lsc_offset.zero_offset())
                         allowed = self.model.ar.toff_in_range(
                             caoff=baseoff,
@@ -758,25 +768,25 @@ class lsc_specializer:
                             mod_idx = op.addr_idx
                             def subtract_addoff(op, results):
                                 if op.addr_idx == mod_idx:
+                                    print(f"subtracting {addoff} from {op.off}")
                                     op.off -= addoff
                                     return True
                                 return False
 
                             modifications.append(
                                     op_modification(
-                                        rtype_idx_match={2}, 
+                                        op_match=[lsc_addr_add,lsc_load,lsc_store],
+                                        rtype_idx_match={c_index}, 
                                         reg_type_match={lsc_reg_type.address},
                                         modification=subtract_addoff)
                                     )
-                            #if op.addr_idx not in modified_c_offsets:
-                            #    modified_c_offsets[op.addr_idx] = lsc_offset.zero_offset()
-                            #modified_c_offsets[op.addr_idx] += addoff
                         else:
                             group_op.off = baseoff+addoff
-                        # Dang, now the next offset add will be wrong...
+
                     result_ops.append(group_op)
             else:
                 result_ops.append(op)
+
             result_ops.extend(mod_ops)
         if need_stls:
             result_ops.extend(stls.flush_load())

@@ -62,6 +62,13 @@ class strided_mapper(offset_mapper):
         self.flip_tile_dims = flip_tile_dims
 
 
+    def get_ldst_size(self, t : tile) -> lsc_offset:
+        # TODO: When we start implementing arbitrary vectorization directions,
+        #       This will probably need a direction parameter
+        #       Alternatively this could be handled in some other manner so that
+        #       always using the first component in the mapper is correct
+        return self.map_tile_idx(t=t, idx=(1,0))
+
     def map_tile_idx(self, t : tile, idx : tuple[int,int]) -> lsc_offset:
         if self.flip_tile_dims:
             first = t.dimb.size*self.dims[0]*idx[0]
@@ -115,5 +122,5 @@ class strided_mapper(offset_mapper):
                 elif isscalar:
                        result += lsc_offset({},[],[],value)
 
-        print(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
+        #print(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
         return result
