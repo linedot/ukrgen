@@ -252,6 +252,13 @@ class lsc_specializer:
                 reg=areg,
                 imm=op.off.immoff*dt_bytes)
 
+        else:
+            regidx = self.rt.aliased_regs['greg'][str(op.off)]
+            offreg = self.gen.greg(regidx)
+            return self.gen.add_greg_greg(dst=areg,
+                                          reg1=areg,
+                                          reg2=offreg)
+
         raise NotImplementedError("Only vectors and immediates are implemented")
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
@@ -654,6 +661,8 @@ class lsc_specializer:
                         range(ways-1)], lsc_offset.zero_offset())
 
                 print(f"widening {op.off} by adding {addoff}")
+                if op.off in self.complex_offsets:
+                    self.complex_offsets.remove(op.off)
                 op.off += addoff
                 self.register_offset(op.off)
             return False
@@ -769,7 +778,10 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 if op.addr_idx == mod_idx:
                                     print(f"subtracting {addoff} from {op.off}")
+                                    if op.off in self.complex_offsets:
+                                        self.complex_offsets.remove(op.off)
                                     op.off -= addoff
+                                    self.register_offset(op.off)
                                     return True
                                 return False
 
@@ -835,6 +847,12 @@ class lsc_specializer:
         asmblock = self.gen.isaquirks(rt=self.rt,dt=triple.a)
 
         asmblock += self.init_vlenregs(triple=triple)
+
+
+        # print offset registers
+        for off in self.complex_offsets:
+            regidx = self.rt.aliased_regs['greg'][str(off)]
+            asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {off}")
 
         # reserve address registers
         for rtype_idx in self.address_registers.keys():
