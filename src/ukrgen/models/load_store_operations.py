@@ -13,6 +13,7 @@ from ..components.operation import dimension_type
 class lsc_reg_type(Enum):
     address = auto()
     data = auto()
+    offset = auto()
 
 # TODO: fractional offsets
 class fraction:
@@ -22,6 +23,9 @@ class fraction:
 
 
 class stridexvlen:
+    """
+    encodes a multiplicative chain of strides and vlens
+    """
     def __init__(self, stride_ids : set[int], vlen_ids : set[int]):
         self.stride_ids = stride_ids
         self.vlen_ids = vlen_ids
@@ -252,8 +256,15 @@ class lsc_operation:
         self.reg_types = reg_types
 
 class lsc_load(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
+    def __init__(self,
+                 rtype_idx : int,
+                 res_idx : int,
+                 addr_idx : int,
+                 off : lsc_offset,
+                 stride : lsc_offset,
+                 t : tile):
         self.off = off
+        self.stride = stride
 
         tiles = [scalar_tile, t]
         indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
@@ -290,8 +301,15 @@ class lsc_load(lsc_operation):
         return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}"
 
 class lsc_store(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, addr_idx : int, off : int, t : tile):
+    def __init__(self,
+                 rtype_idx : int,
+                 res_idx : int,
+                 addr_idx : int,
+                 off : lsc_offset,
+                 stride : lsc_offset,
+                 t : tile):
         self.off = off
+        self.stride = stride
 
         tiles = [scalar_tile, t]
         indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]

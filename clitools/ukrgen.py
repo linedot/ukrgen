@@ -115,7 +115,7 @@ def parse_fma_args(parser : argparse.ArgumentParser):
 
 
     parser.add_argument("--fma-b-method", type=str, required=True,
-                        choices=['vf','lane_select','lane_bcast'],
+                        choices=['vf','lane_select','lane_bcast','load_bcast'],
                         help="How to access elements in b vector for the fma")
 
     args, rest = parser.parse_known_args()
@@ -244,7 +244,7 @@ def main():
     nb=n
     if args.op == 'fma' and sup.b_tile.dima == sup.a_tile.dima:
         fma_args, rest = parse_fma_args(parser=parser)
-        if 'vf' == fma_args.fma_b_method:
+        if fma_args.fma_b_method in ['vf','load_bcast']:
             sup.b_tile.dima = dimension_properties(
                     dt=dimension_type.fixed, size=1,
                     sdt=dimension_type.fixed, sd_size=1)

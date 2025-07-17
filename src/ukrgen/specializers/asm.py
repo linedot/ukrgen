@@ -90,7 +90,10 @@ class op_modification:
 
 
 class lsc_specializer:
-    def __init__(self, model : load_store_cpu, gen : asmgen, rt : reg_tracker):
+    def __init__(self,
+                 model : load_store_cpu,
+                 gen : asmgen,
+                 rt : reg_tracker):
         self.model = model
         self.gen = gen
         self.rt = rt
