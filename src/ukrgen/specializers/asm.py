@@ -103,7 +103,7 @@ class lsc_specializer:
         self.op_support_map = {}
         self.get_op_capabilities()
 
-        self.complex_offsets = set()
+        self.offset_registry = dict()
 
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
@@ -240,10 +240,11 @@ class lsc_specializer:
                                               offset=factor, 
                                               dt=triple[op.rtype_idx])
 
-            vxnalias = "vlen"
-            o1v = lsc_offset({},[], [1], 0)
-            if op.off > o1v:
-                vxnalias = f"vlenx{factor}"
+            #vxnalias = f"{rtype_char}vlen"
+            #o1v = lsc_offset({},[], [1], 0)
+            #if op.off > o1v:
+            #    vxnalias = f"{rtype_char}off:{str(op.off)}"
+            vxnalias = f"{rtype_char}off:{str(op.off)}"
             vlen_idx = self.rt.aliased_regs['greg'][vxnalias]
             vlenreg = self.gen.greg(vlen_idx)
             return self.gen.add_greg_greg(dst=areg,
@@ -256,7 +257,7 @@ class lsc_specializer:
                 imm=op.off.immoff*dt_bytes)
 
         else:
-            regidx = self.rt.aliased_regs['greg'][str(op.off)]
+            regidx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(op.off)}"]
             offreg = self.gen.greg(regidx)
             return self.gen.add_greg_greg(dst=areg,
                                           reg1=areg,
@@ -545,39 +546,12 @@ class lsc_specializer:
                                 #print(traceback.format_exc())
                                 pass
 
-    def register_complex_offset(self, off: lsc_offset):
-        if off in self.complex_offsets:
+    def register_offset(self, rtype_idx : int, off : lsc_offset):
+        if rtype_idx not in self.offset_registry:
+            self.offset_registry[rtype_idx] = set()
+        if off in self.offset_registry[rtype_idx]:
             return
-        self.complex_offsets.add(off)
-
-        # Do this in code_init
-        #regidx = self.rt.reserve_any_reg('greg')
-        #self.rt.alias_reg('greg', str(off), regidx)
-
-    def register_offset(self, off : lsc_offset):
-
-        o1v = lsc_offset({},[], [1], 0)
-        oaddmaxv = lsc_offset({},[], [self.gen.max_add_voff], 0)
-
-        # vlen/byte adds
-        # TODO: this is only correct if the first vlen stride is nonzero
-        #       and others are zero
-        if off.is_vector():
-            if off not in self.vlenadds:
-                if o1v == off:
-                    return
-                if oaddmaxv > off:
-                    return
-                self.vlenadds.add(off.vlen_strides[0])
-                #print(f"aliasing vlenx{op.off}")
-                regidx = self.rt.reserve_any_reg('greg')
-                self.rt.alias_reg('greg',
-                                  f"vlenx{off.vlen_strides[0]}",
-                                  regidx)
-        elif off.is_scalar():
-            self.byteadds.add(off.immoff)
-        else:
-            self.register_complex_offset(off)
+        self.offset_registry[rtype_idx].add(off)
 
 
     def analyse(self, ops : list[lsc_operation]):
@@ -604,7 +578,7 @@ class lsc_specializer:
 
             if isinstance(op, lsc_addr_add):
 
-                self.register_offset(op.off)
+                self.register_offset(rtype_idx=op.rtype_idx,off=op.off)
             elif isinstance(op, lsc_transformation):
                 self.ops_used.append(op.op)
                 for i,(residx,t) in enumerate(zip(op.res_indices,op.tiles)):
@@ -665,10 +639,10 @@ class lsc_specializer:
                         range(ways-1)], lsc_offset.zero_offset())
 
                 print(f"widening {op.off} by adding {addoff}")
-                if op.off in self.complex_offsets:
-                    self.complex_offsets.remove(op.off)
+                if op.off in self.offset_registry:
+                    self.offset_registry.remove(op.off)
                 op.off += addoff
-                self.register_offset(op.off)
+                self.register_offset(rtype_idx=c_index,off=op.off)
             return False
 
         if split_instructions or vec_groups:
@@ -730,9 +704,6 @@ class lsc_specializer:
                 if need_stls:
                     raise NotImplementedError("split instruction and special tile ld/st not implemented")
                 
-                baseoff = deepcopy(op.off)
-                sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
-                extent_off = baseoff.colin(sizeoff)
                 for i in range(ways):
                     part_op = copy.deepcopy(op)
                     for j,idx_list in enumerate(part_op.indices):
@@ -741,8 +712,13 @@ class lsc_specializer:
                     if isinstance(op, lsc_transformation):
                         part_op.op += f"{i}"
                     if isinstance(op, (lsc_load,lsc_store)):
-                        baseoff += sum([extent_off for j in range(ways)])
-                        addoff = sum([sizeoff for j in range(i)])
+                        baseoff = deepcopy(op.off)
+                        sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
+                        extent_off = baseoff.colin(sizeoff)
+                        baseoff += sum([extent_off for j in range(ways)],
+                                       lsc_offset.zero_offset())
+                        addoff = sum([sizeoff for j in range(i)],
+                                       lsc_offset.zero_offset())
                         part_op.off = baseoff+addoff
                     result_ops.append(part_op)
             if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
@@ -782,10 +758,11 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 if op.addr_idx == mod_idx:
                                     print(f"subtracting {addoff} from {op.off}")
-                                    if op.off in self.complex_offsets:
-                                        self.complex_offsets.remove(op.off)
+                                    if op.off in self.offset_registry:
+                                        self.offset_registry.remove(op.off)
                                     op.off -= addoff
-                                    self.register_offset(op.off)
+                                    self.register_offset(rtype_idx=op.rtype_idx,
+                                                         off=op.off)
                                     return True
                                 return False
 
@@ -821,8 +798,6 @@ class lsc_specializer:
 
         asmblock = ""
 
-        if not self.vlenadds:
-            return ""
         if 'vlen' not in self.rt.aliased_regs['greg']:
             vlenidx = self.rt.reserve_any_reg('greg')
             self.rt.alias_reg('greg', 'vlen', vlenidx)
@@ -832,16 +807,29 @@ class lsc_specializer:
             vlenidx = self.rt.aliased_regs['greg']['vlen']
             vlenreg = self.gen.greg(vlenidx)
 
-        for vlenxn in self.vlenadds:
+        for rtype_idx in self.offset_registry.keys():
+            rtype_char = string.ascii_lowercase[rtype_idx]
+            for off in self.offset_registry[rtype_idx]:
+                if not off.is_vector():
+                    continue
 
-            vlenxnidx = self.rt.reserve_any_reg('greg')
-            self.rt.alias_reg('greg', f"vlenx{vlenxn}", vlenxnidx)
+                alias = f"{rtype_char}off:{str(off)}"
 
-            vlenxnreg = self.gen.greg(vlenxnidx)
+                dt_shift = adt_size(triple[rtype_idx]).bit_length()-1
 
-            asmblock += self.gen.mul_greg_imm(src=vlenreg,
-                                              dst=vlenxnreg,
-                                              factor=vlenxn)
+                vlenxnidx = self.rt.reserve_any_reg('greg')
+                self.rt.alias_reg('greg', alias, vlenxnidx)
+
+                vlenxnreg = self.gen.greg(vlenxnidx)
+
+                asmblock += self.gen.mov_greg(src=vlenreg,dst=vlenxnreg)
+                asmblock += self.gen.shift_greg_left(reg=vlenxnreg, bit_count=dt_shift)
+
+                vlenxn = off.vlen_strides[0]
+                if vlenxn > 1:
+                    asmblock += self.gen.mul_greg_imm(src=vlenreg,
+                                                      dst=vlenxnreg,
+                                                      factor=vlenxn)
 
         return asmblock
 
@@ -854,10 +842,15 @@ class lsc_specializer:
 
 
         # reserve offset registers
-        for off in self.complex_offsets:
-            regidx = self.rt.reserve_any_reg('greg')
-            self.rt.alias_reg('greg', str(off), regidx)
-            asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {off}")
+        for rtype_idx in self.offset_registry.keys():
+            rtype_char = string.ascii_lowercase[rtype_idx]
+            for off in self.offset_registry[rtype_idx]:
+                if off.is_vector() or off.is_scalar():
+                    continue
+                regidx = self.rt.reserve_any_reg('greg')
+                alias = f"{rtype_char}off:{str(off)}"
+                self.rt.alias_reg('greg', alias , regidx)
+                asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {alias}")
 
         # reserve address registers
         for rtype_idx in self.address_registers.keys():
