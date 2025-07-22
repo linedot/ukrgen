@@ -547,6 +547,9 @@ class lsc_specializer:
                                 pass
 
     def register_offset(self, rtype_idx : int, off : lsc_offset):
+        if off == lsc_offset.zero_offset():
+            # TODO: investigate why this can happen
+            return
         print(f"registering offset {off} for rtype_idx={rtype_idx}")
         if rtype_idx not in self.offset_registry:
             self.offset_registry[rtype_idx] = set()
