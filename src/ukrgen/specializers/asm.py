@@ -557,6 +557,97 @@ class lsc_specializer:
             return
         self.offset_registry[rtype_idx].add(off)
 
+    def calculate_offset(self, rtype_idx : int,
+                         off : lsc_offset,
+                         triple : adt_triple) -> str:
+        asmblock = ""
+
+
+        ways = 1
+        dt_size = adt_size(triple[rtype_idx])
+        dt_shift = dt_size.bit_length()-1
+        # if wide
+        if rtype_idx == 2:
+            ways = adt_size(triple.c)//adt_size(triple.a)
+
+        ways_shift = ways.bit_length()-1
+
+        rtype_char = string.ascii_lowercase[rtype_idx]
+        offreg_idx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(off)}"]
+        offreg = self.gen.greg(offreg_idx)
+        for sxv,value in off.sxv_strides.items():
+            if 0 == value:
+                continue
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg, imm=value)
+
+            for stride_id in sxv.stride_ids:
+                alias = f"stride{stride_id}"
+                if not alias in self.rt.aliased_regs['greg']:
+                    idx = self.rt.reserve_any_reg('greg')
+                    self.rt.alias_reg('greg', alias, idx)
+                else:
+                    idx = self.rt.aliased_regs['greg'][alias]
+
+                reg = self.gen.greg(idx)
+                asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+            
+            for vlen_id in sxv.vlen_ids:
+                if vlen_id != 0:
+                    raise NotImplementedError("Only first VLEN implemented right now")
+
+                vlenidx = self.rt.aliased_regs['greg']['vlen']
+                vlenreg = self.gen.greg(vlenidx)
+                asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=vlenreg)
+
+
+            # ways would reduce the number of elements
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        for i,value in enumerate(off.reg_strides):
+            if 0 == value:
+                continue
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg,imm=value)
+
+            alias = f"stride{i}"
+            if not alias in self.rt.aliased_regs['greg']:
+                idx = self.rt.reserve_any_reg('greg')
+                self.rt.alias_reg('greg', alias, idx)
+            else:
+                idx = self.rt.aliased_regs['greg'][alias]
+
+            reg = self.gen.greg(idx)
+            asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+            
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        for i,value in enumerate(off.vlen_strides):
+            if 0 == value:
+                continue
+            if i != 0:
+                raise NotImplementedError("Only first VLEN implemented right now")
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg, imm=value)
+
+            idx = self.rt.aliased_regs['greg']['vlen']
+
+            reg = self.gen.greg(idx)
+            asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+            
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        if 0 != off.immoff:
+            asmblock += self.gen.add_greg_imm(reg=offreg,imm=off.immoff*dt_size)
+        return asmblock
 
     def analyse(self, ops : list[lsc_operation]):
         for op in ops:
@@ -854,6 +945,9 @@ class lsc_specializer:
                 alias = f"{rtype_char}off:{str(off)}"
                 self.rt.alias_reg('greg', alias , regidx)
                 asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += self.calculate_offset(rtype_idx, off, triple)
+                asmblock += self.gen.asmwrap(f"; calculation end <--")
 
         # reserve address registers
         for rtype_idx in self.address_registers.keys():
