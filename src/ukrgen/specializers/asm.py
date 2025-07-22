@@ -547,6 +547,7 @@ class lsc_specializer:
                                 pass
 
     def register_offset(self, rtype_idx : int, off : lsc_offset):
+        print(f"registering offset {off} for rtype_idx={rtype_idx}")
         if rtype_idx not in self.offset_registry:
             self.offset_registry[rtype_idx] = set()
         if off in self.offset_registry[rtype_idx]:
@@ -577,7 +578,6 @@ class lsc_specializer:
                 self.data_tags[op.rtype_idx] = dreg_tag
 
             if isinstance(op, lsc_addr_add):
-
                 self.register_offset(rtype_idx=op.rtype_idx,off=op.off)
             elif isinstance(op, lsc_transformation):
                 self.ops_used.append(op.op)
@@ -639,8 +639,8 @@ class lsc_specializer:
                         range(ways-1)], lsc_offset.zero_offset())
 
                 print(f"widening {op.off} by adding {addoff}")
-                if op.off in self.offset_registry:
-                    self.offset_registry.remove(op.off)
+                if op.off in self.offset_registry[c_index]:
+                    self.offset_registry[c_index].remove(op.off)
                 op.off += addoff
                 self.register_offset(rtype_idx=c_index,off=op.off)
             return False
@@ -758,8 +758,8 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 if op.addr_idx == mod_idx:
                                     print(f"subtracting {addoff} from {op.off}")
-                                    if op.off in self.offset_registry:
-                                        self.offset_registry.remove(op.off)
+                                    if op.off in self.offset_registry[op.rtype_idx]:
+                                        self.offset_registry[op.rtype_idx].remove(op.off)
                                     op.off -= addoff
                                     self.register_offset(rtype_idx=op.rtype_idx,
                                                          off=op.off)
