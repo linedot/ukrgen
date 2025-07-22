@@ -513,7 +513,9 @@ def main():
     print(finiblock)
 
 
-    print(rt.aliased_regs['greg'])
+    print("Aliased GP regs in the end:")
+    for alias,regidx in rt.aliased_regs['greg'].items():
+        print(f"  {alias:30} : {gen.greg(regidx)}")
 
 
 if __name__ == "__main__":
