@@ -784,15 +784,17 @@ class lsc_specializer:
                     print(f"flushing treg store")
             if isinstance(op, (lsc_load, lsc_store)):
                 # Strides
-                if any([stridx is not None for stridx in \
-                        self.model.offset_mappers[op.rtype_idx].stride_indices]):
+                mapper = self.model.offset_mappers[op.rtype_idx]
+                
+                # TODO: arbitrary vectorization direction
+                vecdim = 0
+                if op.rtype_idx == 1:
+                    vecdim = 1
 
-                    stride = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
-
-                    # ignore 1*VLEN strides
-                    if not stride.is_vector() or 1 != sum(stride.vlen_strides):
-                        op.stride = stride
-                        self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
+                stridx = mapper.stride_indices[vecdim]
+                if stridx is not None:
+                    op.stride = lsc_offset({}, [0 for i in range(stridx)]+[1], [], 0)
+                    self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
                     
 
                 if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
