@@ -6,6 +6,7 @@
 
 import argparse
 import sys
+import logging
 
 from asmgen.asmblocks.avx_fma import fma128,fma256,avx512
 from asmgen.asmblocks.neon import neon
@@ -197,6 +198,8 @@ def parse_sched_args(parser : argparse.ArgumentParser):
 
 def main():
 
+    logging.basicConfig(level=logging.DEBUG)
+
     parser = argparse.ArgumentParser(
             description="ukrgen compute kernel generator",
             add_help=False)
@@ -275,6 +278,9 @@ def main():
         print(str(op))
 
     stride_args,rest = parse_stride_args(parser=parser)
+
+    stridelog = logging.getLogger("STRIDE")
+    stridelog.setLevel(logging.DEBUG)
 
     lsc_args,rest = parse_lsc_args(parser=parser)
 
@@ -359,6 +365,7 @@ def main():
         a_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
         b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
         c_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
+        stridelog.debug("No strides detected")
     else:
         strides = {k : (None,None) for k in ['a','b','c']}
         i = 0
@@ -366,18 +373,20 @@ def main():
             comp_slist = [None,None]
             if stride_args.row_strides:
                 if char in stride_args.row_strides:
+                    stridelog.debug(f"Component {char} has row stride")
                     comp_slist[0] = i
                     i+= 1
             if stride_args.column_strides:
                 if char in stride_args.column_strides:
+                    stridelog.debug(f"Component {char} has col stride")
                     comp_slist[1] = i
                     i+= 1
 
             strides[char] = tuple(comp_slist)
 
-        a_mapper = strided_mapper((1,1), strides['a'])
-        b_mapper = strided_mapper((1,1), strides['b'])
-        c_mapper = strided_mapper((1,1), strides['c'])
+        a_mapper = strided_mapper((m,1), strides['a'],vecdim=0)
+        b_mapper = strided_mapper((1,n), strides['b'],vecdim=1)
+        c_mapper = strided_mapper((m,n), strides['c'],vecdim=0)
 
     #ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
     #b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]

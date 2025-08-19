@@ -235,6 +235,9 @@ class lsc_offset:
         
         return f"{result}{self.immoff}"
 
+    def __repr__(self):
+        return str(self)
+
     def __hash__(self):
         return hash(self.__str__())
 

@@ -7,6 +7,7 @@
 import re
 from typing import Self,Callable,Union
 
+import logging
 import traceback
 import string
 
@@ -116,6 +117,10 @@ class lsc_specializer:
 
         self.transformations[lsc_treg_row_load] = self.transform_trow_load
         self.transformations[lsc_treg_row_store] = self.transform_trow_store
+
+        # Logging
+
+        self.stridelog = logging.getLogger("STRIDE")
 
     def set_model(self, model : load_store_cpu):
         self.model = model
@@ -550,7 +555,7 @@ class lsc_specializer:
         if off == lsc_offset.zero_offset():
             # TODO: investigate why this can happen
             return
-        print(f"registering offset {off} for rtype_idx={rtype_idx}")
+        self.stridelog.debug(f"registering offset {off} for rtype_idx={rtype_idx}")
         if rtype_idx not in self.offset_registry:
             self.offset_registry[rtype_idx] = set()
         if off in self.offset_registry[rtype_idx]:
