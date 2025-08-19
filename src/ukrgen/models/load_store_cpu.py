@@ -114,7 +114,7 @@ class load_store_cpu:
             result.append(lsc_store(rtype_idx=rtype_idx, res_idx=res_idx,
                                     addr_idx=idx,
                                     off=off,
-                                    stride=lsc_offset({},[],[],1),
+                                    stride=None,
                                     t=t))
 
         # load
@@ -133,7 +133,7 @@ class load_store_cpu:
         result.append(lsc_load(rtype_idx=rtype_idx, res_idx=res_idx,
                                addr_idx=idx,
                                off=off,
-                               stride=lsc_offset({},[],[],1),
+                               stride=None,
                                t=t))
         self.last_tile_used[rtype_idx] = t
 
@@ -157,7 +157,7 @@ class load_store_cpu:
                     result.append(lsc_store(rtype_idx=rtype_idx, res_idx=res_idx,
                                             addr_idx=idx,
                                             off=off,
-                                            stride=lsc_offset({},[],[],1),
+                                            stride=None,
                                             t=t))
                     self.states[rtype_idx][res_idx] = lsc_state.clean
         return result

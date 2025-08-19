@@ -44,6 +44,8 @@ class stridexvlen:
 
 
         return f"{sstr}{vstr}"
+    def __repr__(self):
+        return str(self)
     def __hash__(self):
         return hash(str(self))
 
@@ -80,6 +82,7 @@ class lsc_offset:
         for key in other.sxv_strides.keys():
             if key not in one.sxv_strides:
                 one.sxv_strides[key] = 0
+
 
         l1 = len(one.reg_strides)
         l2 = len(other.reg_strides)

@@ -92,10 +92,14 @@ class addr_resolver:
     def toff_in_range(self, caoff : lsc_offset, toff : lsc_offset,
                       offset_range : tuple[lsc_offset,lsc_offset]):
 
-
-        lsc_offset.adjust_offlists(caoff,toff)
         lsc_offset.adjust_offlists(caoff,offset_range[0])
         lsc_offset.adjust_offlists(caoff,offset_range[1])
+        lsc_offset.adjust_offlists(caoff,toff)
+
+        # sxv offsets have to be equal
+        for sxv in caoff.sxv_strides.keys():
+            if caoff.sxv_strides[sxv] != toff.sxv_strides[sxv]:
+                return False
 
         immoffset_in_range = \
             (toff.immoff >=(caoff.immoff-offset_range[0].immoff)) and \

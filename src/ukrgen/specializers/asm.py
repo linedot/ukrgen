@@ -302,38 +302,47 @@ class lsc_specializer:
         # - differentiate voffset,immoffset, nonoffset, ...
         # - differentiate tile/vreg/freg
 
-        
-        if lsc_offset.zero_offset() == op.off:
-            if 'treg' == dreg_tag:
-                lsfunc = getattr(self.gen, f"{action}_tile")
-                return lsfunc(areg=areg,treg=dreg,dt=dt)
+        if op.stride is None:
+            
+            if lsc_offset.zero_offset() == op.off:
+                if 'treg' == dreg_tag:
+                    lsfunc = getattr(self.gen, f"{action}_tile")
+                    return lsfunc(areg=areg,treg=dreg,dt=dt)
+                if 'vreg' == dreg_tag:
+                    lsfunc = getattr(self.gen, f"{action}_vector")
+                    return lsfunc(areg=areg,vreg=dreg,dt=dt)
+
+            if 'freg' == dreg_tag:
+                lsfunc = getattr(self.gen, f"{action}_scalar_immoff")
+
+                byteoff = op.off
+                byteoff.immoff *=dt_bytes
+                return lsfunc(
+                        areg=areg,
+                        offset=byteoff.immoff,
+                        freg=dreg,
+                        dt=dt)
+
             if 'vreg' == dreg_tag:
-                lsfunc = getattr(self.gen, f"{action}_vector")
-                return lsfunc(areg=areg,vreg=dreg,dt=dt)
+                if vlenmul > 0:
+                    lsfunc = getattr(self.gen, f"{action}_vector_voff")
+                    return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
+                else:
+                    lsfunc = getattr(self.gen, f"{action}_vector_immoff")
+                    return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
 
-        if 'freg' == dreg_tag:
-            lsfunc = getattr(self.gen, f"{action}_scalar_immoff")
-
-            byteoff = op.off
-            byteoff.immoff *=dt_bytes
-            return lsfunc(
-                    areg=areg,
-                    offset=byteoff.immoff,
-                    freg=dreg,
-                    dt=dt)
-
-        if 'vreg' == dreg_tag:
-            if vlenmul > 0:
-                lsfunc = getattr(self.gen, f"{action}_vector_voff")
-                return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
-            else:
-                lsfunc = getattr(self.gen, f"{action}_vector_immoff")
-                return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
+        else:
+            if lsc_offset.zero_offset() == op.off:
+                if 'vreg' == dreg_tag:
+                    lsfunc = getattr(self.gen, f"{action}_vector_gregstride")
+                    
+                    streg_idx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(op.stride)}"]
+                    return lsfunc(areg=areg, sreg=self.gen.greg(streg_idx), vreg=dreg, dt=dt)
 
 
 
         #raise NotImplementedError("Load not implemented yet")
-        return self.gen.asmwrap(f"fixme: {action} {dreg_tag} with off {op.off} not implemented")
+        return self.gen.asmwrap(f"fixme: {action} {dreg_tag} with off {op.off} and stride {op.stride} not implemented")
 
     def transform_load(self, op : lsc_load, triple : adt_triple):
         return self.transform_ldst(op=op,triple=triple,action="load")
@@ -774,6 +783,14 @@ class lsc_specializer:
                     result_ops.extend(stls.flush_store())
                     print(f"flushing treg store")
             if isinstance(op, (lsc_load, lsc_store)):
+                # Strides
+                if any([stridx is not None for stridx in \
+                        self.model.offset_mappers[op.rtype_idx].stride_indices]):
+
+                    op.stride = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
+                    self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
+                    
+
                 if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
                    (op.t.dima.dt == dimension_type.vla and \
                     op.t.dimb.dt == dimension_type.vla):
