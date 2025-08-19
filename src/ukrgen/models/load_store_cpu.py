@@ -95,7 +95,7 @@ class load_store_cpu:
         #    corg = toff
         rtype_char = string.ascii_lowercase[rtype_idx]
 
-        print(f"Resolving {toff} into {rtype_char}{res_idx}")
+        #print(f"Resolving {toff} into {rtype_char}{res_idx}")
         if (not corg is None) and \
                 (not lsc_state.invalid == self.states[rtype_idx][res_idx]):
             if corg == toff:
@@ -370,7 +370,7 @@ class load_store_cpu:
 
         preload_next_offsets = [lsc_offset.zero_offset() if no is None else no \
                 for no in preload_next_offsets]
-        print(f"pno: {",".join([str(no) for no in preload_next_offsets])}")
+        #print(f"pno: {",".join([str(no) for no in preload_next_offsets])}")
         # only the changes that were part of the preload should be propagated
         self.ar.current_offsets = copy.deepcopy(preload_addr_reg_offsets)
 

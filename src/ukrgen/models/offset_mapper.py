@@ -154,5 +154,5 @@ class strided_mapper(offset_mapper):
                  sum([second_off_base for i in range(second)],lsc_offset.zero_offset())
             
 
-        print(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
+        #print(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
         return result

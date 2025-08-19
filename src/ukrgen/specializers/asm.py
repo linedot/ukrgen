@@ -787,8 +787,12 @@ class lsc_specializer:
                 if any([stridx is not None for stridx in \
                         self.model.offset_mappers[op.rtype_idx].stride_indices]):
 
-                    op.stride = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
-                    self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
+                    stride = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
+
+                    # ignore 1*VLEN strides
+                    if not stride.is_vector() or 1 != sum(stride.vlen_strides):
+                        op.stride = stride
+                        self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
                     
 
                 if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
