@@ -28,7 +28,7 @@ from ukrgen.specializers.asm import lsc_specializer
 from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_properties
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
-from ukrgen.models.load_store_operations import lsc_offset
+from ukrgen.models.load_store_operations import lsc_offset,stridexvlen
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
 from ukrgen.schedulers import simple_dependency_scheduler
@@ -157,6 +157,9 @@ def parse_stride_args(parser : argparse.ArgumentParser):
 
 def parse_lsc_args(parser : argparse.ArgumentParser):
 
+
+    multiareg_strategies = ["interleave","split"]
+
     parser.add_argument("--a-data-regs", type=int, required=True,
                         help="number of data registers to use for the a tiles")
     parser.add_argument("--b-data-regs", type=int, required=True,
@@ -166,12 +169,24 @@ def parse_lsc_args(parser : argparse.ArgumentParser):
     parser.add_argument("--a-addr-regs", type=int,
                         default=1,
                         help="number of address registers to use for the a tiles")
+    parser.add_argument("--a-multiaddr-strat", type=str,
+                        default=multiareg_strategies[0],
+                        choices=multiareg_strategies,
+                        help="Strategy for using multiple address registers for a tiles")
     parser.add_argument("--b-addr-regs", type=int,
                         default=1,
                         help="number of address registers to use for the b tiles")
+    parser.add_argument("--b-multiaddr-strat", type=str,
+                        default=multiareg_strategies[0],
+                        choices=multiareg_strategies,
+                        help="Strategy for using multiple address registers for b tiles")
     parser.add_argument("--c-addr-regs", type=int,
                         default=1,
                         help="number of address registers to use for the c tiles")
+    parser.add_argument("--c-multiaddr-strat", type=str,
+                        default=multiareg_strategies[0],
+                        choices=multiareg_strategies,
+                        help="Strategy for using multiple address registers for c tiles")
     parser.add_argument("--a-preload", type=int, required=True,
                         help="number of a data registers to preload")
     parser.add_argument("--b-preload", type=int, required=True,
@@ -360,36 +375,66 @@ def main():
                 [r//ways for r in addr_offset_steps[2][i].reg_strides]
             addr_offset_steps[2][i].immoff //= ways
 
-    if not stride_args.column_strides and not stride_args.row_strides:
-        # Everything contiguous
-        a_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
-        b_mapper = flat_mapper(lambda t,idx : t.dima.size*n*idx[0]+idx[1])
-        c_mapper = flat_mapper(lambda t,idx : t.dima.size*m*idx[1]+idx[0])
-        stridelog.debug("No strides detected")
-    else:
-        strides = {k : (None,None) for k in ['a','b','c']}
-        i = 0
-        for char in ['a','b','c']:
-            comp_slist = [None,None]
-            if stride_args.row_strides:
-                if char in stride_args.row_strides:
-                    stridelog.debug(f"Component {char} has row stride")
-                    comp_slist[0] = i
-                    i+= 1
-            if stride_args.column_strides:
-                if char in stride_args.column_strides:
-                    stridelog.debug(f"Component {char} has col stride")
-                    comp_slist[1] = i
-                    i+= 1
+    strides = {k : (None,None) for k in ['a','b','c']}
+    i = 0
+    for char in ['a','b','c']:
+        comp_slist = [None,None]
+        if stride_args.row_strides:
+            if char in stride_args.row_strides:
+                stridelog.debug(f"Component {char} has row stride")
+                comp_slist[0] = i
+                i+= 1
+        if stride_args.column_strides:
+            if char in stride_args.column_strides:
+                stridelog.debug(f"Component {char} has col stride")
+                comp_slist[1] = i
+                i+= 1
 
-            strides[char] = tuple(comp_slist)
+        strides[char] = tuple(comp_slist)
 
-        a_mapper = strided_mapper((m,1), strides['a'],vecdim=0)
-        b_mapper = strided_mapper((1,n), strides['b'],vecdim=1)
-        c_mapper = strided_mapper((m,n), strides['c'],vecdim=0)
 
-    #ac_mapper = lambda tile, idx : tile.dima.size*m*idx[1]+idx[0]
-    #b_mapper = lambda tile, idx : tile.dima.size*n*idx[0]+idx[1]
+    a_mapper = strided_mapper((m,1), strides['a'],vecdim=0)
+    b_mapper = strided_mapper((1,n), strides['b'],vecdim=1)
+    c_mapper = strided_mapper((m,n), strides['c'],vecdim=0)
+
+    # TODO: arbitrary vectorization direction
+    # TODO: Logic might be almost the same for no strides, possibly making the block further above redundant
+    for i,(char,vecdim,mapper,t,count,strat) in enumerate(zip(
+            ['a','b','c'],
+            [0,1,0],
+            [a_mapper,b_mapper,c_mapper],
+            [sup.a_tile,sup.b_tile,sup.c_tile],
+            [lsc_args.a_addr_regs,
+             lsc_args.b_addr_regs,
+             lsc_args.c_addr_regs],
+            [lsc_args.a_multiaddr_strat,
+             lsc_args.b_multiaddr_strat,
+             lsc_args.c_multiaddr_strat]
+            )):
+        if strides[char][vecdim] is not None:
+            if is_tile_vla_vector(t):
+                step = mapper.get_ldst_size(t)
+                if "interleave" == strat:
+                    print(f"Interleave strat for {char}")
+                    addr_offset_steps[i] = [sum([step for jj in range(count)],lsc_offset.zero_offset()) \
+                            for j in range(count)]
+                    addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
+                            for j in range(count)]
+                elif "split" == strat:
+                    print(f"Split strat for {char}")
+                    full = [m,n,k][vecdim]
+                    part = full//count
+                    splits = [part*j for j in range(count)]
+                    addr_offset_steps[i] = [sum([step for jj in range(full)],lsc_offset.zero_offset()) \
+                            for j in range(count)]
+                    addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
+                            for j in splits]
+                else:
+                    raise NotImplementedError(f"multiaddr strategy \"{strat}\" not implemented")
+
+    print(f"addr steps: {addr_offset_steps}")
+    print(f"addr starts: {addr_offset_starts}")
+
 
     ar = addr_resolver(indices=addr_indices,
                        starting_offsets=addr_offset_starts,
