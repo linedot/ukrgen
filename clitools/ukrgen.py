@@ -380,12 +380,12 @@ def main():
             addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],
                                         maxoff)
 
-        for i,_ in enumerate(addr_offset_steps[2]):
-            addr_offset_steps[2][i].vlen_strides = \
-                [v//ways for v in addr_offset_steps[2][i].vlen_strides]
-            addr_offset_steps[2][i].reg_strides = \
-                [r//ways for r in addr_offset_steps[2][i].reg_strides]
-            addr_offset_steps[2][i].immoff //= ways
+        #for i,_ in enumerate(addr_offset_steps[2]):
+        #    addr_offset_steps[2][i].vlen_strides = \
+        #        [v//ways for v in addr_offset_steps[2][i].vlen_strides]
+        #    addr_offset_steps[2][i].reg_strides = \
+        #        [r//ways for r in addr_offset_steps[2][i].reg_strides]
+        #    addr_offset_steps[2][i].immoff //= ways
 
     strides = {k : (None,None) for k in ['a','b','c']}
     i = 0
@@ -423,26 +423,28 @@ def main():
              lsc_args.b_multiaddr_strat,
              lsc_args.c_multiaddr_strat]
             )):
-        if strides[char][vecdim] is not None:
-            if is_tile_vla_vector(t):
-                step = mapper.get_ldst_size(t)
-                if "interleave" == strat:
-                    print(f"Interleave strat for {char}")
-                    addr_offset_steps[i] = [sum([step for jj in range(count)],lsc_offset.zero_offset()) \
-                            for j in range(count)]
-                    addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
-                            for j in range(count)]
-                elif "split" == strat:
-                    print(f"Split strat for {char}")
-                    full = [m,n,k][vecdim]
-                    part = full//count
-                    splits = [part*j for j in range(count)]
-                    addr_offset_steps[i] = [sum([step for jj in range(full)],lsc_offset.zero_offset()) \
-                            for j in range(count)]
-                    addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
-                            for j in splits]
-                else:
-                    raise NotImplementedError(f"multiaddr strategy \"{strat}\" not implemented")
+        step = mapper.get_ldst_size(t)
+        if "interleave" == strat:
+            print(f"Interleave strat for {char}")
+            addr_offset_steps[i] = [sum([step for jj in range(count)],lsc_offset.zero_offset()) \
+                    for j in range(count)]
+            addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
+                    for j in range(count)]
+        elif "split" == strat:
+            print(f"Split strat for {char}")
+            full = [m,n,k][vecdim]
+            part = full//count
+            splits = [part*j for j in range(count)]
+            addr_offset_steps[i] = [sum([step for jj in range(full)],lsc_offset.zero_offset()) \
+                    for j in range(count)]
+            addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
+                    for j in splits]
+            # Force split by setting max offset range to split/part
+            addr_offset_ranges[i] = [(zo, sum([step for jj in range(part)],
+                                              lsc_offset.zero_offset())) for \
+                    j in range(count)]
+        else:
+            raise NotImplementedError(f"multiaddr strategy \"{strat}\" not implemented")
 
     print(f"addr steps: {addr_offset_steps}")
     print(f"addr starts: {addr_offset_starts}")
