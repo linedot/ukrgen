@@ -58,6 +58,10 @@ def parse_main_arguments(parser : argparse.ArgumentParser):
 
     operations = ['fma','dota','fopa','mma']
 
+    kernels = ['mm']
+    parser.add_argument("--ukr", type=str,
+                        choices=kernels,
+                        required=True, help="Kernel to generate")
     parser.add_argument("--isa", type=str,
                         choices=asmgen_map.keys(),
                         required=True, help="ISA to use")
@@ -103,9 +107,12 @@ def parse_specializer_arguments(
              c_type == sup.triple.c)
             ]
 
+    variantstr = "\n".join([f"{i}: <{str(sup)}>" for \
+            i,sup in enumerate(op_support_list)])
+
     parser.add_argument("--variant", type=int, required=True,
                         choices=list(range(len(op_support_list))),
-                        help="Variant to use")
+                        help=f"Variant to use. Details: {variantstr}")
 
     spec_args, rest = parser.parse_known_args()
 
@@ -115,9 +122,12 @@ def parse_specializer_arguments(
 def parse_fma_args(parser : argparse.ArgumentParser):
 
 
-    parser.add_argument("--fma-b-method", type=str, required=True,
+    parser.add_argument("--fma-unvec-method", type=str, required=True,
                         choices=['vf','lane_select','lane_bcast','load_bcast'],
-                        help="How to access elements in b vector for the fma")
+                        help="""
+                        When using fma as base instruction and both A and B are vectors,
+                        determines how scalars are accessed in the unvectorized dimension
+                        """)
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
@@ -262,11 +272,13 @@ def main():
     nb=n
     if args.op == 'fma' and sup.b_tile.dima == sup.a_tile.dima:
         fma_args, rest = parse_fma_args(parser=parser)
-        if fma_args.fma_b_method in ['vf','load_bcast']:
+        if fma_args.fma_unvec_method in ['vf','load_bcast']:
             sup.b_tile.dima = dimension_properties(
                     dt=dimension_type.fixed, size=1,
                     sdt=dimension_type.fixed, sd_size=1)
-        elif fma_args.fma_b_method in ['lane_select','lane_bcast']:
+        elif fma_args.fma_unvec_method in ['lane_select','lane_bcast']:
+
+            raise NotImplementedError("lane_select and lane_bcast not yet implemented")
             b_into_size = gen.indexable_elements(sup.triple.b)
             nb //= b_into_size
             sup.b_tile.dima = dimension_properties(
