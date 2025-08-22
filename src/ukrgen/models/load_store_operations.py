@@ -261,6 +261,10 @@ class lsc_operation:
         self.writes = writes
         self.reg_types = reg_types
 
+
+class ldst_modifier(Enum):
+    bcast1 = auto()
+
 class lsc_load(lsc_operation):
     def __init__(self,
                  rtype_idx : int,
@@ -268,9 +272,11 @@ class lsc_load(lsc_operation):
                  addr_idx : int,
                  off : lsc_offset,
                  stride : lsc_offset,
-                 t : tile):
+                 t : tile,
+                 mods : set[ldst_modifier]):
         self.off = off
         self.stride = stride
+        self.mods = mods
 
         tiles = [scalar_tile, t]
         indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
@@ -313,9 +319,11 @@ class lsc_store(lsc_operation):
                  addr_idx : int,
                  off : lsc_offset,
                  stride : lsc_offset,
-                 t : tile):
+                 t : tile,
+                 mods : set[ldst_modifier]):
         self.off = off
         self.stride = stride
+        self.mods = mods
 
         tiles = [scalar_tile, t]
         indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]

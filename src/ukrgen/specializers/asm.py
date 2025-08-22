@@ -16,6 +16,7 @@ from asmgen.registers import (
     reg_tracker,
     data_reg,
     asm_data_type as adt,
+    it_from_dt_samesize,
     adt_is_float,
     adt_is_int,
     adt_triple,
@@ -27,7 +28,7 @@ from ..components import *
 from ..generators import *
 from ..models import *
 
-from ..models.load_store_operations import lsc_reg_type
+from ..models.load_store_operations import lsc_reg_type,ldst_modifier
 
 
 
@@ -105,6 +106,7 @@ class lsc_specializer:
         self.get_op_capabilities()
 
         self.offset_registry = dict()
+        self.vindex_registry = dict()
 
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
@@ -302,18 +304,22 @@ class lsc_specializer:
         # - differentiate voffset,immoffset, nonoffset, ...
         # - differentiate tile/vreg/freg
 
+        suffix = ""
+        if ldst_modifier.bcast1 in op.mods:
+            suffix = "_bcast1"
+
         if op.stride is None:
             
             if lsc_offset.zero_offset() == op.off:
                 if 'treg' == dreg_tag:
-                    lsfunc = getattr(self.gen, f"{action}_tile")
+                    lsfunc = getattr(self.gen, f"{action}_tile{suffix}")
                     return lsfunc(areg=areg,treg=dreg,dt=dt)
                 if 'vreg' == dreg_tag:
-                    lsfunc = getattr(self.gen, f"{action}_vector")
+                    lsfunc = getattr(self.gen, f"{action}_vector{suffix}")
                     return lsfunc(areg=areg,vreg=dreg,dt=dt)
 
             if 'freg' == dreg_tag:
-                lsfunc = getattr(self.gen, f"{action}_scalar_immoff")
+                lsfunc = getattr(self.gen, f"{action}_scalar{suffix}_immoff")
 
                 byteoff = op.off
                 byteoff.immoff *=dt_bytes
@@ -324,20 +330,29 @@ class lsc_specializer:
                         dt=dt)
 
             if 'vreg' == dreg_tag:
-                if vlenmul > 0:
-                    lsfunc = getattr(self.gen, f"{action}_vector_voff")
+                if vlenmul > 0 and ldst_modifier.bcast1 not in op.mods:
+                    lsfunc = getattr(self.gen, f"{action}_vector{suffix}_voff")
                     return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
                 else:
-                    lsfunc = getattr(self.gen, f"{action}_vector_immoff")
+                    lsfunc = getattr(self.gen, f"{action}_vector{suffix}_immoff")
                     return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
 
         else:
             if lsc_offset.zero_offset() == op.off:
                 if 'vreg' == dreg_tag:
-                    lsfunc = getattr(self.gen, f"{action}_vector_gregstride")
+                    lsfunc = getattr(self.gen, f"{action}_vector{suffix}_gregstride")
                     
                     streg_idx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(op.stride)}"]
-                    return lsfunc(areg=areg, sreg=self.gen.greg(streg_idx), vreg=dreg, dt=dt)
+                    try:
+                        return lsfunc(areg=areg, sreg=self.gen.greg(streg_idx), vreg=dreg, dt=dt)
+                    except NotImplementedError as e:
+                        gasc_suf = "gather"
+                        if "store" == action:
+                            gasc_suf = "scatter"
+                        lsfunc = getattr(self.gen, f"{action}_vector{suffix}_{gasc_suf}")
+                        stvidx = self.rt.aliased_regs['vreg'][f"{rtype_char}vidx:{str(op.stride)}"]
+                        it = it_from_dt_samesize(dt)
+                        return lsfunc(areg=areg, offvreg=self.gen.vreg(stvidx), vreg=dreg, dt=dt, it=it)
 
 
 
@@ -571,6 +586,15 @@ class lsc_specializer:
             return
         self.offset_registry[rtype_idx].add(off)
 
+    def register_vindex(self, rtype_idx : int, stride : lsc_offset):
+        if stride == lsc_offset.zero_offset():
+            return
+        if rtype_idx not in self.vindex_registry:
+            self.vindex_registry[rtype_idx] = set()
+        if stride in self.vindex_registry[rtype_idx]:
+            return
+        self.vindex_registry[rtype_idx].add(stride)
+
     def calculate_offset(self, rtype_idx : int,
                          off : lsc_offset,
                          triple : adt_triple) -> str:
@@ -795,6 +819,12 @@ class lsc_specializer:
                 if stridx is not None:
                     op.stride = lsc_offset({}, [0 for i in range(stridx)]+[1], [], 0)
                     self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
+                    try:
+                        self.gen.load_vector_gregstride(areg=None,sreg=None,vreg=None,dt=None)
+                    except NotImplementedError as e:
+                        self.register_vindex(rtype_idx=op.rtype_idx, stride=op.stride)
+                    except:
+                        pass
                     
 
                 if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
@@ -975,6 +1005,24 @@ class lsc_specializer:
                 asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {alias}")
                 asmblock += self.gen.asmwrap(f"; calculation -->")
                 asmblock += self.calculate_offset(rtype_idx, off, triple)
+                asmblock += self.gen.asmwrap(f"; calculation end <--")
+
+
+        # reserve vector indices
+        for rtype_idx in self.vindex_registry.keys():
+            rtype_char = string.ascii_lowercase[rtype_idx]
+            for stride in self.vindex_registry[rtype_idx]:
+                stvidx = self.rt.reserve_any_reg("vreg")
+                alias = f"{rtype_char}vidx:{str(stride)}"
+                self.rt.alias_reg('vreg', alias, stvidx)
+
+                galias = f"{rtype_char}off:{str(stride)}"
+                stridx = self.rt.aliased_regs["greg"][galias]
+                streg = self.gen.greg(stridx)
+                stvreg = self.gen.vreg(stvidx)
+                asmblock += self.gen.asmwrap(f"; {self.gen.vreg(stvidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += self.gen.greg_to_voffs(streg=streg, vreg=stvreg, dt=triple[rtype_idx])
                 asmblock += self.gen.asmwrap(f"; calculation end <--")
 
         # reserve address registers

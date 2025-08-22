@@ -134,7 +134,8 @@ class load_store_cpu:
                                addr_idx=idx,
                                off=off,
                                stride=None,
-                               t=t))
+                               t=t,
+                               mods=set()))
         self.last_tile_used[rtype_idx] = t
 
         return result
@@ -158,7 +159,7 @@ class load_store_cpu:
                                             addr_idx=idx,
                                             off=off,
                                             stride=None,
-                                            t=t))
+                                            t=t,mods=set()))
                     self.states[rtype_idx][res_idx] = lsc_state.clean
         return result
 

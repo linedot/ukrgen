@@ -28,7 +28,7 @@ from ukrgen.specializers.asm import lsc_specializer
 from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_properties
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
-from ukrgen.models.load_store_operations import lsc_offset,stridexvlen
+from ukrgen.models.load_store_operations import lsc_offset,stridexvlen,lsc_load,lsc_transformation,ldst_modifier
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
 from ukrgen.schedulers import simple_dependency_scheduler
@@ -216,6 +216,20 @@ def parse_sched_args(parser : argparse.ArgumentParser):
                         help="Minimum write-after-read distance")
     parser.add_argument("--sched-waw-distance", type=int, default=0,
                         help="Minimum write-after-waw distance")
+
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
+
+def parse_prefetch_args(parser : argparse.ArgumentParser):
+
+    pf_c_strats = ["none","pre_loop", "post_loop", "distance"]
+
+    parser.add_argument("--pf-c-strat", type=str, choices=pf_c_strats,
+                        default="none",
+                        help="Strategy for prefetching C component into memory")
+    parser.add_argument("--pf-c-distance", type=int, required=False,
+                        help="distance in loop iterations when c is prefetched before the loop finishes (strat must be \"distance\")")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
@@ -483,6 +497,33 @@ def main():
                                ignore_dims=[2])
     print("DEBUG: TRANSFORMING STORE BLOCK")
     storeblock = model.store_modified()
+
+
+    print("################# MODIFICATIONS ##################")
+
+    if "load_bcast" == fma_args.fma_unvec_method:
+        # TODO: arbitrary vecdim
+        unvec_component = 1
+        vec_tile = sup.a_tile
+        def mod_load(op : lsc_load) -> lsc_load:
+            if not isinstance(op,lsc_load):
+                return op
+            if op.rtype_idx == unvec_component:
+                op.mods.add(ldst_modifier.bcast1)
+                op.tiles[1] = vec_tile
+
+            return op
+        def mod_transform(op : lsc_transformation) -> lsc_transformation:
+            if not isinstance(op,lsc_transformation):
+                return op
+            op.tiles[unvec_component] = vec_tile
+            return op
+
+        for mod in [mod_load,mod_transform]:
+            preload = [mod(op) for op in preload]
+            mainblock = [mod(op) for op in mainblock]
+            preload_mb = [mod(op) for op in preload_mb]
+            storeblock = [mod(op) for op in storeblock]
 
     print("################### PSEUDO-ASM ###################")
     print("\n".join(map(str,preload)))
