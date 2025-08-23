@@ -777,6 +777,45 @@ class lsc_specializer:
                 self.register_offset(rtype_idx=c_index,off=op.off)
             return False
 
+        def split_arith_ldst(op : lsc_operation, result_ops : list[lsc_operation]):
+            if need_stls:
+                raise NotImplementedError("split instruction and special tile ld/st not implemented")
+           
+            if isinstance(op, lsc_transformation):
+                opstr = op.op
+                numbers = re.findall(r'\d+',opstr)
+                if numbers:
+                    return False
+            for i in range(ways):
+                print("MAKING SPLIT INSTRUCTIONS")
+                part_op = copy.deepcopy(op)
+                for j,idx_list in enumerate(part_op.indices):
+                    if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
+                        part_op.indices[j][1] += i
+                if isinstance(op, lsc_transformation):
+                    part_op.op += f"{i}"
+                if isinstance(op, (lsc_load,lsc_store)):
+                    baseoff = deepcopy(op.off)
+                    sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
+                    extent_off = baseoff.colin(sizeoff)
+                    baseoff += sum([extent_off for j in range(ways)],
+                                   lsc_offset.zero_offset())
+                    addoff = sum([sizeoff for j in range(i)],
+                                   lsc_offset.zero_offset())
+                    part_op.off = baseoff+addoff
+
+                # TODO: cleaner way to handle this - maybe result_ops should be the
+                # only way to return ops?
+                if i > 0:
+                    result_ops.append(part_op)
+                else:
+                    if isinstance(op, lsc_transformation):
+                        op.op = part_op.op
+                    if isinstance(op, (lsc_store,lsc_load)):
+                        op.off = part_op.off
+                    op.indices = part_op.indices
+            return False
+
         if split_instructions or vec_groups:
             modifications.append(op_modification(
                 {lsc_load,lsc_store,lsc_transformation,lsc_zero},
@@ -788,6 +827,13 @@ class lsc_specializer:
                 {c_index},
                 {lsc_reg_type.address},
                 widen_offsets))
+
+        if split_instructions:
+            modifications.append(op_modification(
+                {lsc_load,lsc_store,lsc_transformation},
+                {c_index},
+                {lsc_reg_type.data},
+                split_arith_ldst))
 
         result_ops = []
         for op in ops:
@@ -852,27 +898,28 @@ class lsc_specializer:
                     has_c = True
 
 
-            if has_c and split_instructions:
-                if need_stls:
-                    raise NotImplementedError("split instruction and special tile ld/st not implemented")
-                
-                for i in range(ways):
-                    part_op = copy.deepcopy(op)
-                    for j,idx_list in enumerate(part_op.indices):
-                        if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
-                            part_op.indices[j][1] += i
-                    if isinstance(op, lsc_transformation):
-                        part_op.op += f"{i}"
-                    if isinstance(op, (lsc_load,lsc_store)):
-                        baseoff = deepcopy(op.off)
-                        sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
-                        extent_off = baseoff.colin(sizeoff)
-                        baseoff += sum([extent_off for j in range(ways)],
-                                       lsc_offset.zero_offset())
-                        addoff = sum([sizeoff for j in range(i)],
-                                       lsc_offset.zero_offset())
-                        part_op.off = baseoff+addoff
-                    result_ops.append(part_op)
+            #if has_c and split_instructions:
+            #    if need_stls:
+            #        raise NotImplementedError("split instruction and special tile ld/st not implemented")
+            #    
+            #    for i in range(ways):
+            #        print("MAKING SPLIT INSTRUCTIONS")
+            #        part_op = copy.deepcopy(op)
+            #        for j,idx_list in enumerate(part_op.indices):
+            #            if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
+            #                part_op.indices[j][1] += i
+            #        if isinstance(op, lsc_transformation):
+            #            part_op.op += f"{i}"
+            #        if isinstance(op, (lsc_load,lsc_store)):
+            #            baseoff = deepcopy(op.off)
+            #            sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
+            #            extent_off = baseoff.colin(sizeoff)
+            #            baseoff += sum([extent_off for j in range(ways)],
+            #                           lsc_offset.zero_offset())
+            #            addoff = sum([sizeoff for j in range(i)],
+            #                           lsc_offset.zero_offset())
+            #            part_op.off = baseoff+addoff
+            #        result_ops.append(part_op)
             if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
 
                 for i in range(ways):

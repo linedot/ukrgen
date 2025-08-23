@@ -8,6 +8,8 @@ import argparse
 import sys
 import logging
 
+from mako.template import Template
+
 from asmgen.asmblocks.avx_fma import fma128,fma256,avx512
 from asmgen.asmblocks.neon import neon
 from asmgen.asmblocks.rvv import rvv
@@ -26,6 +28,7 @@ from asmgen.registers import (
         )
 from ukrgen.specializers.asm import lsc_specializer
 from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_properties
+from ukrgen.components.tile import scalar_dp
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
 from ukrgen.models.load_store_operations import lsc_offset,stridexvlen,lsc_load,lsc_transformation,ldst_modifier
@@ -224,7 +227,6 @@ def parse_sched_args(parser : argparse.ArgumentParser):
 def parse_prefetch_args(parser : argparse.ArgumentParser):
 
     pf_c_strats = ["none","pre_loop", "post_loop", "distance"]
-
     parser.add_argument("--pf-c-strat", type=str, choices=pf_c_strats,
                         default="none",
                         help="Strategy for prefetching C component into memory")
@@ -235,9 +237,36 @@ def parse_prefetch_args(parser : argparse.ArgumentParser):
     helpexit_if_last_parser(rest=rest, parser=parser)
     return args,rest
 
+def parse_inout_args(parser : argparse.ArgumentParser):
+    parser.add_argument("--output-filename", type=str, required=True,
+                        help="Path to the file to output the result to")
+    parser.add_argument("--input-filename", type=str, required=True,
+                        help="""Path to the sourcefile containing the template to
+                        fill with kernel and parameters
+                        """)
+
+    args, rest = parser.parse_known_args()
+    helpexit_if_last_parser(rest=rest, parser=parser)
+    return args,rest
+
 def main():
 
     logging.basicConfig(level=logging.DEBUG)
+
+    stridelog = logging.getLogger("STRIDE")
+    stridelog.setLevel(logging.DEBUG)
+
+    tiflog = logging.getLogger("TIF")
+    tiflog.setLevel(logging.DEBUG)
+
+    asmlog = logging.getLogger("ASM")
+    asmlog.setLevel(logging.DEBUG)
+
+    lsclog = logging.getLogger("LSC")
+    lsclog.setLevel(logging.DEBUG)
+
+    genlog = logging.getLogger("GENERATOR")
+    genlog.setLevel(logging.DEBUG)
 
     parser = argparse.ArgumentParser(
             description="ukrgen compute kernel generator",
@@ -267,8 +296,8 @@ def main():
     spec_args,rest,sup = parse_specializer_arguments(
             specializer=specializer, op=args.op, parser=parser)
 
-    print("Chosen variant:")
-    print(f"{sup}")
+    genlog.debug("Chosen variant:")
+    genlog.debug(f"{sup}")
 
     triple = adt_triple(a_dt=adt[spec_args.ab_data_type],
                         b_dt=adt[spec_args.ab_data_type],
@@ -284,6 +313,7 @@ def main():
 
     nc=n
     nb=n
+    fma_args = None
     if args.op == 'fma' and sup.b_tile.dima == sup.a_tile.dima:
         fma_args, rest = parse_fma_args(parser=parser)
         if fma_args.fma_unvec_method in ['vf','load_bcast']:
@@ -312,16 +342,23 @@ def main():
 
     genmm = mm(a=a_tile, b=b_tile, c=c_tile, lo=order, opstr=args.op)
 
+    scale_tile = simple_ukr_tile(a_size=m*n, b_size=1,
+                                 subdims=(sup.c_tile.dima,
+                                          sup.c_tile.dimb))
+    alphabeta_tile = simple_ukr_tile(a_size=1, b_size=1,
+                                subdims=(scalar_dp,scalar_dp))
+    genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
+                  opstr="fmulnp", tile_strs=["C","beta","C"])
+    genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
+                    opstr="fma", tile_strs=["AB","alpha","C"])
+
     mm_ops = genmm.generate()
 
-    print("################### TILE-INSTRUCTION-FORMAT ###################")
+    tiflog.debug("################### TILE-INSTRUCTION-FORMAT ###################")
     for op in mm_ops:
-        print(str(op))
+        tiflog.debug(str(op))
 
     stride_args,rest = parse_stride_args(parser=parser)
-
-    stridelog = logging.getLogger("STRIDE")
-    stridelog.setLevel(logging.DEBUG)
 
     lsc_args,rest = parse_lsc_args(parser=parser)
 
@@ -486,55 +523,56 @@ def main():
     mm_ops_p2k = genmm.generate(add_dims=[0,0,0,0,0,2*k])
     #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
-    print("DEBUG: TRANSFORMING PRELOAD")
+    genlog.debug("DEBUG: TRANSFORMING PRELOAD")
     preload = model.preload(ops=mm_ops,next_ops=mm_ops_p1k)
-    print("DEBUG: TRANSFORMING MAIN BLOCK")
+    genlog.debug("DEBUG: TRANSFORMING MAIN BLOCK")
     mainblock = model(mm_ops)
-    print("DEBUG: TRANSFORMING NEXTITER PRELOAD")
+    genlog.debug("DEBUG: TRANSFORMING NEXTITER PRELOAD")
     preload_mb = model.preload(mm_ops_p1k,
                                mm_ops_p2k,
                                zero_addrs=False,
                                ignore_dims=[2])
-    print("DEBUG: TRANSFORMING STORE BLOCK")
+    genlog.debug("DEBUG: TRANSFORMING STORE BLOCK")
     storeblock = model.store_modified()
 
 
-    print("################# MODIFICATIONS ##################")
+    genlog.debug("################# MODIFICATIONS ##################")
 
-    if "load_bcast" == fma_args.fma_unvec_method:
-        # TODO: arbitrary vecdim
-        unvec_component = 1
-        vec_tile = sup.a_tile
-        def mod_load(op : lsc_load) -> lsc_load:
-            if not isinstance(op,lsc_load):
+    if fma_args is not None:
+        if "load_bcast" == fma_args.fma_unvec_method:
+            # TODO: arbitrary vecdim
+            unvec_component = 1
+            vec_tile = sup.a_tile
+            def mod_load(op : lsc_load) -> lsc_load:
+                if not isinstance(op,lsc_load):
+                    return op
+                if op.rtype_idx == unvec_component:
+                    op.mods.add(ldst_modifier.bcast1)
+                    op.tiles[1] = vec_tile
+
                 return op
-            if op.rtype_idx == unvec_component:
-                op.mods.add(ldst_modifier.bcast1)
-                op.tiles[1] = vec_tile
-
-            return op
-        def mod_transform(op : lsc_transformation) -> lsc_transformation:
-            if not isinstance(op,lsc_transformation):
+            def mod_transform(op : lsc_transformation) -> lsc_transformation:
+                if not isinstance(op,lsc_transformation):
+                    return op
+                op.tiles[unvec_component] = vec_tile
                 return op
-            op.tiles[unvec_component] = vec_tile
-            return op
 
-        for mod in [mod_load,mod_transform]:
-            preload = [mod(op) for op in preload]
-            mainblock = [mod(op) for op in mainblock]
-            preload_mb = [mod(op) for op in preload_mb]
-            storeblock = [mod(op) for op in storeblock]
+            for mod in [mod_load,mod_transform]:
+                preload = [mod(op) for op in preload]
+                mainblock = [mod(op) for op in mainblock]
+                preload_mb = [mod(op) for op in preload_mb]
+                storeblock = [mod(op) for op in storeblock]
 
-    print("################### PSEUDO-ASM ###################")
-    print("\n".join(map(str,preload)))
-    print("MAIN LOOP -------------------------------")
-    print("  "+"\n  ".join(map(str,mainblock)))
-    print("PRELOAD NEXT ----------------------------")
-    print("  "+"\n  ".join(map(str,preload_mb)))
-    print("END MAIN LOOP ---------------------------")
-    print("STOREBLOCK ------------------------------")
-    print("\n".join(map(str,storeblock)))
-    print("ENDSTOREBLOCK ---------------------------")
+    lsclog.debug("################### PSEUDO-ASM ###################")
+    lsclog.debug("\n".join(map(str,preload)))
+    lsclog.debug("MAIN LOOP -------------------------------")
+    lsclog.debug("  "+"\n  ".join(map(str,mainblock)))
+    lsclog.debug("PRELOAD NEXT ----------------------------")
+    lsclog.debug("  "+"\n  ".join(map(str,preload_mb)))
+    lsclog.debug("END MAIN LOOP ---------------------------")
+    lsclog.debug("STOREBLOCK ------------------------------")
+    lsclog.debug("\n".join(map(str,storeblock)))
+    lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
     specializer.analyse(preload)
     specializer.analyse(mainblock)
@@ -546,27 +584,20 @@ def main():
     storeblock = specializer.pre_specialize(ops=storeblock, triple=triple)
     preload_mb = specializer.pre_specialize(ops=preload_mb, triple=triple)
 
-    print("################### SPECIALIZED PSEUDO-ASM ###################")
-    print("\n".join(map(str,preload)))
-    print("MAIN LOOP -------------------------------")
-    print("  "+"\n  ".join(map(str,mainblock)))
-    print("PRELOAD NEXT ----------------------------")
-    print("  "+"\n  ".join(map(str,preload_mb)))
-    print("END MAIN LOOP ---------------------------")
-    print("STOREBLOCK ------------------------------")
-    print("\n".join(map(str,storeblock)))
-    print("ENDSTOREBLOCK ---------------------------")
+    lsclog.debug("################### SPECIALIZED PSEUDO-ASM ###################")
+    lsclog.debug("\n".join(map(str,preload)))
+    lsclog.debug("MAIN LOOP -------------------------------")
+    lsclog.debug("  "+"\n  ".join(map(str,mainblock)))
+    lsclog.debug("PRELOAD NEXT ----------------------------")
+    lsclog.debug("  "+"\n  ".join(map(str,preload_mb)))
+    lsclog.debug("END MAIN LOOP ---------------------------")
+    lsclog.debug("STOREBLOCK ------------------------------")
+    lsclog.debug("\n".join(map(str,storeblock)))
+    lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
 
     sched_args,rest = parse_sched_args(parser=parser)
 
-    # TODO: handle help in a better way
-    # This was the last parser so check for help string
-    if any(a in rest for a in helpargs):
-        if [a for a in rest if a not in helpargs]:
-            print(f"uknown arguments: {rest}")
-        parser.print_help()
-        sys.exit(0)
     
     scheduler = simple_dependency_scheduler(
             rar=sched_args.sched_rar_distance,
@@ -582,14 +613,14 @@ def main():
     #rs_store = scheduler(storeblock, loop=False)
 
 
-    print("################### RE-SCHEDULED PSEUDO-ASM ###################")
-    print("\n".join(map(str,rs_preload)))
-    print("MAIN LOOP -------------------------------")
-    print("  "+"\n  ".join(map(str,rs_mbpl)))
-    print("END MAIN LOOP ---------------------------")
-    print("STOREBLOCK ------------------------------")
-    print("\n".join(map(str,rs_store)))
-    print("ENDSTOREBLOCK ---------------------------")
+    lsclog.debug("################### RE-SCHEDULED PSEUDO-ASM ###################")
+    lsclog.debug("\n".join(map(str,rs_preload)))
+    lsclog.debug("MAIN LOOP -------------------------------")
+    lsclog.debug("  "+"\n  ".join(map(str,rs_mbpl)))
+    lsclog.debug("END MAIN LOOP ---------------------------")
+    lsclog.debug("STOREBLOCK ------------------------------")
+    lsclog.debug("\n".join(map(str,rs_store)))
+    lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
     initblock = specializer.code_init(triple=triple)
 
@@ -607,24 +638,47 @@ def main():
 
     finiblock = specializer.code_fini(triple=triple)
 
-    print("################### ASM ###################")
-    print("INIT ------------------------------------")
-    print(initblock)
-    print("PRELOAD ---------------------------------")
-    print("".join(asm_rs_preload))
-    print("MAIN LOOP -------------------------------")
-    print("  "+"  ".join(asm_rs_mbpl))
-    print("END MAIN LOOP ---------------------------")
-    print("STOREBLOCK ------------------------------")
-    print("".join(asm_rs_store))
-    print("ENDSTOREBLOCK ---------------------------")
-    print("FINALIZE --------------------------------")
-    print(finiblock)
+    asmlog.debug("################### ASM ###################")
+    asmlog.debug("INIT ------------------------------------")
+    asmlog.debug(initblock)
+    asmlog.debug("PRELOAD ---------------------------------")
+    asmlog.debug("".join(asm_rs_preload))
+    asmlog.debug("MAIN LOOP -------------------------------")
+    asmlog.debug("  "+"  ".join(asm_rs_mbpl))
+    asmlog.debug("END MAIN LOOP ---------------------------")
+    asmlog.debug("STOREBLOCK ------------------------------")
+    asmlog.debug("".join(asm_rs_store))
+    asmlog.debug("ENDSTOREBLOCK ---------------------------")
+    asmlog.debug("FINALIZE --------------------------------")
+    asmlog.debug(finiblock)
 
 
-    print("Aliased GP regs in the end:")
+    genlog.debug("Aliased GP regs in the end:")
     for alias,regidx in rt.aliased_regs['greg'].items():
-        print(f"  {alias:30} : {gen.greg(regidx)}")
+        genlog.debug(f"  {alias:30} : {gen.greg(regidx)}")
+
+
+    inout_args,rest = parse_inout_args(parser=parser)
+
+    # TODO: handle help in a better way
+    # This was the last parser so check for help string
+    if any(a in rest for a in helpargs):
+        if [a for a in rest if a not in helpargs]:
+            print(f"uknown arguments: {rest}")
+        parser.print_help()
+        sys.exit(0)
+
+
+    tpl_data = ""
+
+    genlog.debug(f"Reading source template from {inout_args.input_filename}")
+    with open(inout_args.input_filename, 'r') as file:
+        tpl_data = file.read()
+
+    genlog.debug(f"Writing source to {inout_args.output_filename}")
+    with open(inout_args.output_filename, 'w') as file:
+        file.write(tpl_data)
+    
 
 
 if __name__ == "__main__":
