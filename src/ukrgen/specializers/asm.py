@@ -730,11 +730,6 @@ class lsc_specializer:
 
 
     def pre_specialize(self, ops : list[lsc_operation], triple : adt_triple) -> list[lsc_operation]:
-        # Changes needed:
-        # - multiple instructions for widening lsc_transformation when wm = split_instructions
-        #   - also change c idx for this case
-        # - Don't change whem wm = vec_group. It isn't guaranteed that vector groups work
-        #   like in RVV everywhere where you need multiple of ways as reg index
         ways = adt_size(triple.c)//adt_size(triple.a)
         split_instructions = False
         vec_groups = False
@@ -897,29 +892,6 @@ class lsc_specializer:
                 if idx_list[0] == c_index:
                     has_c = True
 
-
-            #if has_c and split_instructions:
-            #    if need_stls:
-            #        raise NotImplementedError("split instruction and special tile ld/st not implemented")
-            #    
-            #    for i in range(ways):
-            #        print("MAKING SPLIT INSTRUCTIONS")
-            #        part_op = copy.deepcopy(op)
-            #        for j,idx_list in enumerate(part_op.indices):
-            #            if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
-            #                part_op.indices[j][1] += i
-            #        if isinstance(op, lsc_transformation):
-            #            part_op.op += f"{i}"
-            #        if isinstance(op, (lsc_load,lsc_store)):
-            #            baseoff = deepcopy(op.off)
-            #            sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
-            #            extent_off = baseoff.colin(sizeoff)
-            #            baseoff += sum([extent_off for j in range(ways)],
-            #                           lsc_offset.zero_offset())
-            #            addoff = sum([sizeoff for j in range(i)],
-            #                           lsc_offset.zero_offset())
-            #            part_op.off = baseoff+addoff
-            #        result_ops.append(part_op)
             if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
 
                 for i in range(ways):
