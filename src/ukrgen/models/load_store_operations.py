@@ -14,6 +14,7 @@ class lsc_reg_type(Enum):
     address = auto()
     data = auto()
     offset = auto()
+    value = auto()
 
 # TODO: fractional offsets
 class fraction:
@@ -426,6 +427,31 @@ class lsc_addr_add(lsc_operation):
         rtype_char = string.ascii_lowercase[self.rtype_idx]
         ar_str = f"{rtype_char}a{self.addr_idx}"
         return f"{ar_str} <- {ar_str} + {self.off}"
+
+class lsc_add_val_off(lsc_operation):
+    def __init__(self, valname : str, off : lsc_offset):
+        if not isinstance(off, lsc_offset):
+            raise ValueError(f"offset {off} is not an lsc_offset")
+        self.off = off
+        self.valname = valname
+
+        # t is used for calculating address, isn't the tile the address resides in
+        tiles = [scalar_tile]
+        indices = []
+        # read addr
+        reads = [0]
+        # write addr
+        writes = [0]
+        
+        reg_types = [lsc_reg_type.value]
+
+
+        super().__init__(tiles=tiles, indices=indices,
+                                           reads=reads, writes=writes,
+                                           reg_types=reg_types)
+
+    def __str__(self):
+        return f"{self.valname} <- {self.valname} + {self.off}"
 
 class lsc_debugmsg(lsc_operation):
     def __init__(self, msg : str):

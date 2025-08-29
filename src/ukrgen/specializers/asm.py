@@ -28,7 +28,8 @@ from ..components import *
 from ..generators import *
 from ..models import *
 
-from ..models.load_store_operations import lsc_reg_type,ldst_modifier
+from ..models.load_store_operations import *
+from ..models.loop import lsc_loop
 
 
 
@@ -110,6 +111,7 @@ class lsc_specializer:
 
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
+        self.transformations[lsc_add_val_off] = self.transform_add_val_off
         self.transformations[lsc_addr_add] = self.transform_addr_add
         self.transformations[lsc_debugmsg] = lambda op,triple : op.msg
         self.transformations[lsc_load] = self.transform_load
@@ -119,6 +121,8 @@ class lsc_specializer:
 
         self.transformations[lsc_treg_row_load] = self.transform_trow_load
         self.transformations[lsc_treg_row_store] = self.transform_trow_store
+
+        self.transformations[lsc_loop] = self.transform_loop
 
         # Logging
 
@@ -230,10 +234,10 @@ class lsc_specializer:
 
         raise NotImplementedError(f"Implementation for zeroing {dreg_tag} missing")
 
-    def transform_addr_add(self, op : lsc_operation, triple : adt_triple):
+    def transform_val_add(self, op : lsc_operation, triple : adt_triple, alias : str):
 
         rtype_char = string.ascii_lowercase[op.rtype_idx]
-        aregidx = self.rt.aliased_regs['greg'][f"{rtype_char}areg{op.addr_idx}"]
+        aregidx = self.rt.aliased_regs['greg'][alias]
         areg = self.gen.greg(aregidx)
         data_t = op.tiles[1]
         dt = triple[op.rtype_idx]
@@ -271,6 +275,22 @@ class lsc_specializer:
                                           reg2=offreg)
 
         raise NotImplementedError("Only vectors and immediates are implemented")
+
+    def transform_addr_add(self, op : lsc_operation, triple : adt_triple):
+        rtype_char = string.ascii_lowercase[op.rtype_idx]
+        alias = f"{rtype_char}areg{op.addr_idx}"
+        return self.transform_val_add(op=op, triple=triple, alias=alias)
+
+    def transform_add_val_off(self, op : lsc_operation, triple : adt_triple):
+        if not op.off.is_scalar():
+            raise NotImplementedError(
+                "Non-scalar offsets not implemented for non-address values")
+        alias = op.valname
+        regidx = self.rt.aliased_regs['greg'][alias]
+        reg = self.gen.greg(regidx)
+        return self.gen.add_greg_imm(
+            reg=reg,
+            imm=op.off.immoff)
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
                        triple : adt_triple,
@@ -429,6 +449,14 @@ class lsc_specializer:
                        treg=self.gen.treg(residx, dt=dt),
                        dt=dt)
         return asmblock
+
+
+    def transform_loop(self, op : lsc_loop, triple : adt_triple) -> str:
+        return op.transform(
+                  gen=self.gen,
+                  rt=self.rt,
+                  subtransformers=self.transformations,
+                  triple=triple)
 
     def reset_analysis(self):
         self.regadds = set()
@@ -689,6 +717,10 @@ class lsc_specializer:
 
     def analyse(self, ops : list[lsc_operation]):
         for op in ops:
+            if isinstance(op, lsc_loop):
+                for div in reversed(op.divergences):
+                    self.analyse(div.ops)
+                self.analyse(op.block)
             if isinstance(op, lsc_addr_add) or \
                isinstance(op, lsc_load) or \
                isinstance(op, lsc_store):
@@ -839,6 +871,11 @@ class lsc_specializer:
                     if mod(op, result_ops)]
             for i in remove_list:
                 modifications.pop(i)
+
+            if isinstance(op, lsc_loop):
+                for div in reversed(op.divergences):
+                    self.pre_specialize(div.ops,triple)
+                self.pre_specialize(op.block,triple)
 
             if need_stls:
                 if stls.check_load_flush(op):
