@@ -26,6 +26,34 @@ class dimension_properties:
         self.sdt = sdt
         self.sd_size = sd_size
 
+def determine_dreg_tag(dima : dimension_properties, dimb : dimension_properties) -> str:
+
+    dreg_tag = 'vreg'
+
+    if dima.dt == dimension_type.vla and \
+       dimb.dt == dimension_type.vla:
+        dreg_tag = 'treg'
+    elif dima.dt == dimension_type.fixed and dima.size > 1 and \
+         dimb.dt == dimension_type.fixed and dimb.size > 1:
+        dreg_tag = 'treg'
+    # TODO: This would for example be SME vector register when
+    #       using widening instructions (dot neighbours + outer product)
+    #       i.e. the vector register stores a matrix, but is not
+    #       a tile register. Make decision and document cleanly
+    #       how we want to handle this
+    #elif dima.dt == dimension_type.vla and \
+    #     dimb.dt == dimension_type.fixed and dimb.size > 1:
+    #    dreg_tag = 'treg'
+    #elif dima.dt == dimension_type.fixed and dima.size > 1 \
+    #     dimb.dt == dimension_type.vla:
+    #    dreg_tag = 'treg'
+    elif dima.dt == dimension_type.fixed and dima.size == 1 and \
+         dimb.dt == dimension_type.fixed and dimb.size == 1:
+        dreg_tag = 'freg'
+    else:
+        dreg_tag = 'vreg'
+
+    return dreg_tag
 
 class tile:
     def __init__(self, 
@@ -46,6 +74,48 @@ class tile:
         self.subtiles = subtiles
         self.subtile_count_a = subtile_count_a
         self.subtile_count_b = subtile_count_b
+
+    @property
+    def is_scalar(self) -> bool:
+        return self.dima.dt == dimension_type.fixed and \
+               self.dima.size == 1 and \
+               self.dimb.dt == dimension_type.fixed and \
+               self.dimb.size == 1
+
+    @property
+    def is_vla_vector(self) -> bool:
+
+        return (self.dima.dt == dimension_type.vla and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.fixed and \
+                self.dimb.size == 1) or \
+               (self.dima.dt == dimension_type.fixed and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.vla and \
+                self.dimb.size == 1)
+
+    @property
+    def is_fixed_vector(self) -> bool:
+
+        return (self.dima.dt == dimension_type.fixed and \
+                self.dimb.dt == dimension_type.fixed) and \
+               ((self.dima.size == 1) != \
+                (self.dimb.size == 1))
+
+    @property
+    def is_vla_tile(self) -> bool:
+        return (self.dima.dt == dimension_type.vla and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.vla and \
+                self.dimb.size == 1)
+
+    def __str__(self):
+        sdt = lambda dt : "V" if dt==dimension_type.vla else ""
+
+        return f"{self.dima.size}{sdt(self.dima.dt)}X{self.dimb.size}{sdt(self.dimb.dt)}"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 

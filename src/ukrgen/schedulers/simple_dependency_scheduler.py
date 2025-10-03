@@ -8,86 +8,42 @@ from enum import Enum,auto
 
 
 from ..models.load_store_cpu import (
-        lsc_operation,
-        lsc_addr_add as aop,
-        lsc_load as lop,
-        lsc_store as sop,
-        lsc_zero as zop,
-        lsc_transformation as oop,
         tile
         )
+from ..models.load_store_operations import (
+        lsc_reg_type,
+        lsc_operation,
+     )
 
-class target_type(Enum):
-    resource = auto()
-    address = auto()
-    def __str__(self):
-        return self.name
-    def __repr__(self):
-        return self.__str__()
-
-class reg:
-    def __init__(self, ttype : target_type, indices : list[int], t : tile = None):
+class reg_compare:
+    def __init__(self, ttype : lsc_reg_type,
+                 index : tuple[str,list[int]],
+                 t : tile = None):
         self.ttype = ttype
-        self.indices = indices
+        self.index = index
         self.t = t
     def __eq__(self, other):
-        if len(self.indices) != len(other.indices):
+        if len(self.index[1]) != len(other.index[1]):
             return False
-        return self.ttype == other.ttype and \
-                all([idx1 == idx2 for idx1,idx2 in zip(self.indices,other.indices)])
+        if self.ttype != other.ttype:
+            return False
+        if self.index[0] != other.index[0]:
+            return False
+        if any([idx1 != idx2] for idx1,idx2 in zip(self.index[1],other.index[1])):
+            return False
+        return True
     def __hash__(self):
-        return hash((self.ttype,tuple(self.indices)))
+        return hash((self.ttype,self.index[0],tuple(self.index[1])))
     def __str__(self):
-        reg_chars = ['a','b','c']
-        result = f"{reg_chars[self.indices[0]]}"
+        result = f"{self.indices[0]}"
         if self.ttype == target_type.address:
             result+= "a"
-        result += ",".join(map(str,self.indices[1:]))
+        result += ",".join(map(str,self.index[1]))
         return result
     def __repr__(self):
         return self.__str__()
 
 
-
-class lsc_op_access_annotated:
-    def __init__(self, reads : list[reg], writes : list[reg], op : lsc_operation):
-        self.reads = reads
-        self.writes = writes
-        self.op = op
-
-    def from_mm_op(op : lsc_operation):
-        #TODO: reads/writes from lsc_operation
-        reads = []
-        writes = []
-        if isinstance(op, aop):
-            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
-            writes.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
-        elif isinstance(op, lop):
-            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
-            writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
-        elif isinstance(op, sop):
-            reads.append(reg(ttype=target_type.address,indices=[op.rtype_idx, op.addr_idx]))
-            reads.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
-        elif isinstance(op, zop):
-            writes.append(reg(ttype=target_type.resource,indices=[op.rtype_idx, op.res_idx]))
-        elif isinstance(op, oop):
-            out_rtype_idx = len(op.res_indices)-1
-            writes.append(reg(ttype=target_type.resource,
-                              indices=[out_rtype_idx, op.res_indices[out_rtype_idx]]))
-            for i,res_idx in enumerate(op.res_indices):
-                reads.append(reg(ttype=target_type.resource,
-                                 indices=[i, res_idx]))
-        return lsc_op_access_annotated(reads=reads, writes=writes, op=op)
-    def __eq__(self, other):
-        return all([r1 == r2 for r1,r2 in zip(self.reads,other.reads)]) and \
-               all([w1 == w2 for w1,w2 in zip(self.writes,other.writes)]) and \
-               self.op == other.op
-
-    def __str__(self):
-        return self.op.__str__()
-
-    def __repr__(self):
-        return self.__str__()
 
 class simple_dependency_scheduler:
     def __init__(self,
@@ -110,32 +66,51 @@ class simple_dependency_scheduler:
             print(msg)
 
     def get_move_up(self,
-                    next_op : lsc_op_access_annotated,
-                    cur_op : lsc_op_access_annotated,
+                    next_op : lsc_operation,
+                    cur_op : lsc_operation,
                     distance : int,
                     checks : tuple[bool,bool,bool,bool] = (True,True,True,True) ) -> int:
         move_up = 0
         depends = False
-        if checks[0] and len(set(next_op.reads) & set(cur_op.reads))>0:
+
+        next_op_reads = {
+            reg_compare(ttype=next_op.reg_types[i],
+                        index=next_op.indices[i],
+                        t=next_op.tiles[i]) for i in next_op.reads}
+        next_op_writes = {
+            reg_compare(ttype=next_op.reg_types[i],
+                        index=next_op.indices[i],
+                        t=next_op.tiles[i]) for i in next_op.writes}
+
+        cur_op_reads = {
+            reg_compare(ttype=cur_op.reg_types[i],
+                        index=cur_op.indices[i],
+                        t=cur_op.tiles[i]) for i in cur_op.reads}
+        cur_op_writes = {
+            reg_compare(ttype=cur_op.reg_types[i],
+                        index=cur_op.indices[i],
+                        t=cur_op.tiles[i]) for i in cur_op.writes}
+
+        if checks[0] and len(set(next_op_reads) & set(cur_op_reads))>0:
             move_up = max(move_up,max(0,self.rar - distance))
             self.debug(f"rar={self.rar-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
-        if checks[1] and len(set(next_op.reads) & set(cur_op.writes))>0:
+        if checks[1] and len(set(next_op_reads) & set(cur_op_writes))>0:
             move_up = max(move_up,max(0,self.raw - distance))
             self.debug(f"raw={self.raw-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
-        if checks[2] and len(set(next_op.writes) & set(cur_op.reads))>0:
+        if checks[2] and len(set(next_op_writes) & set(cur_op_reads))>0:
             move_up = max(move_up,max(0,self.war - distance))
             self.debug(f"war={self.war-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
-        if checks[3] and len(set(next_op.writes) & set(cur_op.writes))>0:
+        if checks[3] and len(set(next_op_writes) & set(cur_op_writes))>0:
             move_up = max(move_up,max(0,self.waw - distance))
             self.debug(f"waw={self.waw-distance}(distance={distance}) between {cur_op} and {next_op}")
             depends = True
         return depends,move_up
 
 
-    def depschedule(self, ops: list[lsc_op_access_annotated], loop : bool) -> list[lsc_op_access_annotated]:
+    def depschedule(self, ops: list[lsc_operation], loop : bool) -> list[lsc_operation]:
         scheduled = []
         lookforward = 0
         if loop:
@@ -306,6 +281,5 @@ class simple_dependency_scheduler:
     def __call__(self, ops : list[lsc_operation], loop : bool = True):
         reordered_ops = []
         queue = []
-        ops_aa = [lsc_op_access_annotated.from_mm_op(op) for op in ops]
         
-        return self.depschedule(ops=ops_aa, loop=loop)
+        return self.depschedule(ops=ops, loop=loop)

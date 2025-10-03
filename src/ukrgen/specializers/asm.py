@@ -59,7 +59,7 @@ class op_support:
 class op_modification:
     """ modification of an lsc_operation
     :param op_match: which operations this modification applies to
-    :param rtype_idx_match: which components this modification applies to (0=a,1=b,2=c)
+    :param component_match: which components this modification applies to
     :param modification: function that accepts the original operation as it's first
                          argument and appends the resulting modified operation(s) to
                          the list that is passed as the second argument. This function
@@ -69,13 +69,13 @@ class op_modification:
     """
     def __init__(self,
                  op_match : set[type[lsc_operation]],
-                 rtype_idx_match : set[int],
+                 component_match : set[str],
                  reg_type_match : set[lsc_reg_type],
                  modification : Callable[
                      [lsc_operation,list[lsc_operation]],
                      bool]):
         self.op_match = op_match
-        self.rtype_idx_match = rtype_idx_match
+        self.component_match = component_match
         self.reg_type_match = reg_type_match
         self.modification = modification
 
@@ -84,8 +84,8 @@ class op_modification:
         if not isinstance(op,tuple(self.op_match)):
             return False
 
-        indices = [i for i,ilist in enumerate(op.indices) \
-                if ilist[0] in self.rtype_idx_match]
+        indices = [i for i,(c,_) in enumerate(op.indices) \
+                if c in self.component_match]
 
         if any(op.reg_types[i] in self.reg_type_match for i in indices):
             return self.modification(op, result_ops)
@@ -109,6 +109,9 @@ class lsc_specializer:
         self.offset_registry = dict()
         self.vindex_registry = dict()
 
+
+        self.component_triples : set[tuple[str,str,str]] = set()
+
         self.transformations : dict[Type[lsc_operation],Callable[[lsc_operation,adt],str]] = {}
 
         self.transformations[lsc_add_val_off] = self.transform_add_val_off
@@ -131,50 +134,31 @@ class lsc_specializer:
     def set_model(self, model : load_store_cpu):
         self.model = model
 
-    def determine_dreg_tag(self, dima : dimension_properties, dimb : dimension_properties) -> str:
 
-        dreg_tag = 'vreg'
+    def transform_transform(self, op : lsc_transformation,
+                            component_dts : dict[str,adt]):
 
-        if dima.dt == dimension_type.vla and \
-           dimb.dt == dimension_type.vla:
-            dreg_tag = 'treg'
-        elif dima.dt == dimension_type.fixed and dima.size > 1 and \
-             dimb.dt == dimension_type.fixed and dimb.size > 1:
-            dreg_tag = 'treg'
-        # TODO: This would for example be SME vector register when
-        #       using widening instructions (dot neighbours + outer product)
-        #       i.e. the vector register stores a matrix, but is not
-        #       a tile register. Make decision and document cleanly
-        #       how we want to handle this
-        #elif dima.dt == dimension_type.vla and \
-        #     dimb.dt == dimension_type.fixed and dimb.size > 1:
-        #    dreg_tag = 'treg'
-        #elif dima.dt == dimension_type.fixed and dima.size > 1 \
-        #     dimb.dt == dimension_type.vla:
-        #    dreg_tag = 'treg'
-        elif dima.dt == dimension_type.fixed and dima.size == 1 and \
-             dimb.dt == dimension_type.fixed and dimb.size == 1:
-            dreg_tag = 'freg'
-        else:
-            dreg_tag = 'vreg'
-
-        return dreg_tag
-
-    def transform_transform(self, op : lsc_transformation, triple : adt_triple):
-
+        print(f"transforming op {op} with tiles {op.tiles}")
         dregs = []
 
         dreg_tags = []
+
+        triple = adt_triple(
+                component_dts[op.components[0]],
+                component_dts[op.components[1]],
+                component_dts[op.components[2]])
         
-        for i,(residx,subidx,t) in enumerate(zip(op.res_indices, op.sub_indices, op.tiles)):
-            rtype_char = string.ascii_lowercase[i]
+        for component,residx,subidx,t in zip(op.components,
+                                             op.res_indices,
+                                             op.sub_indices,
+                                             op.tiles):
 
-            dreg_tag = self.determine_dreg_tag(t.dima, t.dimb)
+            dreg_tag = determine_dreg_tag(t.dima, t.dimb)
 
-            residx = self.rt.aliased_regs[dreg_tag][f"{rtype_char}{residx}"]
+            residx = self.rt.aliased_regs[dreg_tag][f"{component}{residx}"]
 
             if dreg_tag in ["freg","treg"]:
-                dreg = getattr(self.gen,dreg_tag)(residx,triple[i])
+                dreg = getattr(self.gen,dreg_tag)(residx,component_dts[component])
             else:
                 dreg = getattr(self.gen,dreg_tag)(residx)
 
@@ -199,6 +183,9 @@ class lsc_specializer:
         #if there is only 1 freg, this is a VF operation
         if 1 == dreg_tags.count('freg'):
             modifiers.add(mod.VF)
+
+        #if tr_modifier.np in op.mods:
+        #    modifiers.add(mod.NP)
         
             
 
@@ -211,16 +198,15 @@ class lsc_specializer:
 
         #return self.gen.asmwrap(f"dummy {op.op}")
 
-    def transform_zero(self, op : lsc_zero, triple : adt_triple):
+    def transform_zero(self, op : lsc_zero, component_dts : dict[str,adt]):
 
         
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
 
-        dreg_tag = self.determine_dreg_tag(op.t.dima, op.t.dimb)
+        dreg_tag = determine_dreg_tag(op.t.dima, op.t.dimb)
 
-        residx = self.rt.aliased_regs[dreg_tag][f"{rtype_char}{op.res_idx}"]
+        residx = self.rt.aliased_regs[dreg_tag][f"{op.component}{op.res_idx}"]
 
-        dt = triple[op.rtype_idx]
+        dt = component_dts[op.component]
 
         if dreg_tag == 'freg':
             dreg = self.gen.freg(residx, dt)
@@ -234,28 +220,24 @@ class lsc_specializer:
 
         raise NotImplementedError(f"Implementation for zeroing {dreg_tag} missing")
 
-    def transform_val_add(self, op : lsc_operation, triple : adt_triple, alias : str):
+    def transform_val_add(self, op : lsc_operation, component_dts : dict[str,adt],
+                          alias : str):
 
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
         aregidx = self.rt.aliased_regs['greg'][alias]
         areg = self.gen.greg(aregidx)
         data_t = op.tiles[1]
-        dt = triple[op.rtype_idx]
+        dt = component_dts[op.component]
         dt_bytes = adt_size(dt)
 
         if op.off.is_vector():
             factor = op.off.vlen_strides[0]
 
-            if factor < self.gen.max_add_voff:
+            if factor < self.gen.max_add_voff and factor > 0:
                 return self.gen.add_greg_voff(reg=areg, 
                                               offset=factor, 
-                                              dt=triple[op.rtype_idx])
+                                              dt=dt)
 
-            #vxnalias = f"{rtype_char}vlen"
-            #o1v = lsc_offset({},[], [1], 0)
-            #if op.off > o1v:
-            #    vxnalias = f"{rtype_char}off:{str(op.off)}"
-            vxnalias = f"{rtype_char}off:{str(op.off)}"
+            vxnalias = f"{op.component}off:{str(op.off)}"
             vlen_idx = self.rt.aliased_regs['greg'][vxnalias]
             vlenreg = self.gen.greg(vlen_idx)
             return self.gen.add_greg_greg(dst=areg,
@@ -268,7 +250,7 @@ class lsc_specializer:
                 imm=op.off.immoff*dt_bytes)
 
         else:
-            regidx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(op.off)}"]
+            regidx = self.rt.aliased_regs['greg'][f"{op.component}off:{str(op.off)}"]
             offreg = self.gen.greg(regidx)
             return self.gen.add_greg_greg(dst=areg,
                                           reg1=areg,
@@ -276,12 +258,11 @@ class lsc_specializer:
 
         raise NotImplementedError("Only vectors and immediates are implemented")
 
-    def transform_addr_add(self, op : lsc_operation, triple : adt_triple):
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
-        alias = f"{rtype_char}areg{op.addr_idx}"
-        return self.transform_val_add(op=op, triple=triple, alias=alias)
+    def transform_addr_add(self, op : lsc_operation, component_dts : dict[str,adt]):
+        alias = f"{op.component}areg{op.addr_idx}"
+        return self.transform_val_add(op=op, component_dts=component_dts, alias=alias)
 
-    def transform_add_val_off(self, op : lsc_operation, triple : adt_triple):
+    def transform_add_val_off(self, op : lsc_operation, component_dts : dict[str,adt]):
         if not op.off.is_scalar():
             raise NotImplementedError(
                 "Non-scalar offsets not implemented for non-address values")
@@ -293,17 +274,16 @@ class lsc_specializer:
             imm=op.off.immoff)
 
     def transform_ldst(self, op : Union[lsc_load,lsc_store],
-                       triple : adt_triple,
+                       component_dts : dict[str,adt],
                        action : str):
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
-        aregidx = self.rt.aliased_regs['greg'][f"{rtype_char}areg{op.addr_idx}"]
+        aregidx = self.rt.aliased_regs['greg'][f"{op.component}areg{op.addr_idx}"]
         areg = self.gen.greg(aregidx)
 
-        dt = triple[op.rtype_idx]
+        dt = component_dts[op.component]
         dt_bytes = adt_size(dt)
 
 
-        dreg_tag = self.determine_dreg_tag(op.t.dima, op.t.dimb)
+        dreg_tag = determine_dreg_tag(op.t.dima, op.t.dimb)
 
         vlenmul = 0;
         if op.t.dima.dt == dimension_type.vla:
@@ -311,8 +291,11 @@ class lsc_specializer:
         if op.t.dimb.dt == dimension_type.vla:
             vlenmul += 1
             
-
-        residx = self.rt.aliased_regs[dreg_tag][f"{rtype_char}{op.res_idx}"]
+        # register could have been replaced
+        # TODO: cleaner method (perhaps op.addr_component/ op.res_component ?)
+        #residx = self.rt.aliased_regs[dreg_tag][f"{op.component}{op.res_idx}"]
+        cr = op.indices[1][0]
+        residx = self.rt.aliased_regs[dreg_tag][f"{cr}{op.res_idx}"]
 
         if dreg_tag in ["freg","treg"]:
             dreg = getattr(self.gen,dreg_tag)(residx,dt)
@@ -362,7 +345,7 @@ class lsc_specializer:
                 if 'vreg' == dreg_tag:
                     lsfunc = getattr(self.gen, f"{action}_vector{suffix}_gregstride")
                     
-                    streg_idx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(op.stride)}"]
+                    streg_idx = self.rt.aliased_regs['greg'][f"{op.component}off:{str(op.stride)}"]
                     try:
                         return lsfunc(areg=areg, sreg=self.gen.greg(streg_idx), vreg=dreg, dt=dt)
                     except NotImplementedError as e:
@@ -370,7 +353,7 @@ class lsc_specializer:
                         if "store" == action:
                             gasc_suf = "scatter"
                         lsfunc = getattr(self.gen, f"{action}_vector{suffix}_{gasc_suf}")
-                        stvidx = self.rt.aliased_regs['vreg'][f"{rtype_char}vidx:{str(op.stride)}"]
+                        stvidx = self.rt.aliased_regs['vreg'][f"{op.component}vidx:{str(op.stride)}"]
                         it = it_from_dt_samesize(dt)
                         return lsfunc(areg=areg, offvreg=self.gen.vreg(stvidx), vreg=dreg, dt=dt, it=it)
 
@@ -379,25 +362,25 @@ class lsc_specializer:
         #raise NotImplementedError("Load not implemented yet")
         return self.gen.asmwrap(f"fixme: {action} {dreg_tag} with off {op.off} and stride {op.stride} not implemented")
 
-    def transform_load(self, op : lsc_load, triple : adt_triple):
-        return self.transform_ldst(op=op,triple=triple,action="load")
+    def transform_load(self, op : lsc_load, component_dts : dict[str,adt]):
+        return self.transform_ldst(op=op,component_dts=component_dts,action="load")
 
-    def transform_store(self, op : lsc_load, triple : adt_triple):
-        return self.transform_ldst(op=op,triple=triple,action="store")
+    def transform_store(self, op : lsc_load, component_dts : dict[str,adt]):
+        return self.transform_ldst(op=op,component_dts=component_dts,action="store")
 
-    def transform_trow_load(self, op : lsc_treg_row_load, triple : adt_triple):
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
-        aregidx = self.rt.aliased_regs['greg'][f"{rtype_char}areg{op.addr_idx}"]
+    def transform_trow_load(self, op : lsc_treg_row_load,
+                            component_dts : dict[str,adt]):
+        aregidx = self.rt.aliased_regs['greg'][f"{op.component}areg{op.addr_idx}"]
         areg = self.gen.greg(aregidx)
 
-        dt = triple[op.rtype_idx]
+        dt = component_dts[op.component]
 
         asmblock = ""
 
         if 'rreg' not in self.rt.aliased_regs['greg']:
             # TODO: This needs to be 12-15 for SME. Figure out a way to 
             #       have generic register allocation restrictions
-            # TODO: also potentially need multiple regs for different rtype_idx?
+            # TODO: also potentially need multiple regs for different components?
             rreg_id = 12
             self.rt.reserve_specific_reg('greg',rreg_id)
             self.rt.alias_reg('greg', 'rreg', rreg_id)
@@ -407,7 +390,7 @@ class lsc_specializer:
         rreg_id = self.rt.aliased_regs['rreg']
         rreg = self.gen.greg(rreg_id)
 
-        residx = self.rt.aliased_regs['treg'][f"{rtype_char}{op.res_idx}"]
+        residx = self.rt.aliased_regs['treg'][f"{op.component}{op.res_idx}"]
 
         asmblock += self.gen.load_tile_row(
                        areg=areg, 
@@ -415,15 +398,15 @@ class lsc_specializer:
                        roff=op.roff,
                        voff=op.aoff,
                        treg=self.gen.treg(residx),
-                       dt=triple[op.rtype_idx])
+                       dt=dt)
         return asmblock
 
-    def transform_trow_store(self, op : lsc_treg_row_store, triple : adt_triple):
-        rtype_char = string.ascii_lowercase[op.rtype_idx]
-        aregidx = self.rt.aliased_regs['greg'][f"{rtype_char}areg{op.addr_idx}"]
+    def transform_trow_store(self, op : lsc_treg_row_store,
+                             component_dts : dict[str,adt]):
+        aregidx = self.rt.aliased_regs['greg'][f"{op.component}areg{op.addr_idx}"]
         areg = self.gen.greg(aregidx)
 
-        dt = triple[op.rtype_idx]
+        dt = component_dts[op.component]
 
         asmblock = ""
 
@@ -439,7 +422,7 @@ class lsc_specializer:
         rreg_id = self.rt.aliased_regs['greg']['rreg']
         rreg = self.gen.greg(rreg_id)
 
-        residx = self.rt.aliased_regs['treg'][f"{rtype_char}{op.res_idx}"]
+        residx = self.rt.aliased_regs['treg'][f"{op.component}{op.res_idx}"]
 
         asmblock += self.gen.store_tile_row(
                        areg=areg, 
@@ -451,12 +434,12 @@ class lsc_specializer:
         return asmblock
 
 
-    def transform_loop(self, op : lsc_loop, triple : adt_triple) -> str:
+    def transform_loop(self, op : lsc_loop, component_dts : dict[str,adt]) -> str:
         return op.transform(
                   gen=self.gen,
                   rt=self.rt,
                   subtransformers=self.transformations,
-                  triple=triple)
+                  component_dts=component_dts)
 
     def reset_analysis(self):
         self.regadds = set()
@@ -603,43 +586,39 @@ class lsc_specializer:
                                 #print(traceback.format_exc())
                                 pass
 
-    def register_offset(self, rtype_idx : int, off : lsc_offset):
+    def register_offset(self, component : str, off : lsc_offset):
         if off == lsc_offset.zero_offset():
             # TODO: investigate why this can happen
             return
-        self.stridelog.debug(f"registering offset {off} for rtype_idx={rtype_idx}")
-        if rtype_idx not in self.offset_registry:
-            self.offset_registry[rtype_idx] = set()
-        if off in self.offset_registry[rtype_idx]:
+        self.stridelog.debug(f"registering offset {off} for component={component}")
+        if component not in self.offset_registry:
+            self.offset_registry[component] = set()
+        if off in self.offset_registry[component]:
             return
-        self.offset_registry[rtype_idx].add(off)
+        self.offset_registry[component].add(off)
 
-    def register_vindex(self, rtype_idx : int, stride : lsc_offset):
+    def register_vindex(self, component : str, stride : lsc_offset):
         if stride == lsc_offset.zero_offset():
             return
-        if rtype_idx not in self.vindex_registry:
-            self.vindex_registry[rtype_idx] = set()
-        if stride in self.vindex_registry[rtype_idx]:
+        if component not in self.vindex_registry:
+            self.vindex_registry[component] = set()
+        if stride in self.vindex_registry[component]:
             return
-        self.vindex_registry[rtype_idx].add(stride)
+        self.vindex_registry[component].add(stride)
 
-    def calculate_offset(self, rtype_idx : int,
+    def calculate_offset(self, component : str,
                          off : lsc_offset,
-                         triple : adt_triple) -> str:
+                         component_dts : dict[str,adt],
+                         ways : int) -> str:
         asmblock = ""
 
 
-        ways = 1
-        dt_size = adt_size(triple[rtype_idx])
+        dt_size = adt_size(component_dts[component])
         dt_shift = dt_size.bit_length()-1
-        # if wide
-        if rtype_idx == 2:
-            ways = adt_size(triple.c)//adt_size(triple.a)
 
         ways_shift = ways.bit_length()-1
 
-        rtype_char = string.ascii_lowercase[rtype_idx]
-        offreg_idx = self.rt.aliased_regs['greg'][f"{rtype_char}off:{str(off)}"]
+        offreg_idx = self.rt.aliased_regs['greg'][f"{component}off:{str(off)}"]
         offreg = self.gen.greg(offreg_idx)
         for sxv,value in off.sxv_strides.items():
             if 0 == value:
@@ -725,44 +704,71 @@ class lsc_specializer:
                isinstance(op, lsc_load) or \
                isinstance(op, lsc_store):
                 # reserve registers
-                if op.rtype_idx not in self.address_registers:
-                    self.address_registers[op.rtype_idx] = set()
+                if op.component not in self.address_registers:
+                    self.address_registers[op.component] = set()
 
-                self.address_registers[op.rtype_idx].add(op.addr_idx)
+                self.address_registers[op.component].add(op.addr_idx)
 
             if isinstance(op, lsc_load) or \
                isinstance(op, lsc_store):
+                cr = op.indices[1][0]
                 # reserve registers
-                if op.rtype_idx not in self.data_registers:
-                    self.data_registers[op.rtype_idx] = set()
+                if cr not in self.data_registers:
+                    self.data_registers[cr] = set()
 
-                dreg_tag = self.determine_dreg_tag(op.t.dima, op.t.dimb)
+                dreg_tag = determine_dreg_tag(op.t.dima, op.t.dimb)
 
-                self.data_registers[op.rtype_idx].add(op.res_idx)
-                self.data_tags[op.rtype_idx] = dreg_tag
+                self.data_registers[cr].add(op.res_idx)
+                self.data_tags[op.component] = dreg_tag
+                print(f"{type(op)} with {op.component}{op.res_idx} registering {dreg_tag}")
 
             if isinstance(op, lsc_addr_add):
-                self.register_offset(rtype_idx=op.rtype_idx,off=op.off)
+                self.register_offset(component=op.component,off=op.off)
             elif isinstance(op, lsc_transformation):
                 self.ops_used.append(op.op)
-                for i,(residx,t) in enumerate(zip(op.res_indices,op.tiles)):
 
-                    dreg_tag = self.determine_dreg_tag(t.dima, t.dimb)
+                self.component_triples.add(tuple(op.components))
 
-                    if i not in self.data_tags:
-                        self.data_tags[i] = dreg_tag
+                for c,residx,t in zip(op.components,op.res_indices,op.tiles):
+
+                    dreg_tag = determine_dreg_tag(t.dima, t.dimb)
+
+                    if c not in self.data_tags:
+                        self.data_tags[c] = dreg_tag
+                        print(f"{op.op} with {c}{residx} registering {dreg_tag}")
                     else:
-                        if self.data_tags[i] != dreg_tag:
-                            rtype_char = string.ascii_lowercase[i]
-                            raise ValueError(f"{op.op} with {rtype_char}{residx} is a {dreg_tag}, but is already registered as {self.data_tags[i]}")
+                        if self.data_tags[c] != dreg_tag:
+                            raise ValueError(f"{op.op} with {c}{residx} is a {dreg_tag}, but is already registered as {self.data_tags[c]}")
 
-                    if i not in self.data_registers:
-                        self.data_registers[i] = set()
-                    self.data_registers[i].add(residx)
+                    if c not in self.data_registers:
+                        self.data_registers[c] = set()
+                    self.data_registers[c].add(residx)
 
 
-    def pre_specialize(self, ops : list[lsc_operation], triple : adt_triple) -> list[lsc_operation]:
-        ways = adt_size(triple.c)//adt_size(triple.a)
+    def pre_specialize(self, ops : list[lsc_operation],
+                       component_dts : dict[str,adt]) -> list[lsc_operation]:
+
+
+        # Determine which indices were used as "c" / accumulators
+        acc_components = set()
+        mul_components = set()
+        for a,b,c in self.component_triples:
+            acc_components.add(c)
+            mul_components.add(a)
+            mul_components.add(b)
+
+        # start with any dt
+        widest_dt = next(iter(component_dts.values()))
+        narrowest_dt = widest_dt
+
+        for c in acc_components:
+            if adt_size(widest_dt) < adt_size(component_dts[c]):
+                widest_dt = component_dts[c]
+        for c in mul_components:
+            if adt_size(narrowest_dt) > adt_size(component_dts[c]):
+                narrowest_dt = component_dts[c]
+
+        ways = adt_size(widest_dt)//adt_size(narrowest_dt)
         split_instructions = False
         vec_groups = False
         if ways > 1:
@@ -772,7 +778,6 @@ class lsc_specializer:
             if any([wmtd==wm.VEC_GROUP for wmtd in wms]):
                 vec_groups = True
 
-        c_index = 2
 
 
         stls = special_treg_ldst()
@@ -781,27 +786,28 @@ class lsc_specializer:
         modifications=[]
 
         def widen_data_regs(op : lsc_operation, result_ops : list[lsc_operation]):
-            for i, idx_list in enumerate(op.indices):
-                if idx_list[0] == c_index and lsc_reg_type.data == op.reg_types[i]:
-                    op.indices[i][1] *= ways
-                    self.data_registers[c_index].add(op.indices[i][1])
+            for i,(c,idx_list) in enumerate(op.indices):
+                if c in acc_components and lsc_reg_type.data == op.reg_types[i]:
+                    op.indices[i][1][0] *= ways
+                    self.data_registers[c].add(op.indices[i][1][0])
                     for wayreg in range(1,ways):
-                        self.data_registers[c_index].add(op.indices[i][1]+wayreg)
+                        self.data_registers[c].add(op.indices[i][1][0]+wayreg)
             return False
 
         def widen_offsets(op : lsc_operation, result_ops : list[lsc_operation]):
-            if op.rtype_idx == c_index:
-                mapper = self.model.offset_mappers[op.rtype_idx]
+            if op.component in acc_components:
+                mapper = self.model.offset_mappers[op.component]
                 sizeoff = mapper.get_ldst_size(op.t)
                 multoff = op.off.colin(sizeoff)
                 addoff = sum([deepcopy(multoff) for j in \
                         range(ways-1)], lsc_offset.zero_offset())
 
                 print(f"widening {op.off} by adding {addoff}")
-                if op.off in self.offset_registry[c_index]:
-                    self.offset_registry[c_index].remove(op.off)
+                if op.component in self.offset_registry:
+                    if op.off in self.offset_registry[op.component]:
+                        self.offset_registry[op.component].remove(op.off)
                 op.off += addoff
-                self.register_offset(rtype_idx=c_index,off=op.off)
+                self.register_offset(component=op.component,off=op.off)
             return False
 
         def split_arith_ldst(op : lsc_operation, result_ops : list[lsc_operation]):
@@ -811,22 +817,27 @@ class lsc_specializer:
             if isinstance(op, lsc_transformation):
                 opstr = op.op
                 numbers = re.findall(r'\d+',opstr)
+                print("Not Huh")
                 if numbers:
                     return False
+            first_op = deepcopy(op)
             for i in range(ways):
-                print("MAKING SPLIT INSTRUCTIONS")
                 part_op = copy.deepcopy(op)
-                for j,idx_list in enumerate(part_op.indices):
-                    if idx_list[0] == c_index and lsc_reg_type.data == part_op.reg_types[j]:
-                        part_op.indices[j][1] += i
+                for j,(c,idx_list) in enumerate(part_op.indices):
+                    if c in acc_components and lsc_reg_type.data == part_op.reg_types[j]:
+                        part_op.indices[j][1][0] += i
                 if isinstance(op, lsc_transformation):
                     part_op.op += f"{i}"
                 if isinstance(op, (lsc_load,lsc_store)):
                     baseoff = deepcopy(op.off)
-                    sizeoff = self.model.offset_mappers[c_index].get_ldst_size(op.t)
-                    extent_off = baseoff.colin(sizeoff)
-                    baseoff += sum([extent_off for j in range(ways)],
-                                   lsc_offset.zero_offset())
+                    sizeoff = self.model.offset_mappers[op.component].get_ldst_size(op.t)
+
+                    # This is taken care of by widen_offsets
+                    #extent_off = baseoff.colin(sizeoff)
+                    #baseoff += sum([extent_off for j in range(ways)],
+                    #               lsc_offset.zero_offset())
+
+                    # Only need to add the partial offset
                     addoff = sum([sizeoff for j in range(i)],
                                    lsc_offset.zero_offset())
                     part_op.off = baseoff+addoff
@@ -836,29 +847,31 @@ class lsc_specializer:
                 if i > 0:
                     result_ops.append(part_op)
                 else:
-                    if isinstance(op, lsc_transformation):
-                        op.op = part_op.op
-                    if isinstance(op, (lsc_store,lsc_load)):
-                        op.off = part_op.off
-                    op.indices = part_op.indices
+                    first_op = deepcopy(part_op)
+
+            if isinstance(op, lsc_transformation):
+                op.op = first_op.op
+            if isinstance(op, (lsc_store,lsc_load)):
+                op.off = first_op.off
+            op.indices = first_op.indices
             return False
 
         if split_instructions or vec_groups:
             modifications.append(op_modification(
                 {lsc_load,lsc_store,lsc_transformation,lsc_zero},
-                {c_index},
+                acc_components,
                 {lsc_reg_type.data},
                 widen_data_regs))
             modifications.append(op_modification(
                 {lsc_load,lsc_store,lsc_addr_add},
-                {c_index},
+                acc_components,
                 {lsc_reg_type.address},
                 widen_offsets))
 
         if split_instructions:
             modifications.append(op_modification(
                 {lsc_load,lsc_store,lsc_transformation},
-                {c_index},
+                acc_components,
                 {lsc_reg_type.data},
                 split_arith_ldst))
 
@@ -868,7 +881,7 @@ class lsc_specializer:
             # Apply modifications
             mod_ops = []
             remove_list = [i for i,mod in enumerate(modifications)\
-                    if mod(op, result_ops)]
+                    if mod(op, mod_ops)]
             for i in remove_list:
                 modifications.pop(i)
 
@@ -886,21 +899,23 @@ class lsc_specializer:
                     print(f"flushing treg store")
             if isinstance(op, (lsc_load, lsc_store)):
                 # Strides
-                mapper = self.model.offset_mappers[op.rtype_idx]
+                mapper = self.model.offset_mappers[op.component]
                 
                 # TODO: arbitrary vectorization direction
                 vecdim = 0
-                if op.rtype_idx == 1:
-                    vecdim = 1
+
+                for a,b,c in self.component_triples:
+                    if b == op.component:
+                        vecdim = 1
 
                 stridx = mapper.stride_indices[vecdim]
                 if stridx is not None:
                     op.stride = lsc_offset({}, [0 for i in range(stridx)]+[1], [], 0)
-                    self.register_offset(rtype_idx=op.rtype_idx, off=op.stride)
+                    self.register_offset(component=op.component, off=op.stride)
                     try:
                         self.gen.load_vector_gregstride(areg=None,sreg=None,vreg=None,dt=None)
                     except NotImplementedError as e:
-                        self.register_vindex(rtype_idx=op.rtype_idx, stride=op.stride)
+                        self.register_vindex(component=op.component, stride=op.stride)
                     except:
                         pass
                     
@@ -915,32 +930,32 @@ class lsc_specializer:
                         lsfunc = getattr(self.gen,f"{action}_tile")
                         lsfunc(areg=self.gen.greg(0),
                                treg=self.gen.treg(0),
-                               dt=triple[op.rtype_idx])
+                               dt=component_dts[op.component])
                         result_ops.append(op)
                     except:
                         print(f"adding treg {action}")
                         need_stls = True
                         addfunc = getattr(stls, f"add_treg_{action}")
-                        addfunc(op, triple[op.rtype_idx])
+                        addfunc(op, triple[op.component])
                     continue
 
             has_c = False
-            for i,idx_list in enumerate(op.indices):
-                if idx_list[0] == c_index:
+            for c,idx_list in op.indices:
+                if c in acc_components:
                     has_c = True
 
             if has_c and vec_groups and isinstance(op, (lsc_load,lsc_store,lsc_zero)):
 
                 for i in range(ways):
                     group_op = copy.deepcopy(op)
-                    for j,idx_list in enumerate(group_op.indices):
-                        if idx_list[0] == c_index and \
+                    for j,(c,idx_list) in enumerate(group_op.indices):
+                        if c in acc_components and \
                                 lsc_reg_type.data == group_op.reg_types[j]:
-                            group_op.indices[j][1] += i
+                            group_op.indices[j][1][0] += i
 
                     if isinstance(op, (lsc_load,lsc_store)):
                         baseoff = deepcopy(group_op.off)
-                        sizeoff = self.model.offset_mappers[op.rtype_idx].get_ldst_size(op.t)
+                        sizeoff = self.model.offset_mappers[op.component].get_ldst_size(op.t)
                         extent_off = baseoff.colin(sizeoff)
                         baseoff += sum([extent_off for j in \
                                 range(ways)],lsc_offset.zero_offset())
@@ -949,14 +964,16 @@ class lsc_specializer:
                         #       For now assume this works
                         addoff = sum([sizeoff for j in \
                                 range(i)],lsc_offset.zero_offset())
+
+                        offrange = self.model.ar.offset_ranges[group_op.component][group_op.addr_idx]
                         allowed = self.model.ar.toff_in_range(
                             caoff=baseoff,
                             toff=baseoff+addoff,
-                            offset_range=self.model.ar.offset_ranges[group_op.rtype_idx][group_op.addr_idx])
+                            offset_range=offrange)
                         if not allowed:
                             result_ops.append(
                                     lsc_addr_add(
-                                        op.rtype_idx,
+                                        op.component,
                                         op.addr_idx,
                                         addoff,
                                         group_op.t))
@@ -966,10 +983,10 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 if op.addr_idx == mod_idx:
                                     print(f"subtracting {addoff} from {op.off}")
-                                    if op.off in self.offset_registry[op.rtype_idx]:
-                                        self.offset_registry[op.rtype_idx].remove(op.off)
+                                    if op.off in self.offset_registry[op.component]:
+                                        self.offset_registry[op.component].remove(op.off)
                                     op.off -= addoff
-                                    self.register_offset(rtype_idx=op.rtype_idx,
+                                    self.register_offset(component=op.component,
                                                          off=op.off)
                                     return True
                                 return False
@@ -977,7 +994,7 @@ class lsc_specializer:
                             modifications.append(
                                     op_modification(
                                         op_match=[lsc_addr_add,lsc_load,lsc_store],
-                                        rtype_idx_match={c_index}, 
+                                        component_match=acc_components, 
                                         reg_type_match={lsc_reg_type.address},
                                         modification=subtract_addoff)
                                     )
@@ -994,36 +1011,46 @@ class lsc_specializer:
             result_ops.extend(stls.flush_store())
         return result_ops
 
-    def specialize(self, ops : list[lsc_operation], triple : adt_triple) -> list[str]:
+    def specialize(self, ops : list[lsc_operation],
+                   component_dts : dict[str,adt]) -> list[str]:
         result = []
         for op in ops:
             transform = self.transformations[type(op)]
-            asm = transform(op, triple)
+            asm = transform(op, component_dts)
             result.append(asm)
         return result
 
-    def init_vlenregs(self, triple: adt_triple) -> str:
+    def init_vlenregs(self, component_dts : dict[str,adt]) -> str:
 
         asmblock = ""
+
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
 
         if 'vlen' not in self.rt.aliased_regs['greg']:
             vlenidx = self.rt.reserve_any_reg('greg')
             self.rt.alias_reg('greg', 'vlen', vlenidx)
             vlenreg = self.gen.greg(vlenidx)
-            asmblock += self.gen.simd_size_to_greg(reg=vlenreg, dt=triple.a)
+            asmblock += self.gen.simd_size_to_greg(reg=vlenreg, dt=narrow_dt)
         else:
             vlenidx = self.rt.aliased_regs['greg']['vlen']
             vlenreg = self.gen.greg(vlenidx)
 
-        for rtype_idx in self.offset_registry.keys():
-            rtype_char = string.ascii_lowercase[rtype_idx]
-            for off in self.offset_registry[rtype_idx]:
+        for component in self.offset_registry.keys():
+            for off in self.offset_registry[component]:
                 if not off.is_vector():
                     continue
 
-                alias = f"{rtype_char}off:{str(off)}"
+                alias = f"{component}off:{str(off)}"
 
-                dt_shift = adt_size(triple[rtype_idx]).bit_length()-1
+                dt_shift = adt_size(component_dts[component]).bit_length()-1
 
                 vlenxnidx = self.rt.reserve_any_reg('greg')
                 self.rt.alias_reg('greg', alias, vlenxnidx)
@@ -1042,50 +1069,76 @@ class lsc_specializer:
         return asmblock
 
 
-    def code_init(self, triple : adt_triple) -> str:
-        #TODO: datatype for quirks. For now go with the narrow type
-        asmblock = self.gen.isaquirks(rt=self.rt,dt=triple.a)
+    def code_init(self, component_dts : dict[str,adt]) -> str:
 
-        asmblock += self.init_vlenregs(triple=triple)
+        #TODO: datatype for quirks. For now go with the narrow type
+        
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
+                        
+        asmblock = self.gen.isaquirks(rt=self.rt,dt=narrow_dt)
+
+        asmblock += self.init_vlenregs(component_dts=component_dts)
+
+
+        
+        acc_components = set()
+        for a,b,c in self.component_triples:
+            acc_components.add(c)
 
 
         # reserve offset registers
-        for rtype_idx in self.offset_registry.keys():
-            rtype_char = string.ascii_lowercase[rtype_idx]
-            for off in self.offset_registry[rtype_idx]:
+        for component in self.offset_registry.keys():
+            for off in self.offset_registry[component]:
                 if off.is_vector() or off.is_scalar():
                     continue
+
+                # determine largest widening ways:
+                ways = 1
+                for a,b,c in self.component_triples:
+                    narrow_size = adt_size(component_dts[a])
+                    if c == component:
+                        ways = max(adt_size(component_dts[c])//narrow_size,ways)
+
                 regidx = self.rt.reserve_any_reg('greg')
-                alias = f"{rtype_char}off:{str(off)}"
+                alias = f"{component}off:{str(off)}"
                 self.rt.alias_reg('greg', alias , regidx)
                 asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {alias}")
                 asmblock += self.gen.asmwrap(f"; calculation -->")
-                asmblock += self.calculate_offset(rtype_idx, off, triple)
+                asmblock += self.calculate_offset(component, off,
+                                                  component_dts=component_dts,
+                                                  ways=ways)
                 asmblock += self.gen.asmwrap(f"; calculation end <--")
 
 
         # reserve vector indices
-        for rtype_idx in self.vindex_registry.keys():
-            rtype_char = string.ascii_lowercase[rtype_idx]
-            for stride in self.vindex_registry[rtype_idx]:
+        for component in self.vindex_registry.keys():
+            for stride in self.vindex_registry[component]:
                 stvidx = self.rt.reserve_any_reg("vreg")
-                alias = f"{rtype_char}vidx:{str(stride)}"
+                alias = f"{component}vidx:{str(stride)}"
                 self.rt.alias_reg('vreg', alias, stvidx)
 
-                galias = f"{rtype_char}off:{str(stride)}"
+                galias = f"{component}off:{str(stride)}"
                 stridx = self.rt.aliased_regs["greg"][galias]
                 streg = self.gen.greg(stridx)
                 stvreg = self.gen.vreg(stvidx)
                 asmblock += self.gen.asmwrap(f"; {self.gen.vreg(stvidx)} = {alias}")
                 asmblock += self.gen.asmwrap(f"; calculation -->")
-                asmblock += self.gen.greg_to_voffs(streg=streg, vreg=stvreg, dt=triple[rtype_idx])
+                asmblock += self.gen.greg_to_voffs(streg=streg, vreg=stvreg,
+                                                   dt=component_dts[component])
                 asmblock += self.gen.asmwrap(f"; calculation end <--")
 
         # reserve address registers
-        for rtype_idx in self.address_registers.keys():
-            rtype_char = string.ascii_lowercase[rtype_idx]
-            for aidx in self.address_registers[rtype_idx]:
-                reg_alias = f"{rtype_char}areg{aidx}"
+        for component in self.address_registers.keys():
+            for aidx in self.address_registers[component]:
+                reg_alias = f"{component}areg{aidx}"
                 aregidx = self.rt.reserve_any_reg('greg')
                 self.rt.alias_reg('greg', reg_alias, aregidx)
 
@@ -1094,17 +1147,15 @@ class lsc_specializer:
 
 
         # reserve data registers
-        for rtype_idx in self.data_registers.keys():
-
-            rtype_char = string.ascii_lowercase[rtype_idx]
-            for didx in self.data_registers[rtype_idx]:
-                reg_alias = f"{rtype_char}{didx}"
-                dreg_tag = self.data_tags[rtype_idx]
+        for component in self.data_registers.keys():
+            for didx in self.data_registers[component]:
+                reg_alias = f"{component}{didx}"
+                dreg_tag = self.data_tags[component]
                 dregidx = self.rt.reserve_any_reg(dreg_tag)
 
                 self.rt.alias_reg(dreg_tag, reg_alias, dregidx)
 
-                dt = triple.__dict__[string.ascii_lowercase[rtype_idx]]
+                dt = component_dts[component]
 
                 if dreg_tag in ["freg","treg"]:
                     dregname = str(getattr(self.gen,dreg_tag)(dregidx,dt))
@@ -1116,5 +1167,15 @@ class lsc_specializer:
 
         return asmblock
 
-    def code_fini(self, triple : adt_triple) -> str:
-        return self.gen.isaendquirks(rt=self.rt,dt=triple.a)
+    def code_fini(self, component_dts : dict[str,adt]) -> str:
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
+
+        return self.gen.isaendquirks(rt=self.rt,dt=narrow_dt)

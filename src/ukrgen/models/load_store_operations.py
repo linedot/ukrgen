@@ -249,14 +249,50 @@ class lsc_offset:
     def zero_offset(cls):
         return cls(dict(),[],[],0)
 
+    @classmethod
+    def vo(cls, vid : int, value : int):
+        """
+        1D Vector offset
+        """
+        voffs = [0 for i in range(vid+1)]
+        voffs[vid] = value
+        return cls(dict(),[],voffs,0)
+
+    @classmethod
+    def to(cls, vid1 : int, vid2 : int, value1 : int, value2):
+        """
+        2D Tile offset
+        """
+        voffs = [0 for i in range(max(vid1,vid2)+1)]
+        voffs[vid1] = value1
+        voffs[vid2] = value2
+        return cls(dict(),[],voffs,0)
+
+    @classmethod
+    def so(cls, value : int):
+        """
+        scalar offset
+        """
+        return cls(dict(),[],[],value)
+
 class lsc_operation:
     def __init__(self,
                  tiles : list[tile],
-                 indices: list[list[int]],
+                 indices: list[tuple[str,list[int]]],
                  reads: list[int],
                  writes: list[int],
                  reg_types : list[lsc_reg_type]):
+        for t in tiles:
+            if not isinstance(t, tile):
+                raise ValueError("non-tile in list of tiles")
         self.tiles = tiles
+        for idx in indices:
+            if not isinstance(idx[0],str) or \
+               not isinstance(idx[1],list):
+               raise ValueError(f"invalid index: {idx}")
+            for i in idx[1]:
+               if not isinstance(i,int):
+                   raise ValueError(f"invalid index: {idx}")
         self.indices = indices
         self.reads = reads
         self.writes = writes
@@ -268,7 +304,7 @@ class ldst_modifier(Enum):
 
 class lsc_load(lsc_operation):
     def __init__(self,
-                 rtype_idx : int,
+                 component : str,
                  res_idx : int,
                  addr_idx : int,
                  off : lsc_offset,
@@ -280,7 +316,7 @@ class lsc_load(lsc_operation):
         self.mods = mods
 
         tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
+        indices = [(component, [addr_idx]), (component, [res_idx])]
         # read address
         reads = [0]
         # write resource
@@ -288,34 +324,34 @@ class lsc_load(lsc_operation):
 
         reg_types = [lsc_reg_type.address, lsc_reg_type.data]
 
-        super(lsc_load, self).__init__(tiles=tiles, indices=indices,
+        super().__init__(tiles=tiles, indices=indices,
                                        reads=reads, writes=writes,
                                        reg_types=reg_types)
 
     @property
-    def rtype_idx(self):
+    def component(self):
         return self.indices[0][0]
 
     @property
     def res_idx(self):
-        return self.indices[1][1]
+        return self.indices[1][1][0]
 
     @property
     def addr_idx(self):
-        return self.indices[0][1]
+        return self.indices[0][1][0]
 
     @property
     def t(self):
         return self.tiles[1]
 
     def __str__(self):
-        reg_chars = ['a','b','c']
-        i = self.rtype_idx
-        return f"{reg_chars[i]}{self.res_idx} <- LOAD {reg_chars[i]}a{self.addr_idx} + {self.off}"
+        cr = self.indices[1][0]
+        ca = self.indices[0][0]
+        return f"{cr}{self.res_idx} <- LOAD {ca}a{self.addr_idx} + {self.off}"
 
 class lsc_store(lsc_operation):
     def __init__(self,
-                 rtype_idx : int,
+                 component : str,
                  res_idx : int,
                  addr_idx : int,
                  off : lsc_offset,
@@ -327,7 +363,7 @@ class lsc_store(lsc_operation):
         self.mods = mods
 
         tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx], [rtype_idx, res_idx]]
+        indices = [(component, [addr_idx]), (component, [res_idx])]
         # read resource
         reads = [0,1]
         # we write memory, not the address register
@@ -335,70 +371,69 @@ class lsc_store(lsc_operation):
 
         reg_types = [lsc_reg_type.address, lsc_reg_type.data]
 
-        super(lsc_store, self).__init__(tiles=tiles, indices=indices,
+        super().__init__(tiles=tiles, indices=indices,
                                         reads=reads, writes=writes,
                                         reg_types=reg_types)
 
     @property
-    def rtype_idx(self):
+    def component(self):
         return self.indices[0][0]
 
     @property
     def res_idx(self):
-        return self.indices[1][1]
+        return self.indices[1][1][0]
 
     @property
     def addr_idx(self):
-        return self.indices[0][1]
+        return self.indices[0][1][0]
 
     @property
     def t(self):
         return self.tiles[1]
 
     def __str__(self):
-        reg_chars = ['a','b','c']
-        i = self.rtype_idx
-        return f"{reg_chars[i]}a{self.addr_idx} + {self.off} <- STORE {reg_chars[i]}{self.res_idx}"
+        cr = self.indices[1][0]
+        ca = self.indices[0][0]
+        return f"{ca}a{self.addr_idx} + {self.off} <- STORE {cr}{self.res_idx}"
 
 class lsc_zero(lsc_operation):
-    def __init__(self, rtype_idx : int, res_idx : int, t : tile):
+    def __init__(self, component : str, res_idx : int, t : tile):
 
         tiles = [t]
-        indices = [[rtype_idx, res_idx]]
+        indices = [(component, [res_idx])]
         reads = []
         # write resource
         writes = [0]
 
         reg_types = [lsc_reg_type.data]
 
-        super(lsc_zero, self).__init__(tiles=tiles, indices=indices,
-                                       reads=reads, writes=writes,
-                                       reg_types=reg_types)
+        super().__init__(tiles=tiles, indices=indices,
+                         reads=reads, writes=writes,
+                         reg_types=reg_types)
     @property
-    def rtype_idx(self):
+    def component(self):
         return self.indices[0][0]
 
     @property
     def res_idx(self):
-        return self.indices[0][1]
+        return self.indices[0][1][0]
 
     @property
     def t(self):
         return self.tiles[0]
 
     def __str__(self):
-        reg_chars = ['a','b','c']
-        return f"{reg_chars[self.rtype_idx]}{self.res_idx} <- 0"
+        return f"{self.component}{self.res_idx} <- 0"
 
 class lsc_addr_add(lsc_operation):
-    def __init__(self, rtype_idx : int, addr_idx : int, off : lsc_offset, t : tile):
+    def __init__(self, component : str, addr_idx : int, off : lsc_offset, t : tile):
         if not isinstance(off, lsc_offset):
             raise ValueError(f"offset {off} is not an lsc_offset")
         self.off = off
 
         # t is used for calculating address, isn't the tile the address resides in
         tiles = [scalar_tile, t]
-        indices = [[rtype_idx, addr_idx]]
+        indices = [(component, [addr_idx])]
         # read addr
         reads = [0]
         # write addr
@@ -407,25 +442,24 @@ class lsc_addr_add(lsc_operation):
         reg_types = [lsc_reg_type.address]
 
 
-        super(lsc_addr_add, self).__init__(tiles=tiles, indices=indices,
-                                           reads=reads, writes=writes,
-                                           reg_types=reg_types)
+        super().__init__(tiles=tiles, indices=indices,
+                         reads=reads, writes=writes,
+                         reg_types=reg_types)
 
     @property
-    def rtype_idx(self):
+    def component(self):
         return self.indices[0][0]
 
     @property
     def addr_idx(self):
-        return self.indices[0][1]
+        return self.indices[0][1][0]
 
     @property
     def t(self):
         return self.tiles[1]
 
     def __str__(self):
-        rtype_char = string.ascii_lowercase[self.rtype_idx]
-        ar_str = f"{rtype_char}a{self.addr_idx}"
+        ar_str = f"{self.component}a{self.addr_idx}"
         return f"{ar_str} <- {ar_str} + {self.off}"
 
 class lsc_add_val_off(lsc_operation):
@@ -447,8 +481,8 @@ class lsc_add_val_off(lsc_operation):
 
 
         super().__init__(tiles=tiles, indices=indices,
-                                           reads=reads, writes=writes,
-                                           reg_types=reg_types)
+                         reads=reads, writes=writes,
+                         reg_types=reg_types)
 
     def __str__(self):
         return f"{self.valname} <- {self.valname} + {self.off}"
@@ -459,36 +493,61 @@ class lsc_debugmsg(lsc_operation):
         self.msg = msg
     def __str__(self):
         return self.msg
+
+
+class tr_modifier(Enum):
+    np = auto()
     
 class lsc_transformation(lsc_operation):
     def __init__(self, op : str,
-                 res_indices : list[int],
+                 res_indices : list[tuple[str,int]],
                  sub_indices : list[int],
                  tiles : list[tile],
                  reads : list[int] = [0,1,2],
                  writes : list[int] = [2]):
-        self.op = op
-        indices = [[i,r,s] for i,(r,s) in enumerate(zip(res_indices,sub_indices))]
+
+        opsplit = op.split(":")
+        opstr = opsplit[0]
+        self.op = opstr
+        self.mods = []
+        if 1 < len(opsplit):
+            modlist = opsplit[1].split(",")        
+            self.mods = [tr_modifier[m] for m in modlist]
+        indices = [(key,[r,s]) if s is not None else (key,[r]) for (key,r),s in zip(res_indices,sub_indices)]
         reg_types = [lsc_reg_type.data for i in range(len(res_indices))]
         super(lsc_transformation, self).__init__(tiles=tiles, indices=indices,
                                                  reads=reads, writes=writes,
                                                  reg_types=reg_types)
 
+
+    @property
+    def modifiers(self):
+        return self.mods
+
+    @property 
+    def components(self):
+        return [index[0] for index in self.indices]
+
     @property
     def res_indices(self):
-        return [idxlist[1] for idxlist in self.indices]
+        return [index[1][0] for index in self.indices]
 
     @property
     def sub_indices(self):
-        return [idxlist[2] for idxlist in self.indices]
+        return [None if len(index[1]) == 1 else index[1][1] for index in self.indices]
 
     def __str__(self):
-        reg_chars = ['a','b','c']
         elsuf = lambda subidx : f".el[{subidx}]" if None != subidx else ""
         #TODO: subindices
-        regstrs = [f"{reg_chars[i]}{r}{elsuf(subidx)}" for i,(r,subidx) in\
-                enumerate(zip(self.res_indices,self.sub_indices))]
-        out = f"{regstrs[-1]} <- {self.op}("
+        regstrs = [f"{c}{ridx}{elsuf(subidx)}" for (c,_),ridx,subidx in\
+                zip(self.indices,self.res_indices,self.sub_indices)]
+
+        modstr = [str(m).replace('tr_modifier.','') for m in self.mods]
+        if modstr:
+            modstr = ":"+f"{{{','.join(modstr)}}}"
+        else:
+            modstr = ""
+        out = f"{regstrs[-1]} <- {self.op}{modstr}("
         out += ", ".join(regstrs)
         out += ")"
         return out

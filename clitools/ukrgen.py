@@ -8,6 +8,8 @@ import argparse
 import sys
 import logging
 
+from copy import deepcopy
+
 from mako.template import Template
 
 from asmgen.asmblocks.avx_fma import fma128,fma256,avx512
@@ -34,8 +36,10 @@ from ukrgen.models.load_store_cpu import load_store_cpu
 from ukrgen.models.load_store_operations import lsc_offset,stridexvlen,lsc_load,lsc_transformation,ldst_modifier
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
-from ukrgen.schedulers import simple_dependency_scheduler
+from ukrgen.schedulers import simple_dependency_scheduler,minreguse_scheduler
 
+from .internal.addr_parameters import calculate_addr_parameters
+from .internal.ukr import get_ukr_components
 
 asmgen_map = {
     'avx128' : fma128,
@@ -61,7 +65,7 @@ def parse_main_arguments(parser : argparse.ArgumentParser):
 
     operations = ['fma','dota','fopa','mma']
 
-    kernels = ['mm']
+    kernels = ['mm','gemm']
     parser.add_argument("--ukr", type=str,
                         choices=kernels,
                         required=True, help="Kernel to generate")
@@ -136,7 +140,7 @@ def parse_fma_args(parser : argparse.ArgumentParser):
     helpexit_if_last_parser(rest=rest, parser=parser)
     return args,rest
 
-def parse_ukr_args(parser : argparse.ArgumentParser):
+def parse_mm_args(parser : argparse.ArgumentParser):
 
 
     parser.add_argument("--m", type=int, required=True,
@@ -154,56 +158,46 @@ def parse_ukr_args(parser : argparse.ArgumentParser):
     helpexit_if_last_parser(rest=rest, parser=parser)
     return args,rest
 
-def parse_stride_args(parser : argparse.ArgumentParser):
+def parse_stride_args(parser : argparse.ArgumentParser, ukr : str):
+
+    choices = ['A','B','C']
+    if "gemm" == ukr:
+        choices =['A','B','AB','C']
 
 
     parser.add_argument("--column-strides", type=str, nargs="+", required=False,
-                        choices=['a','b','c'],
+                        choices=choices,
                         help="components with general column strides")
     parser.add_argument("--row-strides", type=str, nargs="+", required=False,
-                        choices=['a','b','c'],
+                        choices=choices,
                         help="components with general row strides")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
     return args,rest
 
-def parse_lsc_args(parser : argparse.ArgumentParser):
+def parse_lsc_args(parser : argparse.ArgumentParser, ukr : str):
+
+    components = ['A','B','C']
+    if "gemm" == ukr:
+        components =['A','B','AB','C']
 
 
     multiareg_strategies = ["interleave","split"]
 
-    parser.add_argument("--a-data-regs", type=int, required=True,
-                        help="number of data registers to use for the a tiles")
-    parser.add_argument("--b-data-regs", type=int, required=True,
-                        help="number of data registers to use for the b tiles")
-    parser.add_argument("--c-data-regs", type=int, required=True,
-                        help="number of data registers to use for the c tiles")
-    parser.add_argument("--a-addr-regs", type=int,
-                        default=1,
-                        help="number of address registers to use for the a tiles")
-    parser.add_argument("--a-multiaddr-strat", type=str,
-                        default=multiareg_strategies[0],
-                        choices=multiareg_strategies,
-                        help="Strategy for using multiple address registers for a tiles")
-    parser.add_argument("--b-addr-regs", type=int,
-                        default=1,
-                        help="number of address registers to use for the b tiles")
-    parser.add_argument("--b-multiaddr-strat", type=str,
-                        default=multiareg_strategies[0],
-                        choices=multiareg_strategies,
-                        help="Strategy for using multiple address registers for b tiles")
-    parser.add_argument("--c-addr-regs", type=int,
-                        default=1,
-                        help="number of address registers to use for the c tiles")
-    parser.add_argument("--c-multiaddr-strat", type=str,
-                        default=multiareg_strategies[0],
-                        choices=multiareg_strategies,
-                        help="Strategy for using multiple address registers for c tiles")
-    parser.add_argument("--a-preload", type=int, required=True,
-                        help="number of a data registers to preload")
-    parser.add_argument("--b-preload", type=int, required=True,
-                        help="number of b data registers to preload")
+    for c in components:
+        parser.add_argument(f"--{c}-data-regs", type=int, required=True,
+                            help=f"Number of data registers to use for the {c} component")
+        parser.add_argument(f"--{c}-addr-regs", type=int,
+                            default=1,
+                            help=f"number of address registers to use for the {c} component")
+        parser.add_argument(f"--{c}-multiaddr-strat", type=str,
+                            default=multiareg_strategies[0],
+                            choices=multiareg_strategies,
+                            help=f"Strategy for using multiple address registers for {c} component")
+        if c in ["A","B"]:
+            parser.add_argument(f"--{c}-preload", type=int, required=True,
+                                help=f"number of {c} data registers to preload")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
@@ -303,8 +297,22 @@ def main():
                         b_dt=adt[spec_args.ab_data_type],
                         c_dt=adt[spec_args.c_data_type])
 
+    component_dts = {
+        "A" : triple.a,
+        "B" : triple.b,
+        "AB" : triple.c,
+        "C" : triple.c,
+        "alpha" : triple.c,
+        "beta" : triple.c
+    }
+
     ways = adt_size(triple.c)//adt_size(triple.a)
 
+
+    #TODO: other kernels
+    parse_ukr_args = parse_mm_args
+    if args.ukr not in ["gemm","mm"]:
+        raise NotImplementedError("parsing non-mm args not implemented")
 
     ukr_args,rest = parse_ukr_args(parser=parser)
 
@@ -340,107 +348,69 @@ def main():
     c_tile = simple_ukr_tile(a_size=m, b_size=nc,
                              subdims=(sup.c_tile.dima, sup.c_tile.dimb))
 
-    genmm = mm(a=a_tile, b=b_tile, c=c_tile, lo=order, opstr=args.op)
+    if "mm" == args.ukr:
+        genmm = mm(a=a_tile, b=b_tile, c=c_tile, lo=order, opstr=args.op,
+                   tile_strs=["A","B","C"])
+    if "gemm" == args.ukr:
+        genmm = mm(a=a_tile, b=b_tile, c=c_tile, lo=order, opstr=args.op,
+                   tile_strs=["A","B","AB"])
 
-    scale_tile = simple_ukr_tile(a_size=m*n, b_size=1,
-                                 subdims=(sup.c_tile.dima,
-                                          sup.c_tile.dimb))
-    alphabeta_tile = simple_ukr_tile(a_size=1, b_size=1,
-                                subdims=(scalar_dp,scalar_dp))
-    genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                  opstr="fmulnp", tile_strs=["C","beta","C"])
-    genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                    opstr="fma", tile_strs=["AB","alpha","C"])
+        scale_tile = simple_ukr_tile(a_size=m*n, b_size=1,
+                                     subdims=(sup.c_tile.dima,
+                                              sup.c_tile.dimb))
+        alphabeta_tile = simple_ukr_tile(a_size=1, b_size=1,
+                                    subdims=(scalar_dp,scalar_dp))
+        genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
+                          opstr="fmul:np", tile_strs=["C","beta","C"])
+        genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
+                        opstr="fma", tile_strs=["AB","alpha","C"])
+        betascale_ops = genbetascale.generate()
+        alphascale_ops = genalphascale.generate()
 
     mm_ops = genmm.generate()
 
+
     tiflog.debug("################### TILE-INSTRUCTION-FORMAT ###################")
+    tiflog.debug("### MAIN ###")
     for op in mm_ops:
         tiflog.debug(str(op))
+    tiflog.debug("### BETA SCALE ###")
 
-    stride_args,rest = parse_stride_args(parser=parser)
+    if "gemm" == args.ukr:
+        for op in betascale_ops:
+            tiflog.debug(str(op))
+        tiflog.debug("### ALPHA SCALE ###")
+        for op in alphascale_ops:
+            tiflog.debug(str(op))
 
-    lsc_args,rest = parse_lsc_args(parser=parser)
+    stride_args,rest = parse_stride_args(parser=parser, ukr=args.ukr)
 
+    lsc_args,rest = parse_lsc_args(parser=parser, ukr=args.ukr)
 
-    addr_indices = [[i for i in range(count)]
-                    for count in [lsc_args.a_addr_regs,
-                                  lsc_args.b_addr_regs,
-                                  lsc_args.c_addr_regs]]
+    components = get_ukr_components(args.ukr)
 
+    addr_indices = { c :[i for i in range(lsc_args.__dict__[f"{c}_addr_regs"])]
+                    for c in components }
 
-    is_tile_scalar = lambda t : t.dima.dt == dimension_type.fixed and \
-                                t.dima.size == 1 and \
-                                t.dimb.dt == dimension_type.fixed and \
-                                t.dimb.size == 1
+    addr_reg_counts = { c : lsc_args.__dict__[f"{c}_addr_regs"]
+                    for c in components }
 
-    is_tile_vla_vector = lambda t : (t.dima.dt == dimension_type.vla and \
-                                     t.dima.size == 1 and \
-                                     t.dimb.dt == dimension_type.fixed and \
-                                     t.dimb.size == 1) or \
-                                    (t.dima.dt == dimension_type.fixed and \
-                                     t.dima.size == 1 and \
-                                     t.dimb.dt == dimension_type.vla and \
-                                     t.dimb.size == 1)
+    data_reg_counts = { c : lsc_args.__dict__[f"{c}_data_regs"]
+                       for c in components}
 
-    is_tile_vla_tile = lambda t : (t.dima.dt == dimension_type.vla and \
-                                   t.dima.size == 1 and \
-                                   t.dimb.dt == dimension_type.vla and \
-                                   t.dimb.size == 1)
-
-    zo = lsc_offset.zero_offset()
-    addr_offset_ranges=[]
-    addr_offset_steps=[]
-    addr_offset_starts=[]
-    for i,(t,dt,count) in enumerate(zip(
-        [sup.a_tile,
-         sup.b_tile,
-         sup.c_tile],
-        [sup.triple.a,
-         sup.triple.b,
-         sup.triple.c],
-        [lsc_args.a_addr_regs,
-         lsc_args.b_addr_regs,
-         lsc_args.c_addr_regs]
-        )):
-        if is_tile_vla_tile(t):
-            vmax=gen.max_load_voff
-            addr_offset_ranges.append([(zo, lsc_offset({},[],[0,vmax],0)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset({},[],[0,(vmax+1)*count],0) for j in range(count)])
-            addr_offset_starts.append([lsc_offset({},[],[0,j*t.dima.size],0) for j in addr_indices[i]])
-        elif is_tile_vla_vector(t):
-            vmax=gen.max_load_voff
-            addr_offset_ranges.append([(zo, lsc_offset({},[],[vmax],0)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset({},[],[(vmax+1)*count],0) for j in range(count)])
-            addr_offset_starts.append([lsc_offset({},[],[j*t.dima.size],0) for j in addr_indices[i]])
-        elif is_tile_scalar(t):
-            imax=gen.max_fload_immoff(dt=dt)
-            addr_offset_ranges.append([(zo, lsc_offset({},[],[],imax)) for j in range(count)])
-            addr_offset_steps.append([lsc_offset({},[],[],(imax+1)*count) for j in range(count)])
-            addr_offset_starts.append([lsc_offset({},[],[],j*t.dima.size) for j in addr_indices[i]])
+    if "gemm" == args.ukr:
+        addr_indices["alpha"] = [0]
+        addr_indices["beta"] = [0]
+        data_reg_counts["alpha"] = 1
+        data_reg_counts["beta"] = 1
+        addr_reg_counts["alpha"] = 1
+        addr_reg_counts["beta"] = 1
 
 
-    # Ensure the specializer doesn't generate impossible voffsets for loads/stores of
-    # C regs
-    if getattr(gen, args.op).widening_method == wm.SPLIT_INSTRUCTIONS:
-        for i in range(len(addr_offset_ranges[2])):
-            maxoff = addr_offset_ranges[2][i][1]
-            maxoff.vlen_strides = [v//ways for v in maxoff.vlen_strides]
-            maxoff.reg_strides = [r//ways for r in maxoff.reg_strides]
-            maxoff.immoff //= ways
-            addr_offset_ranges[2][i] = (addr_offset_ranges[2][i][0],
-                                        maxoff)
-
-        #for i,_ in enumerate(addr_offset_steps[2]):
-        #    addr_offset_steps[2][i].vlen_strides = \
-        #        [v//ways for v in addr_offset_steps[2][i].vlen_strides]
-        #    addr_offset_steps[2][i].reg_strides = \
-        #        [r//ways for r in addr_offset_steps[2][i].reg_strides]
-        #    addr_offset_steps[2][i].immoff //= ways
-
-    strides = {k : (None,None) for k in ['a','b','c']}
+    strides = {k : (None,None) for k in components}
+    mappers = {}
     i = 0
-    for char in ['a','b','c']:
+    for char in components:
         comp_slist = [None,None]
         if stride_args.row_strides:
             if char in stride_args.row_strides:
@@ -455,66 +425,96 @@ def main():
 
         strides[char] = tuple(comp_slist)
 
+    mappers['A'] = strided_mapper((m,1), strides['A'],vecdim=0)
+    mappers['B'] = strided_mapper((1,n), strides['B'],vecdim=1)
+    mappers['C'] = strided_mapper((m,n), strides['C'],vecdim=0)
 
-    a_mapper = strided_mapper((m,1), strides['a'],vecdim=0)
-    b_mapper = strided_mapper((1,n), strides['b'],vecdim=1)
-    c_mapper = strided_mapper((m,n), strides['c'],vecdim=0)
+    if "gemm" == args.ukr:
+        mappers['AB'] = strided_mapper((m,n), strides['AB'],vecdim=0)
 
-    # TODO: arbitrary vectorization direction
-    # TODO: Logic might be almost the same for no strides, possibly making the block further above redundant
-    for i,(char,vecdim,mapper,t,count,strat) in enumerate(zip(
-            ['a','b','c'],
-            [0,1,0],
-            [a_mapper,b_mapper,c_mapper],
-            [sup.a_tile,sup.b_tile,sup.c_tile],
-            [lsc_args.a_addr_regs,
-             lsc_args.b_addr_regs,
-             lsc_args.c_addr_regs],
-            [lsc_args.a_multiaddr_strat,
-             lsc_args.b_multiaddr_strat,
-             lsc_args.c_multiaddr_strat]
-            )):
-        step = mapper.get_ldst_size(t)
-        if "interleave" == strat:
-            print(f"Interleave strat for {char}")
-            addr_offset_steps[i] = [sum([step for jj in range(count)],lsc_offset.zero_offset()) \
-                    for j in range(count)]
-            addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
-                    for j in range(count)]
-        elif "split" == strat:
-            print(f"Split strat for {char}")
-            full = [m,n,k][vecdim]
-            part = full//count
-            splits = [part*j for j in range(count)]
-            addr_offset_steps[i] = [sum([step for jj in range(full)],lsc_offset.zero_offset()) \
-                    for j in range(count)]
-            addr_offset_starts[i] = [sum([step for jj in range(j)],lsc_offset.zero_offset()) \
-                    for j in splits]
-            # Force split by setting max offset range to split/part
-            addr_offset_ranges[i] = [(zo, sum([step for jj in range(part)],
-                                              lsc_offset.zero_offset())) for \
-                    j in range(count)]
-        else:
-            raise NotImplementedError(f"multiaddr strategy \"{strat}\" not implemented")
+    scalar_mapper = strided_mapper((1,1), (None,None),vecdim=0)
 
-    print(f"addr steps: {addr_offset_steps}")
-    print(f"addr starts: {addr_offset_starts}")
+    mappers['beta'] = scalar_mapper
+    mappers['alpha'] = scalar_mapper
 
 
-    ar = addr_resolver(indices=addr_indices,
-                       starting_offsets=addr_offset_starts,
-                       offset_ranges = addr_offset_ranges,
-                       steps=addr_offset_steps)
-    model = load_store_cpu(res_counts=[lsc_args.a_data_regs,
-                                       lsc_args.b_data_regs,
-                                       lsc_args.c_data_regs],
-                           res_steps=[1,1,1],
+    scalar_tile = tile(dima=scalar_dp, dimb=scalar_dp)
+
+    component_tiles = {
+        "A" : sup.a_tile,
+        "B" : sup.b_tile,
+        "C" : sup.c_tile
+    }
+    if "gemm" == args.ukr:
+        component_tiles = component_tiles | {
+        "AB" : sup.c_tile,
+        "beta" : scalar_tile,
+        "alpha" : scalar_tile
+    }
+    if args.op == 'fma' and fma_args is not None:
+        if fma_args.fma_unvec_method in ['load_bcast']:
+            component_tiles["B"] = component_tiles["A"]
+
+    strats = { c : lsc_args.__dict__[f"{c}_multiaddr_strat"] \
+            for c in components}
+
+    strats['beta'] = "interleave"
+    strats['alpha'] = "interleave"
+
+
+    off_starts,off_ranges,off_steps = calculate_addr_parameters(
+            sup=sup, primary_op=args.op, gen=gen,
+            addr_reg_counts=addr_reg_counts,
+            tiles=component_tiles, 
+            narrow_components=["A","B"], 
+            wide_components=["AB","C","beta","alpha"],
+            m=m,n=n,k=k,
+            vecdims={
+                "A" : 0,
+                "B" : 1,
+                "C" : 0,
+                "AB" : 0,
+                "beta" : 0,
+                "alpha" : 0,
+                },
+            strides=strides,
+            mappers=mappers,
+            strats=strats)
+
+    print(f"addr steps: {off_steps}")
+    print(f"addr starts: {off_starts}")
+
+
+    ar = addr_resolver(indices          = addr_indices,
+                       starting_offsets = off_starts,
+                       offset_ranges    = off_ranges,
+                       steps            = off_steps)
+
+
+    #TODO: investigate if there are architectures where this is relevant
+    res_steps = {c:1 for c in components}
+
+    preload_counts = {c : lsc_args.__dict__[f"{c}_preload"] for c in ["A","B"]}
+    preload_counts["C"] = lsc_args.C_data_regs
+    if "gemm" == args.ukr:
+        preload_counts["AB"] = lsc_args.C_data_regs
+        preload_counts["beta"] = 0
+        preload_counts["alpha"] = 0
+        res_steps["alpha"] = 1
+        res_steps["beta"] = 1
+
+
+    resolve_order = deepcopy(components)
+    if "gemm" == args.ukr:
+        resolve_order.extend(["beta","alpha"])
+
+    model = load_store_cpu(res_counts=data_reg_counts,
+                           res_steps=res_steps,
                            ar=ar,
-                           preload_counts=[lsc_args.a_preload,
-                                           lsc_args.b_preload,
-                                           lsc_args.c_data_regs],
-                           offset_mappers=[a_mapper,b_mapper,c_mapper],
-                           op=args.op)
+                           preload_counts=preload_counts,
+                           offset_mappers=mappers,
+                           #TODO: parameterize resolve order
+                           resolve_order=resolve_order)
 
 
     specializer.set_model(model=model)
@@ -524,29 +524,38 @@ def main():
     #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
     genlog.debug("DEBUG: TRANSFORMING PRELOAD")
-    preload = model.preload(ops=mm_ops,next_ops=mm_ops_p1k)
+    preload = model.preload(ops=mm_ops,next_ops=mm_ops_p1k,
+                            zero_components=["C","AB"],
+                            ignore_components=[])
     genlog.debug("DEBUG: TRANSFORMING MAIN BLOCK")
     mainblock = model(mm_ops)
     genlog.debug("DEBUG: TRANSFORMING NEXTITER PRELOAD")
     preload_mb = model.preload(mm_ops_p1k,
                                mm_ops_p2k,
                                zero_addrs=False,
-                               ignore_dims=[2])
+                               zero_components=[],
+                               ignore_components=["C","AB"])
+
+    if "gemm" == args.ukr:
+        genlog.debug("DEBUG: TRANSFORMING BETASCALE BLOCK")
+        betascale = model(betascale_ops)
+        genlog.debug("DEBUG: TRANSFORMING ALPHASCALE BLOCK")
+        alphascale = model(alphascale_ops)
     genlog.debug("DEBUG: TRANSFORMING STORE BLOCK")
-    storeblock = model.store_modified()
+    storeblock = model.store_modified(ignore_components="AB")
 
 
     genlog.debug("################# MODIFICATIONS ##################")
 
     if fma_args is not None:
+        # TODO: arbitrary vecdim
+        unvec_components = ["B","alpha","beta"]
         if "load_bcast" == fma_args.fma_unvec_method:
-            # TODO: arbitrary vecdim
-            unvec_component = 1
             vec_tile = sup.a_tile
             def mod_load(op : lsc_load) -> lsc_load:
                 if not isinstance(op,lsc_load):
                     return op
-                if op.rtype_idx == unvec_component:
+                if op.component in unvec_components:
                     op.mods.add(ldst_modifier.bcast1)
                     op.tiles[1] = vec_tile
 
@@ -554,13 +563,19 @@ def main():
             def mod_transform(op : lsc_transformation) -> lsc_transformation:
                 if not isinstance(op,lsc_transformation):
                     return op
-                op.tiles[unvec_component] = vec_tile
+                for i,c in enumerate(op.components):
+                    if c in unvec_components:
+                        op.tiles[i] = vec_tile
+
                 return op
 
             for mod in [mod_load,mod_transform]:
                 preload = [mod(op) for op in preload]
                 mainblock = [mod(op) for op in mainblock]
                 preload_mb = [mod(op) for op in preload_mb]
+                if "gemm" == args.ukr:
+                    betascale = [mod(op) for op in betascale]
+                    alphascale = [mod(op) for op in alphascale]
                 storeblock = [mod(op) for op in storeblock]
 
     lsclog.debug("################### PSEUDO-ASM ###################")
@@ -570,19 +585,33 @@ def main():
     lsclog.debug("PRELOAD NEXT ----------------------------")
     lsclog.debug("  "+"\n  ".join(map(str,preload_mb)))
     lsclog.debug("END MAIN LOOP ---------------------------")
+
+    if "gemm" == args.ukr:
+        lsclog.debug("BETASCALE BLOCK -------------------------")
+        lsclog.debug("\n".join(map(str,betascale)))
+        lsclog.debug("END BETASCALE BLOCK ---------------------")
+        lsclog.debug("ALPHASCALE BLOCK ------------------------")
+        lsclog.debug("\n".join(map(str,alphascale)))
+        lsclog.debug("END ALPHASCALE BLOCK --------------------")
     lsclog.debug("STOREBLOCK ------------------------------")
     lsclog.debug("\n".join(map(str,storeblock)))
     lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
     specializer.analyse(preload)
     specializer.analyse(mainblock)
+    if "gemm" == args.ukr:
+        specializer.analyse(betascale)
+        specializer.analyse(alphascale)
     specializer.analyse(storeblock)
     specializer.analyse(preload_mb)
 
-    preload = specializer.pre_specialize(ops=preload, triple=triple)
-    mainblock = specializer.pre_specialize(ops=mainblock, triple=triple)
-    storeblock = specializer.pre_specialize(ops=storeblock, triple=triple)
-    preload_mb = specializer.pre_specialize(ops=preload_mb, triple=triple)
+    preload = specializer.pre_specialize(ops=preload, component_dts=component_dts)
+    mainblock = specializer.pre_specialize(ops=mainblock, component_dts=component_dts)
+    if "gemm" == args.ukr:
+        betablock = specializer.pre_specialize(ops=betascale, component_dts=component_dts)
+        alphablock = specializer.pre_specialize(ops=alphascale, component_dts=component_dts)
+    storeblock = specializer.pre_specialize(ops=storeblock, component_dts=component_dts)
+    preload_mb = specializer.pre_specialize(ops=preload_mb, component_dts=component_dts)
 
     lsclog.debug("################### SPECIALIZED PSEUDO-ASM ###################")
     lsclog.debug("\n".join(map(str,preload)))
@@ -591,12 +620,36 @@ def main():
     lsclog.debug("PRELOAD NEXT ----------------------------")
     lsclog.debug("  "+"\n  ".join(map(str,preload_mb)))
     lsclog.debug("END MAIN LOOP ---------------------------")
+    if "gemm" == args.ukr:
+        lsclog.debug("BETASCALE BLOCK -------------------------")
+        lsclog.debug("\n".join(map(str,betablock)))
+        lsclog.debug("END BETASCALE BLOCK ---------------------")
+        lsclog.debug("ALPHASCALE BLOCK ------------------------")
+        lsclog.debug("\n".join(map(str,alphablock)))
+        lsclog.debug("END ALPHASCALE BLOCK --------------------")
     lsclog.debug("STOREBLOCK ------------------------------")
     lsclog.debug("\n".join(map(str,storeblock)))
     lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
 
     sched_args,rest = parse_sched_args(parser=parser)
+
+    # register reuse 
+    mru_scheduler = minreguse_scheduler()
+
+    mru_scheduler.analyze_preceeding(preload+mainblock+preload_mb)
+    premru_storeblock = storeblock
+    if "gemm" == args.ukr:
+        premru_storeblock = betablock+alphablock+storeblock
+    mru_scheduler.analyze(premru_storeblock)
+    mru_storeblock = mru_scheduler.replace(premru_storeblock,
+                                           specializer.data_registers)
+    
+    lsclog.debug("################### MRU STORE PSEUDO-ASM ###################")
+    lsclog.debug("\n".join(map(str,mru_storeblock)))
+
+
+    #sys.exit(0)
 
     
     scheduler = simple_dependency_scheduler(
@@ -608,8 +661,12 @@ def main():
 
     rs_preload = scheduler(preload, loop=False)
     rs_mbpl = scheduler(mainblock+preload_mb)
-    # will fail with rvv
-    rs_store = storeblock
+
+    rs_store = scheduler(mru_storeblock)
+    #if "gemm" == args.ukr:
+    #    rs_store = scheduler(betablock+alphablock+storeblock)
+    #else:
+    #    rs_store = storeblock
     #rs_store = scheduler(storeblock, loop=False)
 
 
@@ -618,25 +675,29 @@ def main():
     lsclog.debug("MAIN LOOP -------------------------------")
     lsclog.debug("  "+"\n  ".join(map(str,rs_mbpl)))
     lsclog.debug("END MAIN LOOP ---------------------------")
-    lsclog.debug("STOREBLOCK ------------------------------")
+
+    if "gemm" == args.ukr:
+        lsclog.debug("SCALE+STOREBLOCK ------------------------")
+    else:
+        lsclog.debug("STOREBLOCK ------------------------------")
     lsclog.debug("\n".join(map(str,rs_store)))
     lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
-    initblock = specializer.code_init(triple=triple)
+    initblock = specializer.code_init(component_dts=component_dts)
 
     asm_rs_preload = specializer.specialize(
-            ops=[op.op for op in rs_preload],
-            triple=triple)
+            ops=rs_preload,
+            component_dts=component_dts)
     asm_rs_mbpl = specializer.specialize(
-            ops=[op.op for op in rs_mbpl],
-            triple=triple)
+            ops=rs_mbpl,
+            component_dts=component_dts)
     asm_rs_store = specializer.specialize(
             ops=rs_store,
-            triple=triple)
+            component_dts=component_dts)
 
 
 
-    finiblock = specializer.code_fini(triple=triple)
+    finiblock = specializer.code_fini(component_dts=component_dts)
 
     asmlog.debug("################### ASM ###################")
     asmlog.debug("INIT ------------------------------------")
@@ -646,7 +707,10 @@ def main():
     asmlog.debug("MAIN LOOP -------------------------------")
     asmlog.debug("  "+"  ".join(asm_rs_mbpl))
     asmlog.debug("END MAIN LOOP ---------------------------")
-    asmlog.debug("STOREBLOCK ------------------------------")
+    if "gemm" == args.ukr:
+        lsclog.debug("SCALE+STOREBLOCK ------------------------")
+    else:
+        lsclog.debug("STOREBLOCK ------------------------------")
     asmlog.debug("".join(asm_rs_store))
     asmlog.debug("ENDSTOREBLOCK ---------------------------")
     asmlog.debug("FINALIZE --------------------------------")

@@ -14,77 +14,88 @@ from .load_store_operations import lsc_offset
 from ..components.tile import tile
 
 class addr_add:
-    def __init__(self, rtype_idx : int, addr_idx : int,
+    def __init__(self, component : str, addr_idx : int,
                  offset : lsc_offset):
-        self.rtype_idx = rtype_idx
+        self.component = component
         self.addr_idx = addr_idx
         self.offset = offset
 
     def __eq__(self, other : Self):
-        return self.rtype_idx == other.rtype_idx and \
+        return self.component == other.component and \
                self.addr_idx == other.addr_idx and \
                self.offset == other.offset
 
     def __str__(self):
 
-        rtype_char = string.ascii_lowercase[self.rtype_idx]
-        return f"{rtype_char}a{self.addr_idx} += {self.offset}"
+        return f"{self.component}a{self.addr_idx} += {self.offset}"
 
     def __repr__(self):
         return self.__str__()
 
 class addr_resolver:
     def __init__(self,
-                 indices : list[list[int]],
-                 starting_offsets : list[list[lsc_offset]],
-                 offset_ranges : list[list[tuple[lsc_offset,lsc_offset]]],
-                 steps : list[list[lsc_offset]],
+                 indices : dict[str,list[int]],
+                 starting_offsets : dict[str,list[lsc_offset]],
+                 offset_ranges : dict[str,list[tuple[lsc_offset,lsc_offset]]],
+                 steps : dict[str,list[lsc_offset]],
                  max_incs : int = 2
                  ):
-        for slist in starting_offsets:
+        for c,slist in starting_offsets.items():
             for off in slist:
                 if not isinstance(off, lsc_offset):
-                    raise ValueError("starting offsets are not lsc_offset")
+                    raise ValueError(f"starting offset for {c} not lsc_offset")
 
-        for rlist in offset_ranges:
+        for c,rlist in offset_ranges.items():
             for minoff,maxoff in rlist:
                 if not isinstance(minoff, lsc_offset)\
                    or not isinstance(maxoff, lsc_offset):
-                    raise ValueError("offset ranges are not lsc_offset")
+                    raise ValueError(f"offset ranges for {c} not lsc_offset")
 
-        for slist in steps:
+        for c,slist in steps.items():
             for off in slist:
                 if not isinstance(off, lsc_offset):
-                    raise ValueError("step offsets are not lsc_offset")
+                    raise ValueError("step offsets for {c} not lsc_offset")
 
         self.indices=indices
         self.starting_offsets=starting_offsets
         self.current_offsets=deepcopy(self.starting_offsets) 
-        self.last_resolved_offsets=[ { i : None \
+        self.last_resolved_offsets={ c : { i : None \
                 for i in idx_list} \
-                for idx_list in self.indices]
+                for c,idx_list in self.indices.items()}
         self.offset_ranges=offset_ranges
         self.steps = steps
         self.max_incs = max_incs
 
     def zero_current_offsets(self):
         zo = lsc_offset.zero_offset()
-        self.current_offsets = [[zo for i in offlist ] for offlist in self.current_offsets]
+        self.current_offsets = { c : [zo for i in offlist ] for \
+                c,offlist in self.current_offsets.items()}
 
-    def get_addr_adds_for_new_offsets(self, start_list : list[int] = None):
+    def get_addr_adds_for_new_offsets(self,
+                                      start_list : dict[str,lsc_offset] = None):
         if None == start_list:
             new_offsets=deepcopy(self.starting_offsets)
         else:
-            new_offsets = [
-                [first+start if first else start for start in start_list] \
-                for first,start_list in zip(start_list, self.starting_offsets)
-            ]
+
+            # start_list determines the offset for the first addr reg for each component
+            # self.starting_offsets are added to that value for the corresponding register
+            
+            new_offsets = { c :
+                [first+offset if offset else first for \
+                        offset in self.starting_offsets[c]] \
+                    for c,first in start_list.items()}
 
         result = []
-        for rtype_idx,(newlist,oldlist) in enumerate(zip(new_offsets,self.current_offsets)):
-            for idx,coff,toff in zip(self.indices[rtype_idx],oldlist,newlist):
+
+        for component in self.current_offsets.keys():
+            newlist = new_offsets[component]
+            oldlist = self.current_offsets[component]
+
+            for idx,coff,toff in zip(self.indices[component],oldlist,newlist):
                 if toff != coff:
-                    result.append(addr_add(rtype_idx=rtype_idx,addr_idx=idx,offset=toff-coff))
+                    result.append(addr_add(component=component,
+                                           addr_idx=idx,
+                                           offset=toff-coff))
 
         return result
 
@@ -125,49 +136,43 @@ class addr_resolver:
         
 
     def resolve_addr(self, 
-                     rtype_idx : int,
+                     component : str,
                      toff : lsc_offset) -> tuple[list[addr_add], int, lsc_offset]:
         """
         :rtype: tuple[list[addr_add],int,lsc_offset]
         :return: tuple consisting of a list of addr_add structure for address 
                  registers that need to be incremented, the index of the addr
-                 register to use in the self.indices[rtype_idx] list and the
+                 register to use in the self.indices[component] list and the
                  offset to use it with
         """
 
         addr_adds = []
-        rtype_char = string.ascii_lowercase[rtype_idx]
 
-        addr_reg_count = len(self.indices[rtype_idx])
+        addr_reg_count = len(self.indices[component])
         addr_idx_to_use = None
         incs_to_do = self.max_incs
         off = lsc_offset.zero_offset()
         
-        #print(f"Current {rtype_char} offsets:")
-        #for addr_list_idx in range(addr_reg_count):
-        #    caoff = self.current_offsets[rtype_idx][addr_list_idx]
-        #    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
         
-        #print(f"Starting search for {rtype_char} offset {toff}, incs to do: {incs_to_do}")
         while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
             caoff_min_list_idx = 0
-            current_offsets = self.current_offsets[rtype_idx]
+            current_offsets = self.current_offsets[component]
             offset_min = current_offsets[caoff_min_list_idx]
 
             # if the first one is also in range, we can use it
             distance_min = toff-offset_min
             if self.toff_in_range(caoff=offset_min,
                                   toff=toff,
-                                  offset_range=self.offset_ranges[rtype_idx][caoff_min_list_idx]):
+                                  offset_range=self.offset_ranges[component][caoff_min_list_idx]):
                 addr_idx_to_use = caoff_min_list_idx
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
             for addr_list_idx in range(addr_reg_count):
                 caoff = current_offsets[addr_list_idx]
-                offset_range = self.offset_ranges[rtype_idx][addr_list_idx]
+                offset_range = self.offset_ranges[component][addr_list_idx]
 
                 
                 if caoff < offset_min:
@@ -188,36 +193,33 @@ class addr_resolver:
 
             incs_to_do -= 1
             if incs_to_do <= 0:
-                #print("current offsets:")
-                #for addr_list_idx in range(addr_reg_count):
-                #    caoff = current_offsets[addr_list_idx]
-                #    print(f"  {rtype_char}a{addr_list_idx}: {caoff}")
+                print("current offsets:")
+                for addr_list_idx in range(addr_reg_count):
+                    caoff = current_offsets[addr_list_idx]
+                    print(f"  {component}a{addr_list_idx}: {caoff}")
 
-                #print(f"Target offset: {toff}")
-                #print(f"offset ranges:")
-                #for addr_list_idx in range(addr_reg_count):
-                #    minoff = self.offset_ranges[rtype_idx][addr_list_idx][0]
-                #    maxoff = self.offset_ranges[rtype_idx][addr_list_idx][1]
-                #    print(f"  {rtype_char}a{addr_list_idx} : [{minoff},{maxoff}]")
+                print(f"Target offset: {toff}")
+                print(f"offset ranges:")
+                for addr_list_idx in range(addr_reg_count):
+                    minoff = self.offset_ranges[component][addr_list_idx][0]
+                    maxoff = self.offset_ranges[component][addr_list_idx][1]
+                    print(f"  {component}a{addr_list_idx} : [{minoff},{maxoff}]")
                 raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
-            # this could be an alternative cotnrolled by a parameter?
-            # add_value = toff - offset_min
-
-            if toff.sxv_strides or toff.reg_strides:
-                # For now always add toff-current when this happens
-                add_value = toff - self.current_offsets[rtype_idx][caoff_min_list_idx]
+            # TODO: Unmessify this (perhaps a set of allowed steps?)
+            if toff.sxv_strides or toff.reg_strides or (toff == lsc_offset.zero_offset()):
+                add_value = toff - self.current_offsets[component][caoff_min_list_idx]
             else:
-                add_value = self.steps[rtype_idx][caoff_min_list_idx]
-            #print(f"Adding {add_value} to {rtype_char}a{caoff_min_list_idx}")
-            new_add = addr_add(rtype_idx=rtype_idx,
-                               addr_idx=self.indices[rtype_idx][caoff_min_list_idx],
+                add_value = self.steps[component][caoff_min_list_idx]
+            #print(f"Adding {add_value} to {component}a{caoff_min_list_idx}")
+            new_add = addr_add(component=component,
+                               addr_idx=self.indices[component][caoff_min_list_idx],
                                offset=add_value)
             addr_adds.append(new_add)
 
-            self.current_offsets[rtype_idx][caoff_min_list_idx] += add_value
+            self.current_offsets[component][caoff_min_list_idx] += add_value
 
 
-        self.last_resolved_offsets[rtype_idx][addr_idx_to_use] = off
+        self.last_resolved_offsets[component][addr_idx_to_use] = off
 
         return addr_adds,addr_idx_to_use,off

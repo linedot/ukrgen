@@ -97,8 +97,8 @@ class strided_mapper(offset_mapper):
                    (t.dimb.dt != dimension_type.vla)
 
 
-        if istile:
-            raise NotImplementedError("Tiles not implemented in mapper")
+        #if istile:
+        #    raise NotImplementedError("Tiles not implemented in mapper")
 
 
         first_off_base = lsc_offset.zero_offset()
