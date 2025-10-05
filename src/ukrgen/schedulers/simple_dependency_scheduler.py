@@ -15,30 +15,32 @@ from ..models.load_store_operations import (
         lsc_operation,
      )
 
+from ..models.lsc.index import lsc_reg_index
+
 class reg_compare:
     def __init__(self, ttype : lsc_reg_type,
-                 index : tuple[str,list[int]],
+                 index : lsc_reg_index,
                  t : tile = None):
         self.ttype = ttype
         self.index = index
         self.t = t
     def __eq__(self, other):
-        if len(self.index[1]) != len(other.index[1]):
+        if len(self.index.indices) != len(other.index.indices):
             return False
         if self.ttype != other.ttype:
             return False
-        if self.index[0] != other.index[0]:
+        if self.index.component != other.index.component:
             return False
-        if any([idx1 != idx2] for idx1,idx2 in zip(self.index[1],other.index[1])):
+        if any([idx1 != idx2] for idx1,idx2 in zip(self.index.indices,other.index.indices)):
             return False
         return True
     def __hash__(self):
-        return hash((self.ttype,self.index[0],tuple(self.index[1])))
+        return hash((self.ttype,self.index))
     def __str__(self):
-        result = f"{self.indices[0]}"
+        result = "RES:"
         if self.ttype == target_type.address:
-            result+= "a"
-        result += ",".join(map(str,self.index[1]))
+            result+= "ADDR:"
+        result += self.index
         return result
     def __repr__(self):
         return self.__str__()

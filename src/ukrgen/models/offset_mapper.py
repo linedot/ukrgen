@@ -1,7 +1,7 @@
 from typing import Callable
 from abc import abstractmethod
 
-from .load_store_operations import lsc_offset,stridexvlen
+from .lsc.offset import lsc_offset,stridexvlen
 from ..components import tile,dimension_type
 
 

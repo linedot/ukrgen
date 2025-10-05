@@ -17,12 +17,14 @@ from .load_store_operations import (
     lsc_addr_add,
     lsc_debugmsg,
     lsc_load,
-    lsc_offset,
     lsc_operation,
     lsc_store,
     lsc_transformation,
     lsc_zero,
 )
+
+from .lsc.index import lsc_reg_index
+from .lsc.offset import lsc_offset
 
 from .offset_mapper import offset_mapper
 
@@ -246,14 +248,18 @@ class load_store_cpu:
         creg = res_indices[cnames[2]]
 
 
-        res_index_list = [(c,res_indices[c]) for c in cnames]
-
+        print(res_indices)
+        lsc_indices = [
+                lsc_reg_index(c, [res_indices[c], subidx] if \
+                        subidx is not None else [res_indices[c]])
+                for c,subidx in zip(cnames,
+                                        [a_subidx,b_subidx,c_subidx])
+                ]
 
         self.states[cnames[2]][creg] = lsc_state.modified
         result.append(
                 lsc_transformation(op=op,
-                    res_indices=res_index_list,
-                    sub_indices=[a_subidx,b_subidx,c_subidx],
+                    res_indices=lsc_indices,
                     tiles=[a_tile,b_tile,c_tile]))
         self.last_tile_used[cnames[0]] = a_tile
         self.last_tile_used[cnames[1]] = b_tile
@@ -326,8 +332,9 @@ class load_store_cpu:
                 if isinstance(op, lsc_debugmsg):
                     subresults.append(op)
                     continue
-                pc = self.preload_counts[op.component]
-                pd = preloads_done[op.component]
+                component = op.indices[0].component
+                pc = self.preload_counts[component]
+                pd = preloads_done[component]
                 #print(f"Preloads for {component}: {pd}/{pc}")
                 if pc+1 <= pd:
                     continue
@@ -335,42 +342,42 @@ class load_store_cpu:
                     # Haven't thought about what this would mean, so error out for now
                     raise RuntimeError("store op encountered while processing preload")
                 if isinstance(op, lsc_addr_add):
-                    #caoff = self.addr_reg_offsets[op.component][op.addr_idx]
-                    caoff = self.ar.current_offsets[op.component][op.addr_idx]
+                    #caoff = self.addr_reg_offsets[component][op.addr_idx]
+                    caoff = self.ar.current_offsets[component][op.addr_idx.indices[0]]
 
-                    if is_next_preload(op.component):
-                        preload_next_offsets[op.component] = caoff
+                    if is_next_preload(component):
+                        preload_next_offsets[component] = caoff
                         continue
-                    #preload_addr_reg_offsets[op.component][op.addr_idx] = caoff + op.off
-                    preload_addr_reg_last_used_tile[op.component][op.addr_idx] = op.t
+                    #preload_addr_reg_offsets[component][op.addr_idx] = caoff + op.off
+                    preload_addr_reg_last_used_tile[component][op.addr_idx.indices[0]] = op.t
 
-                    if op.component not in zero_components:
-                        preload_addr_reg_offsets[op.component][op.addr_idx] = caoff
+                    if component not in zero_components:
+                        preload_addr_reg_offsets[component][op.addr_idx.indices[0]] = caoff
                         subresults.append(op)
                 if isinstance(op, lsc_load):
-                    #caoff = self.addr_reg_offsets[op.component][op.addr_idx]
-                    caoff = self.ar.current_offsets[op.component][op.addr_idx]
+                    #caoff = self.addr_reg_offsets[component][op.addr_idx]
+                    caoff = self.ar.current_offsets[component][op.addr_idx.indices[0]]
                     # Some updates to offsets are implicit, therefore update
                     new_do = caoff + op.off
 
-                    if is_next_preload(op.component):
+                    if is_next_preload(component):
                         #print(f"Next offset for {component}: {new_do}")
-                        preload_next_offsets[op.component] = new_do
-                        preloads_done[op.component] += 1
+                        preload_next_offsets[component] = new_do
+                        preloads_done[component] += 1
                         continue
-                    preload_dos[op.component][op.res_idx] = new_do
+                    preload_dos[component][op.res_idx] = new_do
                     tsize = op.t.dima.size*op.t.dimb.size
-                    preload_addr_reg_last_used_tile[op.component][op.addr_idx] = op.t
+                    preload_addr_reg_last_used_tile[component][op.addr_idx.indices[0]] = op.t
 
-                    preloads_done[op.component] += 1
-                    if op.component in zero_components:
+                    preloads_done[component] += 1
+                    if component in zero_components:
                         subresults.append(lsc_zero(
-                            component=op.component, res_idx=op.res_idx, t=op.t))
+                            component=component, res_idx=op.res_idx.indices[0], t=op.t))
                     else:
-                        preload_addr_reg_offsets[op.component][op.addr_idx] = caoff
+                        preload_addr_reg_offsets[component][op.addr_idx] = caoff
                         subresults.append(op)
 
-                    preload_states[op.component][op.res_idx] = lsc_state.loaded
+                    preload_states[component][op.res_idx] = lsc_state.loaded
 
             results.extend(subresults)
             i+= 1

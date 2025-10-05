@@ -33,7 +33,8 @@ from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_prop
 from ukrgen.components.tile import scalar_dp
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
-from ukrgen.models.load_store_operations import lsc_offset,stridexvlen,lsc_load,lsc_transformation,ldst_modifier
+from ukrgen.models.load_store_operations import lsc_load,lsc_transformation,ldst_modifier
+from ukrgen.models.lsc.offset import lsc_offset,stridexvlen
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
 from ukrgen.schedulers import simple_dependency_scheduler,minreguse_scheduler
@@ -555,7 +556,7 @@ def main():
             def mod_load(op : lsc_load) -> lsc_load:
                 if not isinstance(op,lsc_load):
                     return op
-                if op.component in unvec_components:
+                if op.addr_idx.component in unvec_components:
                     op.mods.add(ldst_modifier.bcast1)
                     op.tiles[1] = vec_tile
 
@@ -563,7 +564,8 @@ def main():
             def mod_transform(op : lsc_transformation) -> lsc_transformation:
                 if not isinstance(op,lsc_transformation):
                     return op
-                for i,c in enumerate(op.components):
+                for i,idx in enumerate(op.indices):
+                    c = idx.component
                     if c in unvec_components:
                         op.tiles[i] = vec_tile
 
