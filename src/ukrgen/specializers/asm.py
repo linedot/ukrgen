@@ -726,7 +726,7 @@ class lsc_specializer:
 
                 self.data_registers[cr].add(op.res_idx.indices[0])
                 self.data_tags[component] = dreg_tag
-                print(f"{type(op)} with {component}{op.res_idx} registering {dreg_tag}")
+                print(f"{type(op)} with {op.res_idx} registering {dreg_tag}")
 
             if isinstance(op, lsc_addr_add):
                 ca = op.indices[0].component
@@ -747,10 +747,10 @@ class lsc_specializer:
 
                     if c not in self.data_tags:
                         self.data_tags[c] = dreg_tag
-                        print(f"{op.op} with {c}{residx} registering {dreg_tag}")
+                        print(f"{op.op} with {residx} registering {dreg_tag}")
                     else:
                         if self.data_tags[c] != dreg_tag:
-                            raise ValueError(f"{op.op} with {c}{residx} is a {dreg_tag}, but is already registered as {self.data_tags[c]}")
+                            raise ValueError(f"{op.op} with {residx} is a {dreg_tag}, but is already registered as {self.data_tags[c]}")
 
                     if c not in self.data_registers:
                         self.data_registers[c] = set()

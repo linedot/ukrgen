@@ -87,6 +87,9 @@ class load_store_cpu:
                      toff : lsc_offset,
                      component : str) -> list[lsc_operation]:
 
+        if not isinstance(res_idx, int):
+            raise ValueError(f"Invalid res_idx: {res_idx}")
+
         # check if the required data is already in the resource
         corg = self.cdos[component][res_idx]
         result = []
@@ -122,6 +125,8 @@ class load_store_cpu:
                                        off=add.offset,
                                        t=t))
 
+        #print(f"cdos for component {component}:")
+        #print(f"\t{self.cdos[component]}")
         #print(f"Updating {component}{res_idx} off to {toff}")
         self.cdos[component][res_idx] = toff
         self.states[component][res_idx] = lsc_state.loaded
@@ -248,7 +253,6 @@ class load_store_cpu:
         creg = res_indices[cnames[2]]
 
 
-        print(res_indices)
         lsc_indices = [
                 lsc_reg_index(c, [res_indices[c], subidx] if \
                         subidx is not None else [res_indices[c]])
@@ -301,7 +305,7 @@ class load_store_cpu:
         #       are not equivalent and the former will result in partly
         #       overlapping dicts
         # preload_dos = [{}]*len(self.res_counts)
-        preload_dos = {c : {} for c in self.res_counts.keys()}
+        preload_dos = {c : dict() for c in self.res_counts.keys()}
         # NOTE: gotta copy the dicts explicitly, otherwise they'll be references
         #preload_addr_reg_offsets = [d.copy() for d in self.addr_reg_offsets]
         preload_addr_reg_offsets = copy.deepcopy(self.ar.current_offsets)
@@ -365,7 +369,7 @@ class load_store_cpu:
                         preload_next_offsets[component] = new_do
                         preloads_done[component] += 1
                         continue
-                    preload_dos[component][op.res_idx] = new_do
+                    preload_dos[component][op.res_idx.indices[0]] = new_do
                     tsize = op.t.dima.size*op.t.dimb.size
                     preload_addr_reg_last_used_tile[component][op.addr_idx.indices[0]] = op.t
 
@@ -377,7 +381,7 @@ class load_store_cpu:
                         preload_addr_reg_offsets[component][op.addr_idx] = caoff
                         subresults.append(op)
 
-                    preload_states[component][op.res_idx] = lsc_state.loaded
+                    preload_states[component][op.res_idx.indices[0]] = lsc_state.loaded
 
             results.extend(subresults)
             i+= 1

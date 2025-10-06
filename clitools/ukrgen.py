@@ -482,8 +482,8 @@ def main():
             mappers=mappers,
             strats=strats)
 
-    print(f"addr steps: {off_steps}")
-    print(f"addr starts: {off_starts}")
+    #print(f"addr steps: {off_steps}")
+    #print(f"addr starts: {off_starts}")
 
 
     ar = addr_resolver(indices          = addr_indices,
@@ -530,6 +530,7 @@ def main():
                             ignore_components=[])
     genlog.debug("DEBUG: TRANSFORMING MAIN BLOCK")
     mainblock = model(mm_ops)
+
     genlog.debug("DEBUG: TRANSFORMING NEXTITER PRELOAD")
     preload_mb = model.preload(mm_ops_p1k,
                                mm_ops_p2k,
