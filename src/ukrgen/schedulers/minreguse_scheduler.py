@@ -23,11 +23,17 @@ class reg_usage_tracker:
 
         self.reads[reg].add(pos)
 
+    def del_read(self, reg : lsc_reg, pos : int):
+        self.reads[reg].remove(pos)
+
     def add_write(self, reg : lsc_reg, pos : int):
         if reg not in self.writes:
             self.writes[reg] = set()
 
         self.writes[reg].add(pos)
+
+    def del_write(self, reg : lsc_reg, pos : int):
+        self.writes[reg].remove(pos)
 
     def last_write(self, reg : lsc_reg):
         return max(self.writes[reg])
@@ -266,12 +272,22 @@ class minreguse_scheduler:
                             replace_dict[dreg_tag][old_reg] = rpl_reg
 
                             lr = self.rut.last_read(reg)
+                            read_del_set = set()
                             for pos in self.rut.reads[old_reg]:
                                 if pos > op_idx:
                                     self.rut.add_read(rpl_reg, pos)
+                                    read_del_set.add(pos)
+                            self.rut.reads[old_reg] = \
+                                    self.rut.reads[old_reg].difference(
+                                            read_del_set)
+                            write_del_set = set()
                             for pos in self.rut.writes[old_reg]:
                                 if pos > op_idx:
                                     self.rut.add_write(rpl_reg, pos)
+                                    write_del_set.add(pos)
+                            self.rut.writes[old_reg] = \
+                                    self.rut.writes[old_reg].difference(
+                                            write_del_set)
 
 
             for i,idx in enumerate(op.indices):
@@ -298,8 +314,12 @@ class minreguse_scheduler:
                 dreg_tag = determine_dreg_tag(
                         used_tile.dima,
                         used_tile.dimb)
+                if not self.rut.reads[reg]:
+                    if used_reg not in free_deques[dreg_tag]:
+                        free_deques[dreg_tag].append(used_reg)
+                    continue
                 if op_idx == self.rut.last_read(reg):
-                    #print(f"Last read of {used_reg}, releasing it")
+                    print(f"Last read of {used_reg}, releasing it")
                     if used_reg not in free_deques[dreg_tag]:
                         free_deques[dreg_tag].append(used_reg)
 

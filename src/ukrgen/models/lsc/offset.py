@@ -110,6 +110,15 @@ class lsc_offset:
 
         return result
 
+    def __abs__(self):
+        return lsc_offset(
+            sxv_strides={key : abs(val) for \
+                    key,val in self.sxv_strides.items()},
+            reg_strides = [abs(val) for val in self.reg_strides],
+            vlen_strides = [abs(val) for val in self.vlen_strides],
+            immoff = abs(self.immoff)
+        )
+
     def __add__(self, other : Self):
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't add lsc_offset and {type(other)}")

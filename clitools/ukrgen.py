@@ -184,7 +184,14 @@ def parse_lsc_args(parser : argparse.ArgumentParser, ukr : str):
         components =['A','B','AB','C']
 
 
-    multiareg_strategies = ["interleave","split"]
+    multiareg_strategies = ["interleave","split","phase"]
+
+    default_mars = {
+        "A" : "interleave",
+        "B" : "interleave",
+        "AB" : "phase",
+        "C" : "phase",
+    }
 
     for c in components:
         parser.add_argument(f"--{c}-data-regs", type=int, required=True,
@@ -193,7 +200,7 @@ def parse_lsc_args(parser : argparse.ArgumentParser, ukr : str):
                             default=1,
                             help=f"number of address registers to use for the {c} component")
         parser.add_argument(f"--{c}-multiaddr-strat", type=str,
-                            default=multiareg_strategies[0],
+                            default=default_mars[c],
                             choices=multiareg_strategies,
                             help=f"Strategy for using multiple address registers for {c} component")
         if c in ["A","B"]:
@@ -482,8 +489,8 @@ def main():
             mappers=mappers,
             strats=strats)
 
-    #print(f"addr steps: {off_steps}")
-    #print(f"addr starts: {off_starts}")
+    print(f"addr steps: {off_steps}")
+    print(f"addr starts: {off_starts}")
 
 
     ar = addr_resolver(indices          = addr_indices,

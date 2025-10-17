@@ -74,6 +74,12 @@ def calculate_addr_parameters(sup : op_support,
             # Force split through range
             ranges[c] = [(zo, sum([step for jj in range(part)],zo)) \
                     for j in range(count)]
+        elif "phase" == strats[c]:
+            full = [m*n,n*m,k*m*n][vecdims[c]]
+
+            steps[c] = [sum([step for jj in range(min(full,max_val+1))],zo) \
+                    for j in range(count)]
+            starts[c] = [zo for j in range(count)]
         else:
             raise NotImplementedError(f"multiaddr strategy \"{strat}\" not implemented")
 

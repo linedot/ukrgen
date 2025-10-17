@@ -32,12 +32,54 @@ class addr_add:
     def __repr__(self):
         return self.__str__()
 
+class interleaving_selector:
+    def __init__(self):
+        self.offset_min = None
+
+    def reset(self,
+              current_offset : lsc_offset,
+              target_offset : lsc_offset,
+              offset_range : tuple[lsc_offset,lsc_offset]):
+        self.offset_min = current_offset
+
+    def __call__(self,
+                 current_offset : lsc_offset,
+                 target_offset : lsc_offset,
+                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
+        if current_offset < self.offset_min:
+            self.offset_min = current_offset
+            return True
+        return False
+
+class mindist_selector:
+    def __init__(self):
+
+        self.dist_min = None
+
+    def reset(self,
+              current_offset : lsc_offset,
+              target_offset : lsc_offset,
+              offset_range : tuple[lsc_offset,lsc_offset]):
+        self.dist_min = abs(target_offset - current_offset)
+
+    def __call__(self,
+                 current_offset : lsc_offset,
+                 target_offset : lsc_offset,
+                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
+
+        dist = abs(target_offset-current_offset)
+        if dist < self.dist_min:
+            self.dist_min = dist
+            return True
+        return False
+
 class addr_resolver:
     def __init__(self,
                  indices : dict[str,list[int]],
                  starting_offsets : dict[str,list[lsc_offset]],
                  offset_ranges : dict[str,list[tuple[lsc_offset,lsc_offset]]],
                  steps : dict[str,list[lsc_offset]],
+                 mindist_components : list[str] = ["AB","C"],
                  max_incs : int = 2
                  ):
         for c,slist in starting_offsets.items():
@@ -65,6 +107,12 @@ class addr_resolver:
         self.offset_ranges=offset_ranges
         self.steps = steps
         self.max_incs = max_incs
+
+
+        self.candidate_selectors = {
+                c : mindist_selector() if c in mindist_components \
+                        else interleaving_selector() for c in \
+                        self.indices.keys()}
 
     def zero_current_offsets(self):
         zo = lsc_offset.zero_offset()
@@ -157,16 +205,22 @@ class addr_resolver:
         while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
-            caoff_min_list_idx = 0
+            best_candidate_idx = 0
             current_offsets = self.current_offsets[component]
-            offset_min = current_offsets[caoff_min_list_idx]
+            offset_min = current_offsets[best_candidate_idx]
+
+            self.candidate_selectors[component].reset(
+                            current_offset=offset_min,
+                            target_offset=toff,
+                            offset_range=self.offset_ranges[component][best_candidate_idx])
 
             # if the first one is also in range, we can use it
             distance_min = toff-offset_min
             if self.toff_in_range(caoff=offset_min,
                                   toff=toff,
-                                  offset_range=self.offset_ranges[component][caoff_min_list_idx]):
-                addr_idx_to_use = caoff_min_list_idx
+                                  offset_range=self.offset_ranges[component][best_candidate_idx]):
+                addr_idx_to_use = best_candidate_idx
+                print(f"will use ADDR:{component}{addr_idx_to_use} (first)")
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
@@ -174,18 +228,27 @@ class addr_resolver:
                 caoff = current_offsets[addr_list_idx]
                 offset_range = self.offset_ranges[component][addr_list_idx]
 
+                #NOTE: This causes the interleaving behaviour
+                #if caoff < offset_min:
+                #    offset_min = caoff
+                #    best_candidate_idx = addr_list_idx
+                #    print(f"Smallest offset on ADDR:{component}{addr_list_idx}")
+                if(self.candidate_selectors[component](
+                            current_offset=caoff,
+                            target_offset=toff,
+                            offset_range=offset_range)):
+                    best_candidate_idx = addr_list_idx
+                    print(f"Best candidate is ADDR:{component}{addr_list_idx}")
                 
-                if caoff < offset_min:
-                    offset_min = caoff
-                    caoff_min_list_idx = addr_list_idx
-                
+                print(f"Checking if ADDR:{component}{addr_list_idx} is in range")
                 if self.toff_in_range(caoff=caoff,
                                       toff=toff,
                                       offset_range=offset_range):
                     # replace only if the offset would be smaller
-                    if distance_min > (toff-caoff):
+                    if abs(distance_min) > abs(toff-caoff):
                         distance_min = toff-caoff
                         addr_idx_to_use = addr_list_idx
+                        print(f"will use ADDR:{component}{addr_idx_to_use}")
 
             if not addr_idx_to_use is None:
                 off=distance_min
@@ -207,17 +270,19 @@ class addr_resolver:
                 raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
             # TODO: Unmessify this (perhaps a set of allowed steps?)
-            if toff.sxv_strides or toff.reg_strides or (toff == lsc_offset.zero_offset()):
-                add_value = toff - self.current_offsets[component][caoff_min_list_idx]
+            if toff.sxv_strides or \
+               toff.reg_strides or \
+               (toff == lsc_offset.zero_offset()):
+                add_value = toff - self.current_offsets[component][best_candidate_idx]
             else:
-                add_value = self.steps[component][caoff_min_list_idx]
-            #print(f"Adding {add_value} to {component}a{caoff_min_list_idx}")
+                add_value = self.steps[component][best_candidate_idx]
+            print(f"Adding {add_value} to {component}a{best_candidate_idx}")
             new_add = addr_add(component=component,
-                               addr_idx=self.indices[component][caoff_min_list_idx],
+                               addr_idx=self.indices[component][best_candidate_idx],
                                offset=add_value)
             addr_adds.append(new_add)
 
-            self.current_offsets[component][caoff_min_list_idx] += add_value
+            self.current_offsets[component][best_candidate_idx] += add_value
 
 
         self.last_resolved_offsets[component][addr_idx_to_use] = off
