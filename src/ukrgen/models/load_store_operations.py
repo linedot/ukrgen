@@ -12,12 +12,8 @@ from ..components.operation import dimension_type
 
 from .lsc.offset import lsc_offset
 from .lsc.index import lsc_reg_index 
+from .lsc.reg import lsc_reg_type
 
-class lsc_reg_type(Enum):
-    address = auto()
-    data = auto()
-    offset = auto()
-    value = auto()
 
 # TODO: fractional offsets
 class fraction:
@@ -43,6 +39,33 @@ class lsc_operation:
         self.reads = reads
         self.writes = writes
         self.reg_types = reg_types
+
+
+def can_reorder(first : lsc_operation, second : lsc_operation) -> bool:
+    """
+    Checks if two lsc ops have data accesses that require them to be in
+    order [first,second] and returns False if the order is required and
+    True if the order is not required
+    """
+
+    # RAW
+    if any([(first.indices[widx] == second.indices[ridx]) \
+            and (first.reg_types[widx] == second.reg_types[ridx])\
+            for widx in first.writes \
+            for ridx in second.reads]):
+        return False
+    # WAR
+    if any([(first.indices[ridx] == second.indices[widx]) \
+            and (first.reg_types[ridx] == second.reg_types[widx])\
+            for ridx in first.reads \
+            for widx in second.writes]):
+        return False
+
+    # RAR is not a data hazard
+    # WAW is probably also not a hazard - there should be a RAW or WAR somewhere
+    # between two ops or the code is malformed
+
+    return True
 
 
 class ldst_modifier(Enum):

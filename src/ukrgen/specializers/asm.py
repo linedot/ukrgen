@@ -298,7 +298,10 @@ class lsc_specializer:
         # TODO: cleaner method (perhaps op.addr_component/ op.res_component ?)
         #residx = self.rt.aliased_regs[dreg_tag][f"{op.component}{op.res_idx}"]
         cr = op.indices[1].component
+        alias = f"RES:{op.res_idx}"
+        print(f"searching index for {alias} in {dreg_tag} aliases:")
         residx = self.rt.aliased_regs[dreg_tag][f"RES:{op.res_idx}"]
+        print(f"found: {residx}")
 
         if dreg_tag in ["freg","treg"]:
             dreg = getattr(self.gen,dreg_tag)(residx,dt)

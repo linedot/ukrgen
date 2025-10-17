@@ -644,11 +644,16 @@ def main():
     premru_storeblock = storeblock
     if "gemm" == args.ukr:
         premru_storeblock = betablock+alphablock+storeblock
+
+    mru_scheduler.analyze(premru_storeblock)
+    premru_storeblock = mru_scheduler.reorder(premru_storeblock)
+    lsclog.debug("################### MRU STORE REORDERED PSEUDO-ASM ###################")
+    lsclog.debug("\n".join(map(str,premru_storeblock)))
     mru_scheduler.analyze(premru_storeblock)
     mru_storeblock = mru_scheduler.replace(premru_storeblock,
                                            specializer.data_registers)
     
-    lsclog.debug("################### MRU STORE PSEUDO-ASM ###################")
+    lsclog.debug("################### MRU STORE RENAMED PSEUDO-ASM ###################")
     lsclog.debug("\n".join(map(str,mru_storeblock)))
 
 
