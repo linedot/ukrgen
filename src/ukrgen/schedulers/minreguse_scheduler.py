@@ -183,11 +183,11 @@ class minreguse_scheduler:
                     #print(f"Switching op {pos+i}: {ops[orig_pos(pos+i)]} with op {tpos} : {ops[orig_pos(tpos)]}")
                     self.update_position_map(position_map, tpos, pos+i)
             elif pos-apos > 1:
-                print(f"Can't move {ops[tmv_pos_list[0]]} past {ops[orig_pos(pos)]}")
+                #print(f"Can't move {ops[tmv_pos_list[0]]} past {ops[orig_pos(pos)]}")
                 key = orig_pos(pos)
                 tmv_pos_list = [key]+tmv_pos_list 
             else:
-                print(f"Can't move {ops[tmv_pos_list[0]]} past {ops[orig_pos(pos)]}")
+                #print(f"Can't move {ops[tmv_pos_list[0]]} past {ops[orig_pos(pos)]}")
                 #print(f"Dependency detected while at the ceiling, breaking")
                 break
             pos -=1
@@ -276,7 +276,6 @@ class minreguse_scheduler:
                             assert isinstance(rpl_reg, lsc_reg)
                             replace_dict[dreg_tag][old_reg] = rpl_reg
 
-                            lr = self.rut.last_read(reg)
                             read_del_set = set()
                             for pos in self.rut.reads[old_reg]:
                                 if pos > op_idx:
@@ -319,11 +318,12 @@ class minreguse_scheduler:
                 dreg_tag = determine_dreg_tag(
                         used_tile.dima,
                         used_tile.dimb)
-                if not self.rut.reads[reg]:
+                if not self.rut.reads[used_reg]:
                     if used_reg not in free_deques[dreg_tag]:
+                        print(f"{used_reg} has no more reads, adding it to free regs")
                         free_deques[dreg_tag].append(used_reg)
                     continue
-                if op_idx == self.rut.last_read(reg):
+                if op_idx == self.rut.last_read(used_reg):
                     print(f"Last read of {used_reg}, releasing it")
                     if used_reg not in free_deques[dreg_tag]:
                         free_deques[dreg_tag].append(used_reg)
