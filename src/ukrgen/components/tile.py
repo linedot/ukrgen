@@ -67,13 +67,25 @@ class tile:
                  subtile_count_b : int = None,
                  # ND?
                  # subtile_counts : list[int] = None,
-                 stype : storage_type = storage_type.register):
+                 stype : storage_type = storage_type.register,
+                 bands : tuple[int,int] = (-1,-1)):
         self.storage_type = storage_type
         self.dima = dima
         self.dimb = dimb
         self.subtiles = subtiles
         self.subtile_count_a = subtile_count_a
         self.subtile_count_b = subtile_count_b
+        self.bands = bands
+
+    def check_zero(self, idx : tuple[int,int]) -> bool:
+
+        if self.bands[0] != -1 and idx[0] > (idx[1] + self.bands[0]):
+            return True
+        if self.bands[1] != -1 and idx[1] > (idx[0] + self.bands[1]):
+            return True
+
+        return False
+
 
     @property
     def is_scalar(self) -> bool:
@@ -138,7 +150,8 @@ class simple_ukr_tile(tile):
     def __init__(self, 
                  a_size : int,
                  b_size : int,
-                 subdims : tuple[dimension_properties,dimension_properties]):
+                 subdims : tuple[dimension_properties,dimension_properties],
+                 bands : tuple[int,int] = (-1,-1)):
 
         dima = dimension_properties(dt=dimension_type.fixed,
                                     size=a_size,
@@ -154,7 +167,8 @@ class simple_ukr_tile(tile):
                 subtiles = [tile(dima=subdims[0],dimb=subdims[1])],
                 subtile_count_a = 1,
                 subtile_count_b = 1,
-                stype = storage_type.register)
+                stype = storage_type.register,
+                bands = bands)
 
 class composed_ukr_tile(tile):
     def __init__(self, 

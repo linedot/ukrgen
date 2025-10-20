@@ -199,6 +199,11 @@ class mm:
             b_absolute_idx = tuple([sum(x) for x in zip(b_off,(k_idx,n_idx))]) 
             c_absolute_idx = tuple([sum(x) for x in zip(c_off,(m_idx,n_idx))]) 
 
+            if a_tile.check_zero(a_absolute_idx) or \
+               b_tile.check_zero(b_absolute_idx) or \
+               c_tile.check_zero(c_absolute_idx):
+                continue
+
             m_subtile_idx = m_idx % c_tile.subtile_count_a
             n_subtile_idx = n_idx % c_tile.subtile_count_b
             k_subtile_idx = k_idx % a_tile.subtile_count_b
