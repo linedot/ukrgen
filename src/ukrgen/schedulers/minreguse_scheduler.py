@@ -3,6 +3,7 @@ from collections import deque
 
 from ..models.load_store_operations import (
         lsc_operation,
+        lsc_debugmsg,
         lsc_reg_type as lrt,
         can_reorder
         )
@@ -14,6 +15,9 @@ from ..components.tile import determine_dreg_tag
 
 class reg_usage_tracker:
     def __init__(self):
+        self.reset()
+
+    def reset(self):
         self.writes : dict[lsc_reg,set[int]] = dict()
         self.reads : dict[lsc_reg,set[int]] = dict()
 
@@ -99,6 +103,7 @@ class minreguse_scheduler:
 
     def analyze(self, ops: list[lsc_operation]):
         self.free_allocated_registers = deepcopy(self.allocated_registers)
+        self.rut.reset()
         for op_idx,op in enumerate(ops):
             for idx in op.reads:
                 reg = lsc_reg(op.indices[idx].component,
