@@ -496,7 +496,8 @@ def main():
     ar = addr_resolver(indices          = addr_indices,
                        starting_offsets = off_starts,
                        offset_ranges    = off_ranges,
-                       steps            = off_steps)
+                       steps            = off_steps,
+                       max_incs=4)
 
 
     #TODO: investigate if there are architectures where this is relevant
