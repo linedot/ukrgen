@@ -378,7 +378,7 @@ class load_store_cpu:
                         subresults.append(lsc_zero(
                             component=component, res_idx=op.res_idx.indices[0], t=op.t))
                     else:
-                        preload_addr_reg_offsets[component][op.addr_idx] = caoff
+                        preload_addr_reg_offsets[component][op.addr_idx.indices[0]] = caoff
                         subresults.append(op)
 
                     preload_states[component][op.res_idx.indices[0]] = lsc_state.loaded
