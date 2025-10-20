@@ -116,7 +116,7 @@ class lsc_specializer:
 
         self.transformations[lsc_add_val_off] = self.transform_add_val_off
         self.transformations[lsc_addr_add] = self.transform_addr_add
-        self.transformations[lsc_debugmsg] = lambda op,triple : op.msg
+        self.transformations[lsc_debugmsg] = lambda op,triple : self.gen.asmwrap("; "+op.msg)
         self.transformations[lsc_load] = self.transform_load
         self.transformations[lsc_store] = self.transform_store
         self.transformations[lsc_transformation] = self.transform_transform
