@@ -14,13 +14,22 @@ class offset_mapper:
         raise NotImplementedError(self.NIE_MESSAGE)
 
     @abstractmethod
-    def map_tile_idx(
+    def map_tile_idx(self,
         t : tile,
         idx : tuple[int,int]) -> lsc_offset:
         # I don't think we need the subindex for data origins
         #            subidx : int) -> int:
         raise NotImplementedError(self.NIE_MESSAGE)
 
+class same_address_mapper(offset_mapper):
+    def __init__(self, data_size : lsc_offset = lsc_offset({}, [], [], 1)):
+        self.data_size = data_size
+
+    def get_ldst_size(self, t : tile):
+        return self.data_size
+
+    def map_tile_idx(self, t: tile, idx:tuple[int,int]):
+        return lsc_offset.zero_offset()
 
 class flat_mapper(offset_mapper):
 
@@ -69,7 +78,10 @@ class strided_mapper(offset_mapper):
         #       This will probably need a direction parameter
         #       Alternatively this could be handled in some other manner so that
         #       always using the first component in the mapper is correct
-        return self.map_tile_idx(t=t, idx=(1,0))
+        idx = (1,0)
+        if self.vecdim == 1:
+            idx = (0,1)
+        return self.map_tile_idx(t=t, idx=idx)
 
     def map_tile_idx(self, t : tile, idx : tuple[int,int]) -> lsc_offset:
 
@@ -141,6 +153,7 @@ class strided_mapper(offset_mapper):
                 second_off_base = lsc_offset({}, [], [1], 0)
             else:
                 second_off_base = lsc_offset({}, [], [], 1)
+
 
         if s1 is None and 0 == self.vecdim:
             first_size = self.dims[0]*first_t_size

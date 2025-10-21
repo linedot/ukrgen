@@ -36,7 +36,11 @@ from ukrgen.models.load_store_cpu import load_store_cpu
 from ukrgen.models.load_store_operations import lsc_load,lsc_transformation,ldst_modifier
 from ukrgen.models.lsc.offset import lsc_offset,stridexvlen
 from ukrgen.models.addr_resolver import addr_resolver
-from ukrgen.models.offset_mapper import flat_mapper,strided_mapper
+from ukrgen.models.offset_mapper import (
+        flat_mapper,
+        strided_mapper,
+        same_address_mapper
+    )
 from ukrgen.schedulers import simple_dependency_scheduler,minreguse_scheduler
 
 from .internal.addr_parameters import calculate_addr_parameters
@@ -363,13 +367,15 @@ def main():
         genmm = mm(a=a_tile, b=b_tile, c=c_tile, lo=order, opstr=args.op,
                    tile_strs=["A","B","AB"])
 
-        scale_tile = simple_ukr_tile(a_size=m*n, b_size=1,
+        scale_tile = simple_ukr_tile(a_size=m,
+                                     b_size=n,
                                      subdims=(sup.c_tile.dima,
                                               sup.c_tile.dimb))
-        alphabeta_tile = simple_ukr_tile(a_size=1, b_size=1,
-                                    subdims=(scalar_dp,scalar_dp))
+        alphabeta_tile = simple_ukr_tile(a_size=n, b_size=n,
+                                    subdims=(scalar_dp,scalar_dp),
+                                    bands=(0,0))
         genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                          opstr="fmul:np", tile_strs=["C","beta","C"])
+                          opstr="fmul", tile_strs=["C","beta","C"])
         genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
                         opstr="fma", tile_strs=["AB","alpha","C"])
         betascale_ops = genbetascale.generate()
@@ -440,7 +446,7 @@ def main():
     if "gemm" == args.ukr:
         mappers['AB'] = strided_mapper((m,n), strides['AB'],vecdim=0)
 
-    scalar_mapper = strided_mapper((1,1), (None,None),vecdim=0)
+    scalar_mapper = same_address_mapper()
 
     mappers['beta'] = scalar_mapper
     mappers['alpha'] = scalar_mapper
