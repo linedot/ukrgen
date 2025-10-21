@@ -207,8 +207,40 @@ class lsc_offset:
         #       perhaps this should be removed and a more elaborate check that
         #       takes the required offset to target into account should be 
         #       implemented?
-        return self.allcompare(other, lambda s,o : s <= o) and \
-               self.anycompare(other, lambda s,o : s < o)
+        #return self.allcompare(other, lambda s,o : s <= o) and \
+        #       self.anycompare(other, lambda s,o : s < o)
+        lsc_offset.adjust_offlists(self,other)
+
+
+        # NOTE: For this the assumptions are:
+        #       s > sxv > v > i
+        #       This somewhat makes sense in the context of GEMM kernels,
+        #       but not the general case
+
+        if all([s <= o for s,o in zip(self.reg_strides,other.reg_strides)]) and \
+           any([s < o for s,o in zip(self.reg_strides,other.reg_strides)]):
+            return True
+        if any([s > o for s,o in zip(self.reg_strides,other.reg_strides)]):
+            return False
+
+        if all([self.sxv_strides[key] <= other.sxv_strides[key] \
+                for key in self.sxv_strides]) and \
+           any([self.sxv_strides[key] < other.sxv_strides[key] \
+                for key in self.sxv_strides]):
+            return True
+        if any([self.sxv_strides[key] > other.sxv_strides[key] \
+                for key in self.sxv_strides]):
+            return False
+
+        if all([s <= o for s,o in zip(self.vlen_strides,other.vlen_strides)]) and \
+           any([s < o for s,o in zip(self.vlen_strides,other.vlen_strides)]):
+            return True
+        if any([s > o for s,o in zip(self.vlen_strides,other.vlen_strides)]):
+            return False
+
+
+        return self.immoff < other.immoff
+
 
     def __eq__(self, other : Self):
         return self.allcompare(other, lambda s,o : s == o)
