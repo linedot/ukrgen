@@ -73,13 +73,44 @@ class mindist_selector:
             return True
         return False
 
+class phasing_selector:
+    def __init__(self):
+        self.last_target = None
+        self.this_target = None
+
+
+    def reset(self,
+              current_offset : lsc_offset,
+              target_offset : lsc_offset,
+              offset_range : tuple[lsc_offset,lsc_offset]):
+        
+        self.last_target = self.this_target
+        
+
+    def __call__(self,
+                 current_offset : lsc_offset,
+                 target_offset : lsc_offset,
+                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
+
+
+        if current_offset == target_offset:
+            self.this_target = target_offset
+            return True
+
+        if current_offset == self.last_target:
+            self.this_target = target_offset
+            return True
+
+
+        return False
+
 class addr_resolver:
     def __init__(self,
                  indices : dict[str,list[int]],
                  starting_offsets : dict[str,list[lsc_offset]],
                  offset_ranges : dict[str,list[tuple[lsc_offset,lsc_offset]]],
                  steps : dict[str,list[lsc_offset]],
-                 mindist_components : list[str] = ["AB","C"],
+                 phasing_components : list[str] = ["AB","C"],
                  max_incs : int = 2
                  ):
         for c,slist in starting_offsets.items():
@@ -110,7 +141,7 @@ class addr_resolver:
 
 
         self.candidate_selectors = {
-                c : mindist_selector() if c in mindist_components \
+                c : phasing_selector() if c in phasing_components \
                         else interleaving_selector() for c in \
                         self.indices.keys()}
 
@@ -220,12 +251,17 @@ class addr_resolver:
                                   toff=toff,
                                   offset_range=self.offset_ranges[component][best_candidate_idx]):
                 addr_idx_to_use = best_candidate_idx
-                print(f"will use ADDR:{component}{addr_idx_to_use} (first)")
+                #print(f"will use ADDR:{component}{addr_idx_to_use} (first)")
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
             for addr_list_idx in range(addr_reg_count):
                 caoff = current_offsets[addr_list_idx]
+
+                # ignore registers containing the same offset
+                if addr_list_idx != best_candidate_idx and \
+                   caoff == current_offsets[best_candidate_idx]:
+                    continue
                 offset_range = self.offset_ranges[component][addr_list_idx]
 
                 #NOTE: This causes the interleaving behaviour
@@ -240,7 +276,7 @@ class addr_resolver:
                     best_candidate_idx = addr_list_idx
                     print(f"Best candidate is ADDR:{component}{addr_list_idx}")
                 
-                print(f"Checking if ADDR:{component}{addr_list_idx} is in range")
+                #print(f"Checking if ADDR:{component}{addr_list_idx} is in range")
                 if self.toff_in_range(caoff=caoff,
                                       toff=toff,
                                       offset_range=offset_range):
@@ -248,7 +284,7 @@ class addr_resolver:
                     if abs(distance_min) > abs(toff-caoff):
                         distance_min = toff-caoff
                         addr_idx_to_use = addr_list_idx
-                        print(f"will use ADDR:{component}{addr_idx_to_use}")
+                        #print(f"will use ADDR:{component}{addr_idx_to_use}")
 
             if not addr_idx_to_use is None:
                 off=distance_min
@@ -276,7 +312,7 @@ class addr_resolver:
                 add_value = toff - self.current_offsets[component][best_candidate_idx]
             else:
                 add_value = self.steps[component][best_candidate_idx]
-            print(f"Adding {add_value} to {component}a{best_candidate_idx}")
+            #print(f"Adding {add_value} to {component}a{best_candidate_idx}")
             new_add = addr_add(component=component,
                                addr_idx=self.indices[component][best_candidate_idx],
                                offset=add_value)
