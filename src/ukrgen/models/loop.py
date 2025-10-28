@@ -10,7 +10,7 @@ from typing import Type,Callable
 
 from .load_store_operations import lsc_operation
 
-from asmgen.registers import adt_triple, reg_tracker
+from asmgen.registers import adt_triple, reg_tracker, asm_data_type as adt
 from asmgen.asmblocks.noarch import asmgen, comparison
 
 
@@ -85,21 +85,21 @@ class lsc_loop(lsc_operation):
                   gen : asmgen,
                   rt : reg_tracker,
                   subtransformers : dict[Type[lsc_operation],
-                                    Callable[[lsc_operation,adt_triple],str]],
-                  triple : adt_triple):
+                                    Callable[[lsc_operation,dict[str,adt]],str]],
+                  component_dts : dict[str,adt]):
 
         asmblock = ""
         for div in reversed(self.divergences):
             asmblock += gen.label(label = f"{self.name}_{div.name}")
             for op in div.ops:
-                asmblock += subtransformers[type(op)](op,triple)
+                asmblock += subtransformers[type(op)](op,component_dts)
 
         
         cntr_idx = rt.aliased_regs["greg"][self.condition.first]
         asmblock += gen.label(label=self.name)
 
         for op in self.block:
-            asmblock += subtransformers[type(op)](op,triple)
+            asmblock += subtransformers[type(op)](op,component_dts)
 
         for div in self.divergences:
             label = f"{self.name}_{div.name}"
