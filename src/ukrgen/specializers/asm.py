@@ -1159,16 +1159,49 @@ class lsc_specializer:
         # reserve address registers
         for component in self.address_registers.keys():
             for aidx in self.address_registers[component]:
+                aregblock = ""
+
+                sos = self.model.ar.starting_offsets[component]
+                step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
+
                 reg_alias = f"ADDR:{aidx}"
                 if reg_alias not in self.rt.aliased_regs['greg']:
                     aregidx = self.rt.reserve_any_reg('greg')
                     self.rt.alias_reg('greg', reg_alias, aregidx)
+                    
+                    # Compute starting address
+
+                    prev_idx = aidx
+                    prev_idx.indices[0] -=1
+                    prev_alias = f"ADDR:{prev_idx}"
+
+                    prev_reg_idx = self.rt.aliased_regs['greg'][prev_alias]
+
+                    aregblock += self.gen.mov_greg(
+                        src=self.gen.greg(prev_reg_idx),
+                        dst=self.gen.greg(aregidx)
+                    )
+
+                    t = self.model.last_tile_used[component]
+
+                    if step != lsc_offset.zero_offset():
+                        aregblock += self.transform_addr_add(
+                            lsc_addr_add(
+                                component=component,
+                                addr_idx=aidx.indices[0],
+                                off=step,
+                                t=t),
+                            component_dts=component_dts)
+
                 else:
                     aregidx = self.rt.aliased_regs['greg'][reg_alias]
                 #print(f"reserving GP reg {aregidx} for {reg_alias}")
 
                 # asmblock += f"// todo: init {reg_alias}\n"
                 asmblock += self.gen.asmwrap(f"; {self.gen.greg(aregidx)} = {reg_alias}")
+                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += aregblock
+                asmblock += self.gen.asmwrap(f"; calculation end <--")
 
 
         # reserve data registers
