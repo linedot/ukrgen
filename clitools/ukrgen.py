@@ -20,7 +20,7 @@ from asmgen.asmblocks.sme import sme
 from asmgen.asmblocks.sve import sve
 
 from asmgen.asmblocks.operations import widening_method as wm
-
+from asmgen.asmblocks.noarch import comparison
 
 from asmgen.registers import (
         asm_data_type as adt,
@@ -28,12 +28,21 @@ from asmgen.registers import (
         adt_size,
         reg_tracker
         )
+
+from asmgen.callconv.callconv import callconv
+from ukrgen.models.loop import lsc_comparison,lsc_condition,lsc_loop
+
 from ukrgen.specializers.asm import lsc_specializer
 from ukrgen.components import tile,simple_ukr_tile,dimension_type,dimension_properties
 from ukrgen.components.tile import scalar_dp
 from ukrgen.generators.mm import mm,order2D
 from ukrgen.models.load_store_cpu import load_store_cpu
-from ukrgen.models.load_store_operations import lsc_load,lsc_transformation,ldst_modifier
+from ukrgen.models.load_store_operations import (
+    lsc_add_val_off,
+    lsc_load,
+    lsc_transformation,
+    ldst_modifier
+)
 from ukrgen.models.lsc.offset import lsc_offset,stridexvlen
 from ukrgen.models.addr_resolver import addr_resolver
 from ukrgen.models.offset_mapper import (
@@ -45,6 +54,7 @@ from ukrgen.schedulers import simple_dependency_scheduler,minreguse_scheduler
 
 from .internal.addr_parameters import calculate_addr_parameters
 from .internal.ukr import get_ukr_components
+from .internal.compose_mm import fngen,get_blis_gemm_cc
 
 asmgen_map = {
     'avx128' : fma128,
@@ -273,6 +283,9 @@ def main():
 
     genlog = logging.getLogger("GENERATOR")
     genlog.setLevel(logging.DEBUG)
+    
+    fngenlog = logging.getLogger("COMPOSER")
+    fngenlog.setLevel(logging.DEBUG)
 
     parser = argparse.ArgumentParser(
             description="ukrgen compute kernel generator",
@@ -281,6 +294,8 @@ def main():
     args,rest = parse_main_arguments(parser=parser)
 
     gen = asmgen_map[args.isa]()
+
+    gen.set_output_inline(yesno=False)
 
     rt = reg_tracker([('greg',gen.max_gregs),
                       ('freg',gen.max_fregs),
@@ -708,13 +723,53 @@ def main():
     lsclog.debug("\n".join(map(str,rs_store)))
     lsclog.debug("ENDSTOREBLOCK ---------------------------")
 
+
+
+
+
+    gemm_fngen = fngen(gen=gen, rt=rt)
+
+
+    stride_map : dict[str,str] = dict()
+    # gotta map {r,c}s_{a,b,c} onto strideN
+    for component,rcs in strides.items():
+        if rcs[0] is not None:
+            stride_map[f"rs_{component}"] = f"stride{rcs[0]}"
+        if rcs[1] is not None:
+            stride_map[f"cs_{component}"] = f"stride{rcs[1]}"
+
+    blis_cc = get_blis_gemm_cc(gen=gen)
+    gemm_fngen.init_cc(cc=blis_cc,
+                       reverse_alias_map=stride_map)
+
+    # Add the loop
+
+    condition = lsc_condition(first="k", second=None, 
+                              comparison=lsc_comparison(comparison.nz))
+    mainloop = lsc_loop(name="knloop", condition=condition)
+
+    mainloop.add_block(rs_mbpl)
+    mainloop.add_block(ops=[
+        lsc_add_val_off("k", off=lsc_offset({},[],[],-1))
+        ])
+
+    # TODO: figure out prefetching
+    #if distance_pfc:
+    #    vecdim=0
+    #    count = [m,n][vecdim]
+    #    for i in m:
+    #        asmblock += ""
+    #    loop.add_singleshot_divergence(name="pfc", block="")
+
+
+
     initblock = specializer.code_init(component_dts=component_dts)
 
     asm_rs_preload = specializer.specialize(
             ops=rs_preload,
             component_dts=component_dts)
-    asm_rs_mbpl = specializer.specialize(
-            ops=rs_mbpl,
+    asm_rs_mainloop = specializer.specialize(
+            ops=[mainloop],
             component_dts=component_dts)
     asm_rs_store = specializer.specialize(
             ops=rs_store,
@@ -724,13 +779,20 @@ def main():
 
     finiblock = specializer.code_fini(component_dts=component_dts)
 
+
+    fnsave,fnload,fnrestore = gemm_fngen.get_boilerplate(cc=blis_cc)
+
+
     asmlog.debug("################### ASM ###################")
+    asmlog.debug("FUNC INTRO ------------------------------")
+    asmlog.debug(fnsave)
+    asmlog.debug(fnload)
     asmlog.debug("INIT ------------------------------------")
     asmlog.debug(initblock)
     asmlog.debug("PRELOAD ---------------------------------")
     asmlog.debug("".join(asm_rs_preload))
     asmlog.debug("MAIN LOOP -------------------------------")
-    asmlog.debug("  "+"  ".join(asm_rs_mbpl))
+    asmlog.debug("  "+"  ".join(asm_rs_mainloop))
     asmlog.debug("END MAIN LOOP ---------------------------")
     if "gemm" == args.ukr:
         lsclog.debug("SCALE+STOREBLOCK ------------------------")
@@ -740,6 +802,9 @@ def main():
     asmlog.debug("ENDSTOREBLOCK ---------------------------")
     asmlog.debug("FINALIZE --------------------------------")
     asmlog.debug(finiblock)
+    asmlog.debug("FUNC OUTRO ------------------------------")
+    asmlog.debug(fnrestore)
+
 
 
     genlog.debug("Aliased GP regs in the end:")
@@ -749,6 +814,7 @@ def main():
     genlog.debug("Aliased VEC regs in the end:")
     for alias,regidx in rt.aliased_regs['vreg'].items():
         genlog.debug(f"  {alias:30} : {gen.vreg(regidx)}")
+
 
 
     inout_args,rest = parse_inout_args(parser=parser)
@@ -771,7 +837,6 @@ def main():
     genlog.debug(f"Writing source to {inout_args.output_filename}")
     with open(inout_args.output_filename, 'w') as file:
         file.write(tpl_data)
-    
 
 
 if __name__ == "__main__":

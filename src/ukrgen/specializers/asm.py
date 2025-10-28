@@ -1160,8 +1160,11 @@ class lsc_specializer:
         for component in self.address_registers.keys():
             for aidx in self.address_registers[component]:
                 reg_alias = f"ADDR:{aidx}"
-                aregidx = self.rt.reserve_any_reg('greg')
-                self.rt.alias_reg('greg', reg_alias, aregidx)
+                if reg_alias not in self.rt.aliased_regs['greg']:
+                    aregidx = self.rt.reserve_any_reg('greg')
+                    self.rt.alias_reg('greg', reg_alias, aregidx)
+                else:
+                    aregidx = self.rt.aliased_regs['greg'][reg_alias]
                 #print(f"reserving GP reg {aregidx} for {reg_alias}")
 
                 # asmblock += f"// todo: init {reg_alias}\n"
