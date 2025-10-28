@@ -33,6 +33,12 @@ class addr_add:
         return self.__str__()
 
 class interleaving_selector:
+    """
+    Selects the candidate so that address register use is interleaved
+    
+    By recommending the candidate with the "smallest" offset
+    the interleaving is implicit
+    """
     def __init__(self):
         self.offset_min = None
 
@@ -74,6 +80,11 @@ class mindist_selector:
         return False
 
 class phasing_selector:
+    """
+    Selects candidates in phases, i.e. first one address register
+    is used for all accesses, then the next when starting from
+    the first offset again
+    """
     def __init__(self):
         self.last_target = None
         self.this_target = None
@@ -232,6 +243,7 @@ class addr_resolver:
         incs_to_do = self.max_incs
         off = lsc_offset.zero_offset()
         
+        #print(f"Resolving {toff} for {component}")
         
         while addr_idx_to_use is None and 0 < incs_to_do:
 
@@ -274,7 +286,9 @@ class addr_resolver:
                             target_offset=toff,
                             offset_range=offset_range)):
                     best_candidate_idx = addr_list_idx
-                    print(f"Best candidate is ADDR:{component}{addr_list_idx}")
+                #    print(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
+                #else:
+                #    print(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
                 
                 #print(f"Checking if ADDR:{component}{addr_list_idx} is in range")
                 if self.toff_in_range(caoff=caoff,
