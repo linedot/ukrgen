@@ -18,7 +18,8 @@ def calculate_addr_parameters(sup : op_support,
                               primary_op : str,
                               gen : asmgen,
                               addr_reg_counts : dict[str,int],
-                              tiles : dict[str, tile],
+                              data_tiles : dict[str, tile],
+                              real_tiles : dict[str, tile],
                               narrow_components : list[str],
                               wide_components : list[str],
                               m : int, n : int, k : int,
@@ -37,27 +38,31 @@ def calculate_addr_parameters(sup : op_support,
     ways = adt_size(sup.triple.c)//adt_size(sup.triple.a)
 
     for c in components:
-        t = tiles[c]
+        data_t = data_tiles[c]
+        real_t = real_tiles[c]
         dt = sup.triple.c
         if c in narrow_components:
             dt = sup.triple.a
         count = addr_reg_counts[c]
 
         max_val = gen.max_fload_immoff(dt=dt)
-        if t.is_vla_tile or t.is_vla_vector:
+        if (real_t.is_vla_tile or real_t.is_vla_vector) and \
+            data_t.is_scalar:
+            max_val = gen.max_load_immoff(dt=dt)
+        elif data_t.is_vla_tile or data_t.is_vla_vector:
             max_val = gen.max_load_voff
 
         if getattr(gen,primary_op).widening_method == wm.SPLIT_INSTRUCTIONS \
            and c in wide_components:
             max_val //= ways
 
-        if t.is_scalar or t.is_fixed_vector:
+        if data_t.is_scalar or data_t.is_fixed_vector:
             ranges[c] = [(zo,lsco.so(max_val)) for i in range(count)]
-        elif t.is_vla_vector or t.is_vla_tile:
+        elif data_t.is_vla_vector or data_t.is_vla_tile:
             # TODO: differentiate VLEN/RLEN/etc...
             ranges[c] = [(zo,lsco.vo(0,max_val)) for i in range(count)]
 
-        step = mappers[c].get_ldst_size(t)
+        step = mappers[c].get_ldst_size(data_t)
 
         if "interleave" == strats[c]:
             steps[c] = [sum([step for jj in range(count)],zo) \

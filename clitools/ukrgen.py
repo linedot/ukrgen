@@ -465,9 +465,11 @@ def main():
         "beta" : scalar_tile,
         "alpha" : scalar_tile
     }
+
+    real_tiles = deepcopy(component_tiles)
     if args.op == 'fma' and fma_args is not None:
         if fma_args.fma_unvec_method in ['load_bcast']:
-            component_tiles["B"] = component_tiles["A"]
+            real_tiles["B"] = real_tiles["A"]
 
     strats = { c : lsc_args.__dict__[f"{c}_multiaddr_strat"] \
             for c in components}
@@ -479,7 +481,8 @@ def main():
     off_starts,off_ranges,off_steps = calculate_addr_parameters(
             sup=sup, primary_op=args.op, gen=gen,
             addr_reg_counts=addr_reg_counts,
-            tiles=component_tiles, 
+            data_tiles=component_tiles, 
+            real_tiles=real_tiles, 
             narrow_components=["A","B"], 
             wide_components=["AB","C","beta","alpha"],
             m=m,n=n,k=k,
