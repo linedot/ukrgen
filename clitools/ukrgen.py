@@ -862,8 +862,11 @@ def main():
     asmheader = (
          ".section .text\n"
         f".global gemm_kernel_{m}Vx{n}\n"
-        f"gemm_kernel_{m}Vx{n}:\n"
+        f"gemm_kernel_{m}Vx{n}:\n  "
     )
+    
+    # TODO: some kind of fancy formatting
+    asmblock = asmblock.replace("\n","\n  ")
 
     genlog.debug(f"Writing source to {inout_args.output_filename}")
     with open(inout_args.output_filename, 'w') as file:
