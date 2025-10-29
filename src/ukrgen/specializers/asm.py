@@ -117,7 +117,7 @@ class lsc_specializer:
 
         self.transformations[lsc_add_val_off] = self.transform_add_val_off
         self.transformations[lsc_addr_add] = self.transform_addr_add
-        self.transformations[lsc_debugmsg] = lambda op,triple : self.gen.asmwrap("; "+op.msg)
+        self.transformations[lsc_debugmsg] = lambda op,triple : self.gen.asmwrap("# "+op.msg)
         self.transformations[lsc_load] = self.transform_load
         self.transformations[lsc_store] = self.transform_store
         self.transformations[lsc_transformation] = self.transform_transform
@@ -1130,12 +1130,12 @@ class lsc_specializer:
                 alias = f"{component}off:{str(off)}"
                 self.rt.alias_reg('greg', alias , regidx)
                 #print(f"reserving GP reg {regidx} for {alias}")
-                asmblock += self.gen.asmwrap(f"; {self.gen.greg(regidx)} = {alias}")
-                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += self.gen.asmwrap(f"# {self.gen.greg(regidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
                 asmblock += self.calculate_offset(component, off,
                                                   component_dts=component_dts,
                                                   ways=ways)
-                asmblock += self.gen.asmwrap(f"; calculation end <--")
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
 
 
         # reserve vector indices
@@ -1150,11 +1150,11 @@ class lsc_specializer:
                 stridx = self.rt.aliased_regs["greg"][galias]
                 streg = self.gen.greg(stridx)
                 stvreg = self.gen.vreg(stvidx)
-                asmblock += self.gen.asmwrap(f"; {self.gen.vreg(stvidx)} = {alias}")
-                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += self.gen.asmwrap(f"# {self.gen.vreg(stvidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
                 asmblock += self.gen.greg_to_voffs(streg=streg, vreg=stvreg,
                                                    dt=component_dts[component])
-                asmblock += self.gen.asmwrap(f"; calculation end <--")
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
 
         # reserve address registers
         for component in self.address_registers.keys():
@@ -1198,10 +1198,10 @@ class lsc_specializer:
                 #print(f"reserving GP reg {aregidx} for {reg_alias}")
 
                 # asmblock += f"// todo: init {reg_alias}\n"
-                asmblock += self.gen.asmwrap(f"; {self.gen.greg(aregidx)} = {reg_alias}")
-                asmblock += self.gen.asmwrap(f"; calculation -->")
+                asmblock += self.gen.asmwrap(f"# {self.gen.greg(aregidx)} = {reg_alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
                 asmblock += aregblock
-                asmblock += self.gen.asmwrap(f"; calculation end <--")
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
 
 
         # reserve data registers
@@ -1222,7 +1222,7 @@ class lsc_specializer:
                     dregname = str(getattr(self.gen,dreg_tag)(dregidx))
 
                 # asmblock += f"// todo: init {reg_alias}\n"
-                asmblock += self.gen.asmwrap(f"; {dregname} = {reg_alias}")
+                asmblock += self.gen.asmwrap(f"# {dregname} = {reg_alias}")
 
         return asmblock
 

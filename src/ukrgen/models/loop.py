@@ -57,9 +57,10 @@ class lsc_loop_divergence:
         self.condition = condition
 
 class lsc_loop(lsc_operation):
-    def __init__(self, name : str, condition : lsc_condition):
+    def __init__(self, name : str, condition : lsc_condition, level=1):
         self.name = name
         self.condition = condition
+        self.level = level
 
         self.block = []
         self.divergences = []
@@ -88,18 +89,19 @@ class lsc_loop(lsc_operation):
                                     Callable[[lsc_operation,dict[str,adt]],str]],
                   component_dts : dict[str,adt]):
 
+        indent = lambda i : (i+self.level)*"  "
         asmblock = ""
         for div in reversed(self.divergences):
-            asmblock += gen.label(label = f"{self.name}_{div.name}")
+            asmblock += indent(0) + gen.label(label = f"{self.name}_{div.name}")
             for op in div.ops:
-                asmblock += subtransformers[type(op)](op,component_dts)
+                asmblock += indent(1) + subtransformers[type(op)](op,component_dts)
 
         
         cntr_idx = rt.aliased_regs["greg"][self.condition.first]
-        asmblock += gen.label(label=self.name)
+        asmblock += indent(0) + gen.label(label=self.name)
 
         for op in self.block:
-            asmblock += subtransformers[type(op)](op,component_dts)
+            asmblock += indent(1) + subtransformers[type(op)](op,component_dts)
 
         for div in self.divergences:
             label = f"{self.name}_{div.name}"
@@ -107,10 +109,10 @@ class lsc_loop(lsc_operation):
             reg2 = None
             if div.condition.second is not None:
                 reg2 = gen.greg(rt.aliased_regs["greg"][div.condition.second])
-            asmblock += gen.cb(reg1 = reg1,
-                               reg2 = reg2,
-                               cmp=div.condition.comparison.cmp,
-                               label=label)
+            asmblock += indent(1) + gen.cb(reg1 = reg1,
+                                           reg2 = reg2,
+                                           cmp=div.condition.comparison.cmp,
+                                           label=label)
 
 
         reg1 = gen.greg(rt.aliased_regs["greg"][self.condition.first])
@@ -118,27 +120,30 @@ class lsc_loop(lsc_operation):
         if self.condition.second is not None:
             reg2 = gen.greg(rt.aliased_regs["greg"][self.condition.second])
 
-        asmblock += gen.cb(reg1 = reg1,
-                           reg2 = reg2,
-                           cmp=self.condition.comparison.cmp,
-                           label=self.name)
+        asmblock += indent(1) + gen.cb(reg1 = reg1,
+                                       reg2 = reg2,
+                                       cmp=self.condition.comparison.cmp,
+                                       label=self.name)
 
         return asmblock
 
 
     def __str__(self):
         result = ""
+
+        indent = lambda i : (i+self.level)*"  "
+
         for div in reversed(self.divergences):
-            result += f"<-LABEL:{self.name}_{div.name}"
-            result += "\n\t" + f"\n\t".join(
+            result += f"{indent(0)}<-LABEL:{self.name}_{div.name}"
+            result += f"\n{indent(1)}" + f"\n{indent(1)}".join(
                     [str(op) for op in div.ops])
         
-        result += f"<-LABEL:{self.name}"
-        result += "\n\t" + f"\n\t".join([str(op) for op in self.block])
+        result += f"{indent(0)}<-LABEL:{self.name}"
+        result += f"\n{indent(1)}" + f"\n{indent(1)}".join([str(op) for op in self.block])
 
         for div in self.divergences:
-            result += f"\n\tif {div.condition} -->LABEL:{self.name}_{div.name}"
-        result += f"\n\tif {self.condition} -->LABEL:{self.name}"
+            result += f"\n{indent(1)}if {div.condition} -->LABEL:{self.name}_{div.name}"
+        result += f"\n{indent(1)}if {self.condition} -->LABEL:{self.name}"
 
         return result
 

@@ -255,11 +255,7 @@ def parse_prefetch_args(parser : argparse.ArgumentParser):
 
 def parse_inout_args(parser : argparse.ArgumentParser):
     parser.add_argument("--output-filename", type=str, required=True,
-                        help="Path to the file to output the result to")
-    parser.add_argument("--input-filename", type=str, required=True,
-                        help="""Path to the sourcefile containing the template to
-                        fill with kernel and parameters
-                        """)
+                        help="Path to the file to output the generated ASM function to")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
@@ -746,7 +742,7 @@ def main():
 
     condition = lsc_condition(first="k", second=None, 
                               comparison=lsc_comparison(comparison.nz))
-    mainloop = lsc_loop(name="knloop", condition=condition)
+    mainloop = lsc_loop(name="knloop", condition=condition, level=2)
 
     mainloop.add_block(rs_mbpl)
     mainloop.add_block(ops=[
@@ -781,6 +777,39 @@ def main():
 
 
     fnsave,fnload,fnrestore = gemm_fngen.get_boilerplate(cc=blis_cc)
+
+
+    asmblock = gen.asmwrap(
+        "# FUNC INTRO ---------------------------------")
+    asmblock += fnsave
+    asmblock += fnload
+    asmblock += gen.asmwrap(
+        "# INIT ---------------------------------------")
+    asmblock += initblock
+    asmblock += gen.asmwrap(
+        "# PRELOAD ------------------------------------")
+    asmblock += "".join(asm_rs_preload)
+    asmblock += gen.asmwrap(
+        "# MAIN LOOP ----------------------------------")
+    asmblock += "  "+"  ".join(asm_rs_mainloop)
+    asmblock += gen.asmwrap(
+        "# END MAIN LOOP ------------------------------")
+    if "gemm" == args.ukr:
+        asmblock += gen.asmwrap(
+            "# SCALE+STOREBLOCK ---------------------------")
+    else:
+        asmblock += gen.asmwrap(
+            "# STOREBLOCK ---------------------------------")
+    asmblock += "".join(asm_rs_store)
+    asmblock += gen.asmwrap(
+        "# END STOREBLOCK -----------------------------")
+    asmblock += gen.asmwrap(
+        "# FINALIZE -----------------------------------")
+    asmblock += finiblock
+    asmblock += gen.asmwrap(
+        "# FUNC OUTRO ---------------------------------")
+    asmblock += fnrestore
+    asmblock += gen.asmwrap("ret") # TODO: add ret() to asmgen
 
 
     asmlog.debug("################### ASM ###################")
@@ -828,15 +857,17 @@ def main():
         sys.exit(0)
 
 
-    tpl_data = ""
+    
 
-    genlog.debug(f"Reading source template from {inout_args.input_filename}")
-    with open(inout_args.input_filename, 'r') as file:
-        tpl_data = file.read()
+    asmheader = (
+         ".section .text\n"
+        f".global gemm_kernel_{m}Vx{n}\n"
+        f"gemm_kernel_{m}Vx{n}:\n"
+    )
 
     genlog.debug(f"Writing source to {inout_args.output_filename}")
     with open(inout_args.output_filename, 'w') as file:
-        file.write(tpl_data)
+        file.write(asmheader+asmblock)
 
 
 if __name__ == "__main__":
