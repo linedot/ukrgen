@@ -256,6 +256,8 @@ def parse_prefetch_args(parser : argparse.ArgumentParser):
 def parse_inout_args(parser : argparse.ArgumentParser):
     parser.add_argument("--output-filename", type=str, required=True,
                         help="Path to the file to output the generated ASM function to")
+    parser.add_argument("--function-name", type=str,
+                        help="Path to the file to output the generated ASM function to")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
@@ -857,12 +859,15 @@ def main():
         sys.exit(0)
 
 
+    fnname = f"gemm_kernel_{m}Vx{n}"
+    if inout_args.function_name is not None:
+        fnname = inout_args.function_name
     
 
     asmheader = (
          ".section .text\n"
-        f".global gemm_kernel_{m}Vx{n}\n"
-        f"gemm_kernel_{m}Vx{n}:\n  "
+        f".global {fnname}\n"
+        f"{fnname}:\n  "
     )
     
     # TODO: some kind of fancy formatting
