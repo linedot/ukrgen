@@ -287,6 +287,7 @@ class lsc_specializer:
         dt_bytes = adt_size(dt)
 
 
+
         dreg_tag = determine_dreg_tag(op.t.dima, op.t.dimb)
 
         vlenmul = 0;
@@ -1171,7 +1172,8 @@ class lsc_specializer:
                     
                     # Compute starting address
 
-                    prev_idx = aidx
+                    # Not deeopcopying this will mess up existing ops
+                    prev_idx = deepcopy(aidx)
                     prev_idx.indices[0] -=1
                     prev_alias = f"ADDR:{prev_idx}"
 
