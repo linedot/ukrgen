@@ -4,8 +4,8 @@ class interleaving_selector:
     """
     Selects the candidate so that address register use is interleaved
     
-    By recommending the candidate with the "smallest" offset
-    the interleaving is implicit
+    Tries to select the least distant offset to target if an offset larger
+    than the last one exists, otherwise selects the smallest offset
     """
     def __init__(self):
         self.offset_min = None
@@ -27,21 +27,17 @@ class interleaving_selector:
                  offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
 
         if self.locked_in:
-            print(f"Skipping because of perfect choice")
             return False
 
         if current_offset == target_offset:
             self.this_best = current_offset
             self.locked_in = True
-            print(f"Perfect choice")
             return True
 
         if current_offset == self.last_best:
-            print(f"Skipping because it's the last best")
             return False
 
         if current_offset > self.last_best:
-            print("larger than last best offset encountered, cancelling rollover")
             self.rollover = False
         
         dist = target_offset - current_offset
@@ -50,20 +46,13 @@ class interleaving_selector:
             if (self.offset_min is None) or not (current_offset > self.offset_min):
                 self.offset_min = current_offset
                 self.this_best = current_offset
-                print(f"Chosen smallest after rollover")
                 return True
-            else:
-                print(f"off {current_offset} >= {self.offset_min}; skipping")
         else:
             if (self.dist_min is None) or (dist < self.dist_min):
                 self.dist_min = dist
                 self.this_best = current_offset
-                print(f"Chosen smallest distance before rollover")
                 return True
-            else:
-                print(f"dist {dist} >= {self.dist_min}; skipping")
 
-        print(f"Skipped as no condition applied")
         return False
 
 class mindist_selector:
