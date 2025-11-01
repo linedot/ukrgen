@@ -13,6 +13,8 @@ from copy import deepcopy
 from .load_store_operations import lsc_offset
 from ..components.tile import tile
 
+from .addr.reg_selectors import interleaving_selector,phasing_selector
+
 class addr_add:
     def __init__(self, component : str, addr_idx : int,
                  offset : lsc_offset):
@@ -31,89 +33,6 @@ class addr_add:
 
     def __repr__(self):
         return self.__str__()
-
-class interleaving_selector:
-    """
-    Selects the candidate so that address register use is interleaved
-    
-    By recommending the candidate with the "smallest" offset
-    the interleaving is implicit
-    """
-    def __init__(self):
-        self.offset_min = None
-
-    def reset(self,
-              current_offset : lsc_offset,
-              target_offset : lsc_offset,
-              offset_range : tuple[lsc_offset,lsc_offset]):
-        self.offset_min = current_offset
-
-    def __call__(self,
-                 current_offset : lsc_offset,
-                 target_offset : lsc_offset,
-                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
-        if current_offset < self.offset_min:
-            self.offset_min = current_offset
-            return True
-        return False
-
-class mindist_selector:
-    def __init__(self):
-
-        self.dist_min = None
-
-    def reset(self,
-              current_offset : lsc_offset,
-              target_offset : lsc_offset,
-              offset_range : tuple[lsc_offset,lsc_offset]):
-        self.dist_min = abs(target_offset - current_offset)
-
-    def __call__(self,
-                 current_offset : lsc_offset,
-                 target_offset : lsc_offset,
-                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
-
-        dist = abs(target_offset-current_offset)
-        if dist < self.dist_min:
-            self.dist_min = dist
-            return True
-        return False
-
-class phasing_selector:
-    """
-    Selects candidates in phases, i.e. first one address register
-    is used for all accesses, then the next when starting from
-    the first offset again
-    """
-    def __init__(self):
-        self.last_target = None
-        self.this_target = None
-
-
-    def reset(self,
-              current_offset : lsc_offset,
-              target_offset : lsc_offset,
-              offset_range : tuple[lsc_offset,lsc_offset]):
-        
-        self.last_target = self.this_target
-        
-
-    def __call__(self,
-                 current_offset : lsc_offset,
-                 target_offset : lsc_offset,
-                 offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
-
-
-        if current_offset == target_offset:
-            self.this_target = target_offset
-            return True
-
-        if current_offset == self.last_target:
-            self.this_target = target_offset
-            return True
-
-
-        return False
 
 class addr_resolver:
     def __init__(self,
@@ -258,7 +177,6 @@ class addr_resolver:
                             offset_range=self.offset_ranges[component][best_candidate_idx])
 
             # if the first one is also in range, we can use it
-            distance_min = toff-offset_min
             if self.toff_in_range(caoff=offset_min,
                                   toff=toff,
                                   offset_range=self.offset_ranges[component][best_candidate_idx]):
@@ -286,22 +204,16 @@ class addr_resolver:
                             target_offset=toff,
                             offset_range=offset_range)):
                     best_candidate_idx = addr_list_idx
-                #    print(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
+                    #print(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
+                    if self.toff_in_range(
+                            caoff=caoff,
+                            toff=toff,
+                            offset_range=offset_range):
+                        addr_idx_to_use = best_candidate_idx
+                        off = toff-caoff
                 #else:
-                #    print(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
-                
-                #print(f"Checking if ADDR:{component}{addr_list_idx} is in range")
-                if self.toff_in_range(caoff=caoff,
-                                      toff=toff,
-                                      offset_range=offset_range):
-                    # replace only if the offset would be smaller
-                    if abs(distance_min) > abs(toff-caoff):
-                        distance_min = toff-caoff
-                        addr_idx_to_use = addr_list_idx
-                        #print(f"will use ADDR:{component}{addr_idx_to_use}")
-
+                    #print(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
             if not addr_idx_to_use is None:
-                off=distance_min
                 break
 
             incs_to_do -= 1
