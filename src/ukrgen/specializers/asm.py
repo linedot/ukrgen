@@ -1114,11 +1114,27 @@ class lsc_specializer:
             acc_components.add(c)
 
 
+        # Register offsets for calculating starting addresses:
+        for component in self.address_registers.keys():
+            for aidx in self.address_registers[component]:
+                if aidx.indices[0] == 0:
+                    continue
+                sos = self.model.ar.starting_offsets[component]
+                step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
+                self.register_offset(component=component, off=step)
+                print(f"calculated {step} for {component}")
+
+
         # reserve offset registers
         for component in self.offset_registry.keys():
             for off in self.offset_registry[component]:
-                if off.is_vector() or off.is_scalar():
+                if off.is_scalar():
                     continue
+                
+                if off.is_vector():
+                    factor = off.vlen_strides[0]
+                    if factor < self.gen.max_add_voff and factor > 0:
+                        continue
 
                 # determine largest widening ways:
                 ways = 1
