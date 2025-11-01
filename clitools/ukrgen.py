@@ -699,8 +699,10 @@ def main():
 
     rs_preload = scheduler(preload, loop=False)
     rs_mbpl = scheduler(mainblock+preload_mb)
+    rs_lastiter = scheduler(mainblock, loop=False)
 
-    rs_store = scheduler(mru_storeblock)
+    #rs_store = scheduler(mru_storeblock, loop=False)
+    rs_store = deepcopy(mru_storeblock)
     #if "gemm" == args.ukr:
     #    rs_store = scheduler(betablock+alphablock+storeblock)
     #else:
@@ -713,6 +715,8 @@ def main():
     lsclog.debug("MAIN LOOP -------------------------------")
     lsclog.debug("  "+"\n  ".join(map(str,rs_mbpl)))
     lsclog.debug("END MAIN LOOP ---------------------------")
+    lsclog.debug("LAST ITERATION --------------------------")
+    lsclog.debug("\n".join(map(str,rs_lastiter)))
 
     if "gemm" == args.ukr:
         lsclog.debug("SCALE+STOREBLOCK ------------------------")
@@ -720,7 +724,6 @@ def main():
         lsclog.debug("STOREBLOCK ------------------------------")
     lsclog.debug("\n".join(map(str,rs_store)))
     lsclog.debug("ENDSTOREBLOCK ---------------------------")
-
 
 
 
@@ -769,6 +772,9 @@ def main():
     asm_rs_mainloop = specializer.specialize(
             ops=[mainloop],
             component_dts=component_dts)
+    asm_rs_lastiter = specializer.specialize(
+            ops=rs_lastiter,
+            component_dts=component_dts)
     asm_rs_store = specializer.specialize(
             ops=rs_store,
             component_dts=component_dts)
@@ -796,6 +802,9 @@ def main():
     asmblock += "  "+"  ".join(asm_rs_mainloop)
     asmblock += gen.asmwrap(
         "# END MAIN LOOP ------------------------------")
+    asmblock += gen.asmwrap(
+        "# LAST ITERATION -----------------------------")
+    asmblock += "  "+"  ".join(asm_rs_lastiter)
     if "gemm" == args.ukr:
         asmblock += gen.asmwrap(
             "# SCALE+STOREBLOCK ---------------------------")
@@ -825,6 +834,8 @@ def main():
     asmlog.debug("MAIN LOOP -------------------------------")
     asmlog.debug("  "+"  ".join(asm_rs_mainloop))
     asmlog.debug("END MAIN LOOP ---------------------------")
+    asmlog.debug("LAST ITERATION --------------------------")
+    asmlog.debug("  "+"  ".join(asm_rs_lastiter))
     if "gemm" == args.ukr:
         lsclog.debug("SCALE+STOREBLOCK ------------------------")
     else:
@@ -838,13 +849,15 @@ def main():
 
 
 
-    genlog.debug("Aliased GP regs in the end:")
-    for alias,regidx in rt.aliased_regs['greg'].items():
-        genlog.debug(f"  {alias:30} : {gen.greg(regidx)}")
 
-    genlog.debug("Aliased VEC regs in the end:")
-    for alias,regidx in rt.aliased_regs['vreg'].items():
-        genlog.debug(f"  {alias:30} : {gen.vreg(regidx)}")
+    for key in rt.aliased_regs.keys():
+        moreargs = dict()
+        if key in {'freg','treg'}:
+            moreargs = {"dt":triple.a}
+        genlog.debug(f"Aliased {key}s in the end:")
+        for alias,regidx in rt.aliased_regs[key].items():
+            reg = getattr(gen, key)(regidx,**moreargs)
+            genlog.debug(f"  {alias:30} : {reg}")
 
 
 
