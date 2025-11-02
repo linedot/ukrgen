@@ -332,7 +332,8 @@ class lsc_specializer:
             if 'freg' == dreg_tag:
                 lsfunc = getattr(self.gen, f"{action}_scalar{suffix}_immoff")
 
-                byteoff = op.off
+                # everything being a reference in python messes things up again
+                byteoff = deepcopy(op.off)
                 byteoff.immoff *=dt_bytes
                 return lsfunc(
                         areg=areg,
