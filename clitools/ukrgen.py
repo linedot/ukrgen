@@ -871,16 +871,20 @@ def main():
         parser.print_help()
         sys.exit(0)
 
+    if (strides["C"][0] is None) and (strides["C"][1] is not None):
+        suffix = "_cs"
+    elif (strides["C"][1] is None) and (strides["C"][0] is not None):
+        suffix = "_rs"
 
-    fnname = f"gemm_kernel_{m}Vx{n}"
+    fnname = f"ukrgen_{args.ukr}_{args.isa}_{m}Vx{n}"
     if inout_args.function_name is not None:
         fnname = inout_args.function_name
     
 
     asmheader = (
          ".section .text\n"
-        f".global {fnname}\n"
-        f"{fnname}:\n  "
+        f".global {fnname}{suffix}\n"
+        f"{fnname}{suffix}:\n  "
     )
     
     # TODO: some kind of fancy formatting
@@ -889,6 +893,92 @@ def main():
     genlog.debug(f"Writing source to {inout_args.output_filename}")
     with open(inout_args.output_filename, 'w') as file:
         file.write(asmheader+asmblock)
+
+    #TODO: proper handling of different targets
+
+    tc = None
+    if triple.c == adt.DOUBLE:
+        tc = "d"
+    if triple.c == adt.SINGLE:
+        tc = "s"
+
+    if tc is None:
+        raise RuntimeError("Proper Implementation missing, currently generating only d/s blis gemm kernels")
+
+    blis_ukr_name = f"bli_{tc}gemm_{fnname}"
+
+    blis_wrapper_tpl ="""
+    #include "blis.h"
+    
+    extern void ${fnname}_cs(dim_t m, dim_t n, dim_t k,
+        const void* alpha,
+        const void* a,
+        const void* b,
+        const void* beta,
+        void* c, inc_t rs_c0, inc_t cs_c0,
+        const auxinfo_t* data, const cntx_t* cntx
+    );
+    extern void ${fnname}_rs(dim_t m, dim_t n, dim_t k,
+        const void* alpha,
+        const void* a,
+        const void* b,
+        const void* beta,
+        void* c, inc_t rs_c0, inc_t cs_c0,
+        const auxinfo_t* data, const cntx_t* cntx
+    );
+
+    void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
+        const void* alpha,
+        const void* a,
+        const void* b,
+        const void* beta,
+        void* c, inc_t rs_c0, inc_t cs_c0,
+        const auxinfo_t* data, const cntx_t* cntx)
+    {
+        dim_t target_m = 8; //hardcode for now
+        dim_t kiter = k / ${kunroll};
+        if(m == target_m && n == ${nr} &&
+           ((k % ${kunroll}) == 0) && (kiter > 2) &&
+           rs_c0 == 1)
+        {
+            ${fnname}_cs(
+                m,n,kiter-1,
+                alpha,a,b,
+                beta,c,
+                rs_c0,cs_c0,
+                data,cntx);
+            return;
+        }
+        else if(m == target_m && n == ${nr} &&
+           ((k % ${kunroll}) == 0) && (kiter > 2) &&
+           cs_c0 == 1)
+        {
+            ${fnname}_rs(
+                m,n,kiter-1,
+                alpha,a,b,
+                beta,c,
+                rs_c0,cs_c0,
+                data,cntx);
+            return;
+        }
+        else
+        {
+            printf("INCOMPATIBLE KERNEL PARAMS:\\n");
+            printf("   m = %d; n = %d; k = %d\\n", m, n, k);
+            printf("   rs_c0 = %d; cs_c0 = %d\\n", rs_c0, cs_c0);
+        }
+    }
+    """
+    blis_wrapper = Template(blis_wrapper_tpl).render(
+            fnname=fnname,
+            blis_ukr_name=blis_ukr_name,
+            mr=m,
+            nr=n,
+            kunroll=k
+            )
+
+    with open(f"{blis_ukr_name}.c", 'w') as file:
+        file.write(blis_wrapper)
 
 
 if __name__ == "__main__":
