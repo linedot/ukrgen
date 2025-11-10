@@ -85,8 +85,8 @@ class op_modification:
         if not isinstance(op,tuple(self.op_match)):
             return False
 
-        indices = [i for i,(c,_) in enumerate(op.indices) \
-                if c in self.component_match]
+        indices = [i for i,idx in enumerate(op.indices) \
+                if idx.component in self.component_match]
 
         if any(op.reg_types[i] in self.reg_type_match for i in indices):
             return self.modification(op, result_ops)
@@ -145,20 +145,21 @@ class lsc_specializer:
         dreg_tags = []
 
         triple = adt_triple(
-                component_dts[op.indices[0].component],
-                component_dts[op.indices[1].component],
-                component_dts[op.indices[2].component])
+                component_dts[op.data_components[0]],
+                component_dts[op.data_components[1]],
+                component_dts[op.data_components[2]])
         
-        for idx,t in zip(op.indices,
-                         op.tiles):
+        for i,(idx,t) in enumerate(zip(op.indices,
+                                     op.tiles)):
             component = idx.component
+            dcomponent = op.data_components[i]
 
             dreg_tag = determine_dreg_tag(t.dima, t.dimb)
 
             residx = self.rt.aliased_regs[dreg_tag][f"RES:{idx}"]
 
             if dreg_tag in ["freg","treg"]:
-                dreg = getattr(self.gen,dreg_tag)(residx,component_dts[component])
+                dreg = getattr(self.gen,dreg_tag)(residx,component_dts[dcomponent])
             else:
                 dreg = getattr(self.gen,dreg_tag)(residx)
 
@@ -629,6 +630,7 @@ class lsc_specializer:
 
         offreg_idx = self.rt.aliased_regs['greg'][f"{component}off:{str(off)}"]
         offreg = self.gen.greg(offreg_idx)
+        asmblock += self.gen.zero_greg(greg=offreg)
         for sxv,value in off.sxv_strides.items():
             if 0 == value:
                 continue
@@ -802,7 +804,9 @@ class lsc_specializer:
         modifications=[]
 
         def widen_data_regs(op : lsc_operation, result_ops : list[lsc_operation]):
-            for i,(c,idx_list) in enumerate(op.indices):
+            for i,idx in enumerate(op.indices):
+                idx_list = idx.indices
+                c = idx.component
                 if c in acc_components and lsc_reg_type.data == op.reg_types[i]:
                     op.indices[i].indices[0] *= ways
                     self.data_registers[c].add(op.indices[i].indices[0])
@@ -811,19 +815,20 @@ class lsc_specializer:
             return False
 
         def widen_offsets(op : lsc_operation, result_ops : list[lsc_operation]):
-            if op.component in acc_components:
-                mapper = self.model.offset_mappers[op.component]
+            component = op.addr_idx.component
+            if component in acc_components:
+                mapper = self.model.offset_mappers[component]
                 sizeoff = mapper.get_ldst_size(op.t)
                 multoff = op.off.colin(sizeoff)
                 addoff = sum([deepcopy(multoff) for j in \
                         range(ways-1)], lsc_offset.zero_offset())
 
                 print(f"widening {op.off} by adding {addoff}")
-                if op.component in self.offset_registry:
-                    if op.off in self.offset_registry[op.component]:
-                        self.offset_registry[op.component].remove(op.off)
+                if component in self.offset_registry:
+                    if op.off in self.offset_registry[component]:
+                        self.offset_registry[component].remove(op.off)
                 op.off += addoff
-                self.register_offset(component=op.component,off=op.off)
+                self.register_offset(component=component,off=op.off)
             return False
 
         def split_arith_ldst(op : lsc_operation, result_ops : list[lsc_operation]):
@@ -833,20 +838,22 @@ class lsc_specializer:
             if isinstance(op, lsc_transformation):
                 opstr = op.op
                 numbers = re.findall(r'\d+',opstr)
-                print("Not Huh")
                 if numbers:
                     return False
             first_op = deepcopy(op)
             for i in range(ways):
                 part_op = copy.deepcopy(op)
-                for j,(c,idx_list) in enumerate(part_op.indices):
+                for j,idx in enumerate(part_op.indices):
+                    idx_list = idx.indices
+                    c = idx.component
                     if c in acc_components and lsc_reg_type.data == part_op.reg_types[j]:
-                        part_op.indices[j][1][0] += i
+                        part_op.indices[j].indices[0] += i
                 if isinstance(op, lsc_transformation):
                     part_op.op += f"{i}"
                 if isinstance(op, (lsc_load,lsc_store)):
                     baseoff = deepcopy(op.off)
-                    sizeoff = self.model.offset_mappers[op.component].get_ldst_size(op.t)
+                    ca = op.addr_idx.component
+                    sizeoff = self.model.offset_mappers[ca].get_ldst_size(op.t)
 
                     # This is taken care of by widen_offsets
                     #extent_off = baseoff.colin(sizeoff)
@@ -967,10 +974,12 @@ class lsc_specializer:
 
                 for i in range(ways):
                     group_op = copy.deepcopy(op)
-                    for j,(c,idx_list) in enumerate(group_op.indices):
+                    for j,idx in enumerate(group_op.indices):
+                        c = idx.component
+                        idx_list = idx.indices
                         if c in acc_components and \
                                 lsc_reg_type.data == group_op.reg_types[j]:
-                            group_op.indices[j][1][0] += i
+                            group_op.indices[j].indices[0] += i
 
                     if isinstance(op, (lsc_load,lsc_store)):
                         ca = op.addr_idx.component
@@ -986,7 +995,7 @@ class lsc_specializer:
                                 range(i)],lsc_offset.zero_offset())
 
                         gca = group_op.addr_idx.component
-                        offrange = self.model.ar.offset_ranges[gca][group_op.addr_idx]
+                        offrange = self.model.ar.offset_ranges[gca][group_op.addr_idx.indices[0]]
                         allowed = self.model.ar.toff_in_range(
                             caoff=baseoff,
                             toff=baseoff+addoff,
@@ -995,13 +1004,14 @@ class lsc_specializer:
                             result_ops.append(
                                     lsc_addr_add(
                                         ca,
-                                        op.addr_idx,
+                                        op.addr_idx.indices[0],
                                         addoff,
                                         group_op.t))
                             group_op.off = baseoff
 
                             mod_idx = op.addr_idx
                             def subtract_addoff(op, results):
+                                ca = op.addr_idx.component
                                 if op.addr_idx == mod_idx:
                                     print(f"subtracting {addoff} from {op.off}")
                                     if op.off in self.offset_registry[ca]:
@@ -1183,6 +1193,7 @@ class lsc_specializer:
                 step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
 
                 reg_alias = f"ADDR:{aidx}"
+                print(f"processing {reg_alias}")
                 if reg_alias not in self.rt.aliased_regs['greg']:
                     aregidx = self.rt.reserve_any_reg('greg')
                     self.rt.alias_reg('greg', reg_alias, aregidx)

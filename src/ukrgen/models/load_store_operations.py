@@ -256,6 +256,12 @@ class lsc_transformation(lsc_operation):
                  reads : list[int] = [0,1,2],
                  writes : list[int] = [2]):
 
+        #TODO: This is needed because registers might get replaced (for example by the
+        #      minreguse_scheduler) and we need component assignments to actual data.
+        #      In other I/O ops we can just use component of addr_idx. Possibly come up
+        #      with a better system?
+        self.data_components = [idx.component for idx in res_indices]
+
         opsplit = op.split(":")
         opstr = opsplit[0]
         self.op = opstr

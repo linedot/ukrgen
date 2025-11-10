@@ -127,7 +127,7 @@ class load_store_cpu:
 
         #print(f"cdos for component {component}:")
         #print(f"\t{self.cdos[component]}")
-        #print(f"Updating {component}{res_idx} off to {toff}")
+        #print(f"Updating {component}{res_idx} off to {toff} by loading from {idx} with {off}")
         self.cdos[component][res_idx] = toff
         self.states[component][res_idx] = lsc_state.loaded
 
@@ -233,6 +233,7 @@ class load_store_cpu:
                 #print(f"toff-caoff ={toff-dos[j]}")
                 #print(f"{dos[j].sxv_strides.keys()}")
                 if (toff == dos[j]):
+                    #print(f"ADDR:{component}{j} has target {toff}")
                     res_idx = j
                     break
 
@@ -243,6 +244,7 @@ class load_store_cpu:
                                           % self.res_counts[component]
 
             res_indices[component] = res_idx
+            #print(f"resolving {toff} into ADDR:{component}{res_idx}")
             result.extend(self.resolve_data(t=t,
                                             res_idx=res_idx,
                                             toff=toff,
@@ -411,6 +413,18 @@ class load_store_cpu:
                                             t=t))
                 # Add to tracked offset
                 self.ar.current_offsets[add.component][add.addr_idx] += add.offset
+
+        #def print_cdos(dos):
+        #    for c,do in dos.items():
+        #        print(f"{c}:")
+        #        for idx,off in do.items():
+        #            print(f"  {idx}:{off}")
+        #print("cdos")
+        #print_cdos(self.cdos)
+        #print("initial cdos")
+        #print_cdos(initial_cdos)
+        #print("preload cdos")
+        #print_cdos(preload_dos)
 
         # use the original dos and assign the preloaded data
         self.cdos = copy.deepcopy(initial_cdos)

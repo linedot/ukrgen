@@ -181,6 +181,7 @@ class addr_resolver:
                                   toff=toff,
                                   offset_range=self.offset_ranges[component][best_candidate_idx]):
                 addr_idx_to_use = best_candidate_idx
+                off = toff-offset_min
                 #print(f"will use ADDR:{component}{addr_idx_to_use} (first)")
 
             # check if we can address the data with one of the address registers
@@ -209,6 +210,7 @@ class addr_resolver:
                             caoff=caoff,
                             toff=toff,
                             offset_range=offset_range):
+                        #print(f"Candidate in range of {toff}: ADDR:{component}{addr_list_idx}: {caoff}")
                         addr_idx_to_use = best_candidate_idx
                         off = toff-caoff
                 #else:
