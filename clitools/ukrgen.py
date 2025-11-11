@@ -257,7 +257,7 @@ def parse_inout_args(parser : argparse.ArgumentParser):
     parser.add_argument("--output-filename", type=str, required=True,
                         help="Path to the file to output the generated ASM function to")
     parser.add_argument("--function-name", type=str,
-                        help="Path to the file to output the generated ASM function to")
+                        help="Override the name of the ASM symbol for the kernel function")
 
     args, rest = parser.parse_known_args()
     helpexit_if_last_parser(rest=rest, parser=parser)
