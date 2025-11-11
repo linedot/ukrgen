@@ -26,6 +26,34 @@ class dimension_properties:
         self.sdt = sdt
         self.sd_size = sd_size
 
+def determine_dreg_tag(dima : dimension_properties, dimb : dimension_properties) -> str:
+
+    dreg_tag = 'vreg'
+
+    if dima.dt == dimension_type.vla and \
+       dimb.dt == dimension_type.vla:
+        dreg_tag = 'treg'
+    elif dima.dt == dimension_type.fixed and dima.size > 1 and \
+         dimb.dt == dimension_type.fixed and dimb.size > 1:
+        dreg_tag = 'treg'
+    # TODO: This would for example be SME vector register when
+    #       using widening instructions (dot neighbours + outer product)
+    #       i.e. the vector register stores a matrix, but is not
+    #       a tile register. Make decision and document cleanly
+    #       how we want to handle this
+    #elif dima.dt == dimension_type.vla and \
+    #     dimb.dt == dimension_type.fixed and dimb.size > 1:
+    #    dreg_tag = 'treg'
+    #elif dima.dt == dimension_type.fixed and dima.size > 1 \
+    #     dimb.dt == dimension_type.vla:
+    #    dreg_tag = 'treg'
+    elif dima.dt == dimension_type.fixed and dima.size == 1 and \
+         dimb.dt == dimension_type.fixed and dimb.size == 1:
+        dreg_tag = 'freg'
+    else:
+        dreg_tag = 'vreg'
+
+    return dreg_tag
 
 class tile:
     def __init__(self, 
@@ -39,13 +67,67 @@ class tile:
                  subtile_count_b : int = None,
                  # ND?
                  # subtile_counts : list[int] = None,
-                 stype : storage_type = storage_type.register):
+                 stype : storage_type = storage_type.register,
+                 bands : tuple[int,int] = (-1,-1)):
         self.storage_type = storage_type
         self.dima = dima
         self.dimb = dimb
         self.subtiles = subtiles
         self.subtile_count_a = subtile_count_a
         self.subtile_count_b = subtile_count_b
+        self.bands = bands
+
+    def check_zero(self, idx : tuple[int,int]) -> bool:
+
+        if self.bands[0] != -1 and idx[0] > (idx[1] + self.bands[0]):
+            return True
+        if self.bands[1] != -1 and idx[1] > (idx[0] + self.bands[1]):
+            return True
+
+        return False
+
+
+    @property
+    def is_scalar(self) -> bool:
+        return self.dima.dt == dimension_type.fixed and \
+               self.dima.size == 1 and \
+               self.dimb.dt == dimension_type.fixed and \
+               self.dimb.size == 1
+
+    @property
+    def is_vla_vector(self) -> bool:
+
+        return (self.dima.dt == dimension_type.vla and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.fixed and \
+                self.dimb.size == 1) or \
+               (self.dima.dt == dimension_type.fixed and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.vla and \
+                self.dimb.size == 1)
+
+    @property
+    def is_fixed_vector(self) -> bool:
+
+        return (self.dima.dt == dimension_type.fixed and \
+                self.dimb.dt == dimension_type.fixed) and \
+               ((self.dima.size == 1) != \
+                (self.dimb.size == 1))
+
+    @property
+    def is_vla_tile(self) -> bool:
+        return (self.dima.dt == dimension_type.vla and \
+                self.dima.size == 1 and \
+                self.dimb.dt == dimension_type.vla and \
+                self.dimb.size == 1)
+
+    def __str__(self):
+        sdt = lambda dt : "V" if dt==dimension_type.vla else ""
+
+        return f"{self.dima.size}{sdt(self.dima.dt)}X{self.dimb.size}{sdt(self.dimb.dt)}"
+
+    def __repr__(self):
+        return self.__str__()
 
 
 
@@ -68,7 +150,8 @@ class simple_ukr_tile(tile):
     def __init__(self, 
                  a_size : int,
                  b_size : int,
-                 subdims : tuple[dimension_properties,dimension_properties]):
+                 subdims : tuple[dimension_properties,dimension_properties],
+                 bands : tuple[int,int] = (-1,-1)):
 
         dima = dimension_properties(dt=dimension_type.fixed,
                                     size=a_size,
@@ -84,7 +167,8 @@ class simple_ukr_tile(tile):
                 subtiles = [tile(dima=subdims[0],dimb=subdims[1])],
                 subtile_count_a = 1,
                 subtile_count_b = 1,
-                stype = storage_type.register)
+                stype = storage_type.register,
+                bands = bands)
 
 class composed_ukr_tile(tile):
     def __init__(self, 

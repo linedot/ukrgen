@@ -21,13 +21,13 @@ class lsc_treg_row_extract(lsc_operation):
     def __init__(self,
                  treg_tile : tile,
                  vreg_tile : tile,
-                 rtype_idx : int,
+                 component : str,
                  treg_id : int,
                  vreg_id : int
                  ):
 
         tiles = [treg_tile, vreg_tile]
-        indices = [[rtype_idx,treg_id], [rtype_idx,vreg_id]]
+        indices = [(component,[treg_id]), (component,[vreg_id])]
         reg_types = [lsc_reg_type.data, lsc_reg_type.data]
         reads = [0]
         writes = [1]
@@ -45,7 +45,7 @@ class lsc_treg_rc_ldst(lsc_operation):
         return self.indices[0][1]
 
     @property
-    def rtype_idx(self):
+    def component(self):
         return self.indices[0][0]
 
     @property
@@ -55,7 +55,7 @@ class lsc_treg_rc_ldst(lsc_operation):
 class lsc_treg_row_store(lsc_treg_rc_ldst):
     def __init__(self,
                  treg_slice_tile : tile,
-                 rtype_idx : int,
+                 component : str,
                  addr_idx : int,
                  treg_id : int,
                  aoff : int,
@@ -66,7 +66,7 @@ class lsc_treg_row_store(lsc_treg_rc_ldst):
         self.roff = roff
 
         tiles = [scalar_tile, treg_slice_tile]
-        indices = [[rtype_idx,addr_idx], [rtype_idx,treg_id]]
+        indices = [(component,[addr_idx]), (component,[treg_id])]
         reg_types = [lsc_reg_type.address, lsc_reg_type.data]
         reads = [0,1]
         writes = []
@@ -75,26 +75,24 @@ class lsc_treg_row_store(lsc_treg_rc_ldst):
                          reg_types=reg_types)
 
     def __str__(self):
-        reg_chars = ['a','b','c']
-        i = self.rtype_idx
         vladims = min(1,sum([1 if (d.dt == dimension_type.vla) else 0 for d in [self.t.dima,self.t.dimb] ]))
         vlenstr = ""
         if 0 < vladims:
             vlenstr = "*VLEN"*vladims
-        return f"{reg_chars[i]}a{self.addr_idx} + {self.aoff}{vlenstr} <- STORE {reg_chars[i]}{self.res_idx}.row[{self.roff}]"
+        return f"{self.component}a{self.addr_idx} + {self.aoff}{vlenstr} <- STORE {self.component}{self.res_idx}.row[{self.roff}]"
 
 
 class lsc_treg_row_insert(lsc_operation):
     def __init__(self,
                  treg_tile : tile,
                  vreg_tile : tile,
-                 rtype_idx : int,
+                 component : str,
                  treg_id : int,
                  vreg_id : int
                  ):
 
         tiles = [treg_tile, vreg_tile]
-        indices = [[rtype_idx,treg_id], [rtype_idx,vreg_id]]
+        indices = [(component,[treg_id]), (component,[vreg_id])]
         reg_types = [lsc_reg_type.data, lsc_reg_type.data]
         reads = [1]
         writes = [0]
@@ -105,7 +103,7 @@ class lsc_treg_row_insert(lsc_operation):
 class lsc_treg_row_load(lsc_treg_rc_ldst):
     def __init__(self,
                  treg_slice_tile : tile,
-                 rtype_idx : int,
+                 component : str,
                  addr_idx : int,
                  treg_id : int,
                  aoff : int,
@@ -116,7 +114,7 @@ class lsc_treg_row_load(lsc_treg_rc_ldst):
         self.roff = roff
 
         tiles = [scalar_tile, treg_slice_tile]
-        indices = [[rtype_idx,addr_idx], [rtype_idx,treg_id]]
+        indices = [(component,[addr_idx]), (component,[treg_id])]
         reg_types = [lsc_reg_type.address, lsc_reg_type.data]
         reads  = [0]
         writes = [1]
@@ -134,10 +132,10 @@ class special_treg_ldst:
         for read_idx in op.reads:
             if lsc_reg_type.data != op.reg_types[read_idx]:
                 continue
-            rtype_idx = op.indices[read_idx][0]
+            component = op.indices[read_idx][0]
             res_idx = op.indices[read_idx]
             for op in self.load_queue:
-                if op.rtype_idx == rtype_idx and \
+                if op.component == component and \
                    op.res_idx == res_idx:
                     return True
         return False
@@ -146,10 +144,10 @@ class special_treg_ldst:
         for write_idx in op.writes:
             if lsc_reg_type.data != op.reg_types[write_idx]:
                 continue
-            rtype_idx = op.indices[write_idx][0]
+            component = op.indices[write_idx][0]
             res_idx = op.indices[write_idx]
             for op in self.load_queue:
-                if op.rtype_idx == rtype_idx and \
+                if op.component == component and \
                    op.res_idx == res_idx:
                     return True
         return False
@@ -168,7 +166,7 @@ class special_treg_ldst:
         for i in range(rows_per_iter):
             self.load_queue.append(
                     lsc_treg_row_load(treg_slice_tile=slice_tile,
-                                      rtype_idx=op.rtype_idx,
+                                      component=op.component,
                                       addr_idx=op.addr_idx,
                                       treg_id=op.res_idx,
                                       aoff=i+op.off*rows_per_iter,
@@ -181,7 +179,7 @@ class special_treg_ldst:
         for i in range(rows_per_iter):
             self.store_queue.append(
                     lsc_treg_row_store(treg_slice_tile=slice_tile,
-                                      rtype_idx=op.rtype_idx,
+                                      component=op.component,
                                       addr_idx=op.addr_idx,
                                       treg_id=op.res_idx,
                                       aoff=i+op.off*rows_per_iter,
