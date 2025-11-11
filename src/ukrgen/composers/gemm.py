@@ -11,9 +11,8 @@ class gemm_context:
         self.specializer : lsc_specializer = None
         self.op_support_list : list[op_support] = list()
         self.sup : op_support = None
+        self.needs_unvec : bool = False
 
 
 class blis_composer:
-
-
     pass
