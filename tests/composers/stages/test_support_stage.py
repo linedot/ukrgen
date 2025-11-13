@@ -6,7 +6,9 @@
 
 import unittest
 
+from ukrgen.composers.stages.composition import composition_stage
 from ukrgen.composers.stages.support import support_stage
+from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.composers.gemm import gemm_context
 
@@ -15,10 +17,22 @@ class test_support_stage(unittest.TestCase):
 
         ukr_ctx = gemm_context()
 
-        stage = support_stage(context=ukr_ctx)
+        params = {
+            "isa" : "rvv",
+            "op" : "fma"
+        }
 
-        stage.set_param("isa", "rvv")
-        stage.set_param("op", "fma")
+        def get_param(stage: composition_stage, name : str) -> str:
+            if name in params:
+                return params[name]
+            else:
+                return stage.get_default_value(name)
 
-        stage.progress()
+        stages = [support_stage]
+
+        se = stage_engine(stages=stages,
+                          ctx=ukr_ctx,
+                          get_param_callback=get_param)
+
+        se.run()
 

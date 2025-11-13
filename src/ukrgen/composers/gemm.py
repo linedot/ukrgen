@@ -3,6 +3,9 @@ from asmgen.registers import asm_data_type as adt
 from ..specializers.asm import lsc_specializer,op_support
 
 
+from ..generators.mm import mm_op
+
+
 class gemm_context:
     def __init__(self):
         self.gen : asmgen = None
@@ -11,7 +14,8 @@ class gemm_context:
         self.specializer : lsc_specializer = None
         self.op_support_list : list[op_support] = list()
         self.sup : op_support = None
-        self.needs_unvec : bool = False
+
+        self.tifs : dict[str,list[mm_op]] = dict()
 
 
 class blis_composer:

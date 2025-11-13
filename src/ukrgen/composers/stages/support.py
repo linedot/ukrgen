@@ -70,3 +70,5 @@ class support_stage(composition_stage):
                 model=None,
                 gen=self.context.gen,
                 rt=self.context.rt)
+
+        return []

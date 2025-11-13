@@ -2,6 +2,8 @@ from asmgen.registers import asm_data_type as adt
 
 from .composition import composition_stage
 
+from .variant import variant_stage
+
 from ..gemm import gemm_context
 
 
@@ -41,7 +43,7 @@ class datatype_stage(composition_stage):
             self.choices[name]        = component_choices[c]
 
 
-    def progress(self):
+    def progress(self) -> list[composition_stage]:
 
         self.context.component_types = {
             k : adt[self.params[f"{k}-data-type"]] for k in self.component_list
@@ -63,3 +65,8 @@ class datatype_stage(composition_stage):
 
         self.context.op_support_list = self.op_support_list
         self.context.params.update(self.params)
+
+        if len(self.op_support_list) > 1:
+            return [variant_stage]
+        else:
+            return list()

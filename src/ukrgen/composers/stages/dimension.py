@@ -1,4 +1,6 @@
 from .composition import composition_stage
+from .unvec import unvec_stage
+
 from ..gemm import gemm_context
 
 from ...specializers.asm import op_support
@@ -20,13 +22,7 @@ class dimension_stage(composition_stage):
         self.default_values["order"] = "mnkMNK"
         self.choices["order"] = None
 
-    def progress(self):
-        # Do we need to unvec?
-        if self.context.params["op"] == "fma" and \
-                self.context.sup.b_tile.is_vector and \
-                self.context.sup.a_tile.is_vector:
-
-            self.context.needs_unvec = True
+    def progress(self) -> list[composition_stage]:
 
         self.context.params["ma"] = self.params["m"]
         self.context.params["mc"] = self.params["m"]
@@ -35,3 +31,12 @@ class dimension_stage(composition_stage):
 
 
         self.context.params.update(self.params)
+
+        # Do we need to unvec?
+        if self.context.params["op"] == "fma" and \
+                self.context.sup.b_tile.is_vector and \
+                self.context.sup.a_tile.is_vector:
+
+            return [unvec_stage]
+        else:
+            return list()

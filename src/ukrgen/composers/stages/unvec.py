@@ -11,7 +11,7 @@ class unvec_stage(composition_stage):
         self.default_values["unvec-method"] = "load_bcast"
         self.choices["unvec-method"] = ["load_bcast","lane_select","lane_bcast"]
 
-    def progress(self):
+    def progress(self) -> list[composition_stage]:
 
         if self.context.params["vecdir"] == "M":
             modified_tile = self.context.sup.b_tile
@@ -47,3 +47,5 @@ class unvec_stage(composition_stage):
         elif self.context.params["vecdir"] == "N":
             self.context.sup.a_tile = modified_tile
             self.context.params["ma"] = mod_dim
+
+        return list()

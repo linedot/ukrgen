@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from ..gemm import gemm_context
 
 class composition_stage:
@@ -23,5 +25,5 @@ class composition_stage:
     def get_param(self, name : str):
         return self.params[name]
 
-    def progress(self):
+    def progress(self) -> list[composition_stage]:
         pass
