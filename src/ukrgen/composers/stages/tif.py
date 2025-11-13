@@ -69,7 +69,9 @@ class mm_tif_stage(composition_stage):
             self.context.tifs["betascale"] = genbetascale.generate()
             self.context.tifs["alphascale"] = genalphascale.generate()
 
-        self.context.tifs["mm"] = genmm.generate()
+        self.context.tifs["mm"]     = genmm.generate()
+        self.context.tifs["mm_p1k"] = genmm.generate(add_dims=[0,0,0,0,0,k])
+        self.context.tifs["mm_p2k"] = genmm.generate(add_dims=[0,0,0,0,0,2*k])
 
         self.context.params.update(self.params)
 

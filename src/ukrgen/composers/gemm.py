@@ -6,22 +6,26 @@
 
 from dataclasses import dataclass
 from asmgen.registers import asm_data_type as adt
+from ..models.load_store_cpu import load_store_cpu
+from ..models.load_store_operations import lsc_operation
+from ..models.offset_mapper import offset_mapper
 from ..specializers.asm import lsc_specializer,op_support
-
-
 from ..generators.mm import mm_op
 
 
 class gemm_context:
     def __init__(self):
-        self.gen : asmgen = None
-        self.rt : register_tracker = None
-        self.params : dict[str,str] = dict()
-        self.specializer : lsc_specializer = None
+        self.gen             : asmgen = None
+        self.rt              : register_tracker = None
+        self.params          : dict[str,str] = dict()
+        self.model           : load_store_cpu = None
+        self.specializer     : lsc_specializer = None
         self.op_support_list : list[op_support] = list()
-        self.sup : op_support = None
+        self.sup             : op_support = None
+        self.mappers         : dict[str,offset_mapper] = dict()
 
-        self.tifs : dict[str,list[mm_op]] = dict()
+        self.tifs            : dict[str,list[mm_op]] = dict()
+        self.irs             : dict[str,list[lsc_operation]] = dict()
 
 
 class blis_composer:

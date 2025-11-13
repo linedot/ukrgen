@@ -36,6 +36,13 @@ asmgen_map = {
     'sme'    : 'sme',
 }
 
+def get_ukr_components(ukr : str) -> list[str]:
+    if "gemm" == ukr:
+        return ["A","B","AB","C"]
+    if "mm" == ukr:
+        return ["A","B","C"]
+
+    raise ValueError(f"Invalid microkernel {ukr}")
 
 class support_stage(composition_stage):
     def __init__(self, context : gemm_context):
@@ -70,11 +77,12 @@ class support_stage(composition_stage):
             ('vreg',self.context.gen.max_vregs),
             ('treg',self.context.gen.max_tregs(adt.FP64))])
 
-        self.context.params.update(self.params)
+        self.context.ukr_components = get_ukr_components(self.params["ukr"])
 
         self.context.specializer = lsc_specializer(
                 model=None,
                 gen=self.context.gen,
                 rt=self.context.rt)
 
+        self.context.params.update(self.params)
         return []
