@@ -61,3 +61,10 @@ class test_model_stage(unittest.TestCase):
                           get_param_callback=get_param)
 
         se.run()
+
+
+        self.assertIn("preload", ukr_ctx.irs)
+        self.assertIn("main", ukr_ctx.irs)
+        self.assertIn("preload_next", ukr_ctx.irs)
+        self.assertIn("betascale", ukr_ctx.irs)
+        self.assertIn("alphascale", ukr_ctx.irs)
