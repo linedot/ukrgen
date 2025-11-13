@@ -53,4 +53,6 @@ class unvec_stage(composition_stage):
             self.context.sup.a_tile = modified_tile
             self.context.params["ma"] = mod_dim
 
+        self.context.params.update(self.params)
+
         return list()

@@ -7,6 +7,7 @@
 from copy import deepcopy
 
 from .composition import composition_stage
+from .irmod import unvec_lsc_stage
 from ..gemm import gemm_context
 from ...components.tile import dimension_properties,dimension_type,scalar_tile
 from ...models.offset_mapper import strided_mapper,same_address_mapper
@@ -229,5 +230,9 @@ class lsc_model_stage(composition_stage):
 
         self.context.irs["store"] = self.context.model.store_modified(ignore_components="AB")
 
+        self.context.params.update(self.params)
+
+        if "unvec-method" in self.context.params:
+            return [unvec_lsc_stage]
 
         return list()
