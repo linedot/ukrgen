@@ -44,6 +44,20 @@ def get_ukr_components(ukr : str) -> list[str]:
 
     raise ValueError(f"Invalid microkernel {ukr}")
 
+def get_ukr_mru_map(ukr : str) -> list[str]:
+    if "gemm" == ukr:
+        return { "store" : (
+            ["preload","main","preload_next"],
+            ["betascale","alphascale","store"])
+        }
+    if "mm" == ukr:
+        return { "store" : (
+            ["preload","main","preload_next"],
+            ["store"])
+        }
+
+    raise ValueError(f"Invalid microkernel {ukr}")
+
 class support_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
@@ -78,6 +92,8 @@ class support_stage(composition_stage):
             ('treg',self.context.gen.max_tregs(adt.FP64))])
 
         self.context.ukr_components = get_ukr_components(self.params["ukr"])
+
+        self.context.mru_map = get_ukr_mru_map(self.params["ukr"])
 
         self.context.specializer = lsc_specializer(
                 model=None,
