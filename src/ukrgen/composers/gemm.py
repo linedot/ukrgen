@@ -21,6 +21,7 @@ class gemm_context:
         self.model           : load_store_cpu = None
         self.specializer     : lsc_specializer = None
         self.op_support_list : list[op_support] = list()
+        self.component_dts   : dict[str,adt] = dict()
         self.sup             : op_support = None
         self.mappers         : dict[str,offset_mapper] = dict()
 

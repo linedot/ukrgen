@@ -5,3 +5,4 @@ from .test_dimension_stage import *
 from .test_unvec_stage import *
 from .test_tif_stage import *
 from .test_model_stage import *
+from .test_specialize_stage import *

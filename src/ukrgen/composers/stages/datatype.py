@@ -64,6 +64,15 @@ class datatype_stage(composition_stage):
                  cts["C"] == sup.triple.c)
                 ]
 
+        self.context.component_dts = {
+            "A" : adt[self.params["AB-data-type"]],
+            "B" : adt[self.params["AB-data-type"]],
+            "AB" : adt[self.params["C-data-type"]],
+            "C" : adt[self.params["C-data-type"]],
+            "alpha" : adt[self.params["C-data-type"]],
+            "beta" : adt[self.params["C-data-type"]]
+        }
+
         if len(self.op_support_list) == 1:
             self.context.sup = self.op_support_list[0]
         elif len(self.op_support_list) == 0:
