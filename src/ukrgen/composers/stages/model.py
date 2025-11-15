@@ -109,6 +109,8 @@ class lsc_model_stage(composition_stage):
         if "gemm" == self.context.params["ukr"]:
             self.context.mappers['AB'] = strided_mapper((m,n), strides['AB'],vecdim=0)
 
+        self.context.strides = strides
+
         scalar_mapper = same_address_mapper()
 
         self.context.mappers['beta'] = scalar_mapper

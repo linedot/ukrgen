@@ -1133,7 +1133,7 @@ class lsc_specializer:
                 sos = self.model.ar.starting_offsets[component]
                 step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
                 self.register_offset(component=component, off=step)
-                print(f"calculated {step} for {component}")
+                #print(f"calculated {step} for {component}")
 
 
         # reserve offset registers
@@ -1193,7 +1193,7 @@ class lsc_specializer:
                 step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
 
                 reg_alias = f"ADDR:{aidx}"
-                print(f"processing {reg_alias}")
+                #print(f"processing {reg_alias}")
                 if reg_alias not in self.rt.aliased_regs['greg']:
                     aregidx = self.rt.reserve_any_reg('greg')
                     self.rt.alias_reg('greg', reg_alias, aregidx)

@@ -44,7 +44,7 @@ def get_ukr_components(ukr : str) -> list[str]:
 
     raise ValueError(f"Invalid microkernel {ukr}")
 
-def get_ukr_mru_map(ukr : str) -> list[str]:
+def get_ukr_mru_map(ukr : str) -> dict[str,tuple[list[str],list[str]]]:
     if "gemm" == ukr:
         return { "store" : (
             ["preload","main","preload_next"],
@@ -58,7 +58,7 @@ def get_ukr_mru_map(ukr : str) -> list[str]:
 
     raise ValueError(f"Invalid microkernel {ukr}")
 
-def get_ukr_sched_map(ukr : str) -> list[str]:
+def get_ukr_sched_map(ukr : str) -> dict[str,tuple[list[str],bool]]:
     if ukr in ["gemm","mm"]:
         return { 
             "preload" : (["preload"],False),
@@ -66,6 +66,12 @@ def get_ukr_sched_map(ukr : str) -> list[str]:
             "lastiter" : (["main"],False),
             #"store" : (["store"],False) # Don't reschedule store for now (it will fail)
         }
+
+    raise ValueError(f"Invalid microkernel {ukr}")
+
+def get_ukr_specialization_order(ukr : str) -> list[str]:
+    if ukr in ["gemm","mm"]:
+        return ["preload","main","lastiter","store"]
 
     raise ValueError(f"Invalid microkernel {ukr}")
 
@@ -105,6 +111,7 @@ class support_stage(composition_stage):
         self.context.ukr_components = get_ukr_components(self.params["ukr"])
         self.context.mru_map = get_ukr_mru_map(self.params["ukr"])
         self.context.sched_map = get_ukr_sched_map(self.params["ukr"])
+        self.context.specialization_order = get_ukr_specialization_order(self.params["ukr"])
 
         self.context.specializer = lsc_specializer(
                 model=None,

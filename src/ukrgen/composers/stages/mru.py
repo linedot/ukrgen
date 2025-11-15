@@ -16,7 +16,7 @@ class lsc_mru_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
-        self.debug = logging.getLogger("LSC").debug
+        self.debug = logging.getLogger("MRU").debug
 
 
     def progress(self) -> list[composition_stage]:
