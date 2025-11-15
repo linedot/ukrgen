@@ -14,13 +14,14 @@ from ukrgen.composers.stages.tif import mm_tif_stage
 from ukrgen.composers.stages.model import lsc_model_stage
 from ukrgen.composers.stages.specialize import specialize_lsc_stage
 from ukrgen.composers.stages.mru import lsc_mru_stage
+from ukrgen.composers.stages.schedule import lsc_schedule_stage
 
 from ukrgen.composers.gemm import gemm_context
 from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.components.tile import scalar_dp,vla_vector
 
-class test_mru_stage(unittest.TestCase):
+class test_schedule_stage(unittest.TestCase):
     def test_rvv_fma(self):        
 
         ukr_ctx = gemm_context()
@@ -58,7 +59,8 @@ class test_mru_stage(unittest.TestCase):
             mm_tif_stage,
             lsc_model_stage,
             specialize_lsc_stage,
-            lsc_mru_stage]
+            lsc_mru_stage,
+            lsc_schedule_stage]
 
         se = stage_engine(stages=stages,
                           ctx=ukr_ctx,
@@ -66,8 +68,7 @@ class test_mru_stage(unittest.TestCase):
 
         se.run()
 
-
         self.assertIn("preload", ukr_ctx.irs)
         self.assertIn("main", ukr_ctx.irs)
-        self.assertIn("preload_next", ukr_ctx.irs)
         self.assertIn("store", ukr_ctx.irs)
+

@@ -46,9 +46,6 @@ class lsc_mru_stage(composition_stage):
             self.debug(f"################### MRU {dst.upper()} RENAMED PSEUDO-ASM ###################")
             self.debug("\n".join(map(str,src_rep)))
 
-            for bname in targets:
-                del self.context.irs[bname]
-
             self.context.irs[dst] = src_rep
 
         

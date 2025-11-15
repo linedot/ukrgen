@@ -25,6 +25,7 @@ class gemm_context:
         self.sup             : op_support = None
         self.mappers         : dict[str,offset_mapper] = dict()
         self.mru_map         : dict[str,tuple[list[str],list[str]]] = dict()
+        self.sched_map       : dict[str,tuple[list[str],bool]] = dict()
 
         self.tifs            : dict[str,list[mm_op]] = dict()
         self.irs             : dict[str,list[lsc_operation]] = dict()
