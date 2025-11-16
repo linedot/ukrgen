@@ -21,8 +21,6 @@ from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
 from ukrgen.composers.gemm import gemm_context
 from ukrgen.composers.stage_engine import stage_engine
 
-from ukrgen.components.tile import scalar_dp,vla_vector
-
 class test_codegen_stage(unittest.TestCase):
     def test_rvv_fma(self):
 
