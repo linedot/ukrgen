@@ -823,7 +823,7 @@ class lsc_specializer:
                 addoff = sum([deepcopy(multoff) for j in \
                         range(ways-1)], lsc_offset.zero_offset())
 
-                print(f"widening {op.off} by adding {addoff}")
+                #print(f"widening {op.off} by adding {addoff}")
                 if component in self.offset_registry:
                     if op.off in self.offset_registry[component]:
                         self.offset_registry[component].remove(op.off)
@@ -1013,7 +1013,7 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 ca = op.addr_idx.component
                                 if op.addr_idx == mod_idx:
-                                    print(f"subtracting {addoff} from {op.off}")
+                                    #print(f"subtracting {addoff} from {op.off}")
                                     if op.off in self.offset_registry[ca]:
                                         self.offset_registry[ca].remove(op.off)
                                     op.off -= addoff

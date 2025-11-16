@@ -14,11 +14,16 @@ class variant_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
+        indices = list(range(len(context.op_support_list)))
+        suplist = context.op_support_list
+
+        opsupblock = "; ".join([f"{i} ==> \n{suplist[i]}" for i in indices])
 
         self.params["variant"] = stage_param(
-                value=0, description=0,
-                default=0,
-                choices=list(range(len(context.op_support_list))),
+                value="0", 
+                description=f"Variant of the supported instruction. {opsupblock}",
+                default="0",
+                choices=[str(i) for i in indices],
                 required=False)
 
     def progress(self) -> list[composition_stage]:

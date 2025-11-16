@@ -29,10 +29,10 @@ class lsc_schedule_stage(composition_stage):
     def progress(self) -> list[composition_stage]:
 
         scheduler = simple_dependency_scheduler(
-                rar=self.params["sched-rar-distance"].value,
-                raw=self.params["sched-raw-distance"].value,
-                war=self.params["sched-war-distance"].value,
-                waw=self.params["sched-waw-distance"].value,
+                rar=int(self.params["sched-rar-distance"].value),
+                raw=int(self.params["sched-raw-distance"].value),
+                war=int(self.params["sched-war-distance"].value),
+                waw=int(self.params["sched-waw-distance"].value),
                 debug_on=False)
 
 

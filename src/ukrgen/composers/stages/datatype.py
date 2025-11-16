@@ -13,6 +13,18 @@ from ..gemm import gemm_context
 from ..stage_param import stage_param
 
 
+def extend_adtstr_list(initial_list : list[str]):
+    initial_list=list(set(initial_list))
+
+    vs = [adt[c] for c in initial_list]
+    for k,v in adt.__members__.items():
+        kstripped = k.replace("asm_data_type.","")
+        if kstripped not in initial_list and v in vs:
+            initial_list.append(kstripped)
+    vs = [adt[c].value for c in initial_list]
+
+    return [c for _,c in sorted(zip(vs,initial_list))]
+
 class datatype_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
@@ -31,9 +43,13 @@ class datatype_stage(composition_stage):
         for sup in context.specializer.op_support_map[op]:
             narrow_choices.append(str(sup.triple.a).replace("asm_data_type.",""))
 
+        narrow_choices = extend_adtstr_list(narrow_choices)
+
         wide_choices = []
         for sup in context.specializer.op_support_map[op]:
             wide_choices.append(str(sup.triple.c).replace("asm_data_type.",""))
+
+        wide_choices = extend_adtstr_list(wide_choices)
 
         component_choices = {
             "AB" : list(set(narrow_choices)),
@@ -47,7 +63,7 @@ class datatype_stage(composition_stage):
 
             self.params[name] = stage_param(
                     value=None,
-                    description="Data type for component {c}",
+                    description=f"Data type for component {c}",
                     choices=component_choices[c],
                     required=True
                     )

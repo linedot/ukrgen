@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import logging
 from copy import deepcopy
 
 from .composition import composition_stage
@@ -26,6 +27,7 @@ class lsc_model_stage(composition_stage):
         if context.params["ukr"].value == "gemm":
             components = ["A", "B", "AB", "C"]
         
+        self.debug = logging.getLogger("LSC").debug
 
         # NOTE: On the other hand columns and rows are kind of matmul-specific...
         for cr in ["column","row"]:
@@ -54,20 +56,23 @@ class lsc_model_stage(composition_stage):
             self.params[f"{c}-addr-regs"] = stage_param(
                     value=1, 
                     description=f"Number of address register to use for component {c}",
-                    default=1)
+                    default=1,
+                    required=False)
 
             self.params[f"{c}-multiaddr-strat"] = stage_param(
                     value=default_mars[c], 
                     description=f"Strategy for using multiple address registers for component {c}",
                     default=default_mars[c],
-                    choices=multiareg_strategies)
+                    choices=multiareg_strategies,
+                    required=False)
 
 
             if c in ["A","B"]:
                 self.params[f"{c}-preload"] = stage_param(
                         value=0, 
                         description=f"How many registers for {c} data to preload before the main loop",
-                        default=0)
+                        default=0,
+                        required=False)
 
     def progress(self) -> list[composition_stage]:
         components = self.context.ukr_components
@@ -89,9 +94,9 @@ class lsc_model_stage(composition_stage):
             addr_reg_counts["alpha"] = 1
             addr_reg_counts["beta"] = 1
 
-        m = self.context.params["m"].value
-        n = self.context.params["n"].value
-        k = self.context.params["k"].value
+        m = int(self.context.params["m"].value)
+        n = int(self.context.params["n"].value)
+        k = int(self.context.params["k"].value)
 
         strides = {c : (None,None) for c in components}
         i = 0
@@ -99,12 +104,12 @@ class lsc_model_stage(composition_stage):
             comp_slist = [None,None]
             if self.params["row-strides"].value:
                 if char in self.params["row-strides"].value:
-                    stridelog.debug(f"Component {char} has row stride")
+                    self.debug(f"Component {char} has row stride")
                     comp_slist[0] = i
                     i+= 1
             if self.params["column-strides"].value:
                 if char in self.params["column-strides"].value:
-                    stridelog.debug(f"Component {char} has col stride")
+                    self.debug(f"Component {char} has col stride")
                     comp_slist[1] = i
                     i+= 1
 
@@ -187,10 +192,10 @@ class lsc_model_stage(composition_stage):
         #TODO: investigate if there are architectures where this is relevant
         res_steps = {c:1 for c in components}
 
-        preload_counts = {c : self.params[f"{c}-preload"].value for c in ["A","B"]}
-        preload_counts["C"] = self.params[f"C-data-regs"].value
+        preload_counts = {c : int(self.params[f"{c}-preload"].value) for c in ["A","B"]}
+        preload_counts["C"] = int(self.params[f"C-data-regs"].value)
         if "gemm" == self.context.params["ukr"].value:
-            preload_counts["AB"] = self.params[f"C-data-regs"].value
+            preload_counts["AB"] = int(self.params[f"C-data-regs"].value)
             preload_counts["beta"] = 0
             preload_counts["alpha"] = 0
             res_steps["alpha"] = 1

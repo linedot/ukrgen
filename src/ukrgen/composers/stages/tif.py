@@ -22,11 +22,11 @@ class mm_tif_stage(composition_stage):
 
         sup = context.sup
 
-        ma = context.params["ma"].value
-        nb = context.params["nb"].value
-        mc = context.params["mc"].value
-        nc = context.params["nc"].value
-        k = context.params["k"].value
+        ma = int(context.params["ma"].value)
+        nb = int(context.params["nb"].value)
+        mc = int(context.params["mc"].value)
+        nc = int(context.params["nc"].value)
+        k  = int(context.params["k"].value)
 
         self.a_tile = simple_ukr_tile(
                 a_size=ma, b_size=k,
@@ -41,9 +41,9 @@ class mm_tif_stage(composition_stage):
     def progress(self):
 
         order = order2D(self.context.params["order"].value)
-        m = self.context.params["m"].value
-        n = self.context.params["n"].value
-        k = self.context.params["k"].value
+        m = int(self.context.params["m"].value)
+        n = int(self.context.params["n"].value)
+        k = int(self.context.params["k"].value)
         sup = self.context.sup
 
         if "mm" == self.context.params["ukr"].value:

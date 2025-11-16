@@ -27,13 +27,15 @@ class dimension_stage(composition_stage):
                 value="M",
                 default="M",
                 description="Microkernel dimension along which to vectorize",
-                choices=["M","N"]
+                choices=["M","N"],
+                required=False
                 )
 
         self.params["order"] = stage_param(
                 value="mnkMNK",
                 default="mnkMNK",
-                description="Order in which to tile the kernel"
+                description="Order in which to tile the kernel",
+                required=False
                 )
 
     def progress(self) -> list[composition_stage]:
