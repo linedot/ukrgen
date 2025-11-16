@@ -16,11 +16,13 @@ from .gemm import gemm_context
 class stage_engine:
     def __init__(self, stages : list[Type[composition_stage]],
                  ctx : gemm_context,
-                 get_param_callback : Callable[[composition_stage,str],str]):
+                 prolog : Callable[[composition_stage],None] = lambda s : None,
+                 epilog : Callable[[composition_stage],None] = lambda s : None):
 
         self.stages = stages
         self.ctx = ctx
-        self.get_param_callback = get_param_callback
+        self.prolog = prolog
+        self.epilog = epilog
 
 
     def run(self):
@@ -29,14 +31,14 @@ class stage_engine:
             while stage_deque:
                 ctr = stage_deque.popleft()
                 stage  = ctr(context=self.ctx)
-                for param in stage.get_parameter_names():
-                    val = None
-                    if param not in self.ctx.params:
-                        val = self.get_param_callback(stage,param)
-                    else:
-                        val = self.ctx.params[param]
-                    stage.set_param(param, val)
+
+                self.prolog(stage)
+
+                # check parameters
+                for pname in stage.get_parameter_names():
+                    if stage.params[pname].value is None and \
+                            stage.params[pname].required:
+                        raise ValueError(f"Parameter {pname} is required!")
 
                 stage_deque.extend(stage.progress())
-            
-
+                self.epilog(stage)

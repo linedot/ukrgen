@@ -15,6 +15,8 @@ from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.components.tile import scalar_dp,vla_vector
 
+from .inject_params import inject_params
+
 class test_variant_stage(unittest.TestCase):
     def test_rvv_fma(self):        
 
@@ -28,17 +30,11 @@ class test_variant_stage(unittest.TestCase):
             "variant" : 1
         }
 
-        def get_param(stage: composition_stage, name : str) -> str:
-            if name in params:
-                return params[name]
-            else:
-                return stage.get_default_value(name)
-
         stages = [support_stage,datatype_stage]
 
         se = stage_engine(stages=stages,
                           ctx=ukr_ctx,
-                          get_param_callback=get_param)
+                          prolog=lambda s : inject_params(s, params))
 
         se.run()
 

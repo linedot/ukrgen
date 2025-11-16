@@ -49,7 +49,7 @@ class specialize_lsc_stage(composition_stage):
         self.debug("PRELOAD NEXT ----------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
         self.debug("END MAIN LOOP ---------------------------")
-        if "gemm" == self.context.params["ukr"]:
+        if "gemm" == self.context.params["ukr"].value:
             self.debug("BETASCALE BLOCK -------------------------")
             self.debug("\n".join(map(str,self.context.irs["betascale"])))
             self.debug("END BETASCALE BLOCK ---------------------")

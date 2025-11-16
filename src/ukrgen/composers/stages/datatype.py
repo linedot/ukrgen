@@ -7,10 +7,10 @@
 from asmgen.registers import asm_data_type as adt
 
 from .composition import composition_stage
-
 from .variant import variant_stage
 
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 
 
 class datatype_stage(composition_stage):
@@ -20,13 +20,13 @@ class datatype_stage(composition_stage):
         component_list = []
         # TODO: There probably should be a different datatype stage for
         #       every kernel
-        if "gemm" == context.params["ukr"]:
+        if "gemm" == context.params["ukr"].value:
             # Same component for A and B
             component_list = ["AB","C"]
 
         self.component_list = component_list
 
-        op = context.params["op"]
+        op = context.params["op"].value
         narrow_choices = []
         for sup in context.specializer.op_support_map[op]:
             narrow_choices.append(str(sup.triple.a).replace("asm_data_type.",""))
@@ -44,18 +44,23 @@ class datatype_stage(composition_stage):
             if not component_choices[c]:
                 raise ValueError(f"No datatype choices for component {c}")
             name = f"{c}-data-type"
-            self.params[name]         = component_choices[c][0]
-            self.default_values[name] = component_choices[c][0]
-            self.choices[name]        = component_choices[c]
+
+            self.params[name] = stage_param(
+                    value=None,
+                    description="Data type for component {c}",
+                    choices=component_choices[c],
+                    required=True
+                    )
 
 
     def progress(self) -> list[composition_stage]:
 
         self.context.component_types = {
-            k : adt[self.params[f"{k}-data-type"]] for k in self.component_list
+            k : adt[self.params[f"{k}-data-type"].value] \
+                    for k in self.component_list
         }
 
-        op = self.context.params["op"]
+        op = self.context.params["op"].value
         cts = self.context.component_types
 
         self.op_support_list = [sup for sup in self.context.specializer.op_support_map[op] if \
@@ -65,12 +70,12 @@ class datatype_stage(composition_stage):
                 ]
 
         self.context.component_dts = {
-            "A" : adt[self.params["AB-data-type"]],
-            "B" : adt[self.params["AB-data-type"]],
-            "AB" : adt[self.params["C-data-type"]],
-            "C" : adt[self.params["C-data-type"]],
-            "alpha" : adt[self.params["C-data-type"]],
-            "beta" : adt[self.params["C-data-type"]]
+            "A" : adt[self.params["AB-data-type"].value],
+            "B" : adt[self.params["AB-data-type"].value],
+            "AB" : adt[self.params["C-data-type"].value],
+            "C" : adt[self.params["C-data-type"].value],
+            "alpha" : adt[self.params["C-data-type"].value],
+            "beta" : adt[self.params["C-data-type"].value]
         }
 
         if len(self.op_support_list) == 1:

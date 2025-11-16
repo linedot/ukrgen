@@ -18,7 +18,7 @@ class unvec_lsc_stage(composition_stage):
 
         sup = self.context.sup
         unvec_components = ["B","alpha","beta"]
-        if "load_bcast" == self.context.params["unvec-method"]:
+        if "load_bcast" == self.context.params["unvec-method"].value:
             vec_tile = sup.a_tile
             def mod_load(op : lsc_load) -> lsc_load:
                 if not isinstance(op,lsc_load):

@@ -8,6 +8,7 @@ import logging
 
 from .composition import composition_stage
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 
 from ...schedulers.simple_dependency_scheduler import simple_dependency_scheduler
 
@@ -19,17 +20,19 @@ class lsc_schedule_stage(composition_stage):
         self.debug = logging.getLogger("SCHED").debug
 
         for dep in ["rar","raw","war","waw"]:
-            self.params[f"sched-{dep}-distance"] = 0
-            self.default_values[f"sched-{dep}-distance"] = 0
-            self.choices[f"sched-{dep}-distance"] = []
+            self.params[f"sched-{dep}-distance"] = stage_param(
+                    value=0, 
+                    description=f"Minimum distance for {dep} dependencies (in instructions)",
+                    default=0,
+                    required=False)
 
     def progress(self) -> list[composition_stage]:
 
         scheduler = simple_dependency_scheduler(
-                rar=self.params["sched-rar-distance"],
-                raw=self.params["sched-raw-distance"],
-                war=self.params["sched-war-distance"],
-                waw=self.params["sched-waw-distance"],
+                rar=self.params["sched-rar-distance"].value,
+                raw=self.params["sched-raw-distance"].value,
+                war=self.params["sched-war-distance"].value,
+                waw=self.params["sched-waw-distance"].value,
                 debug_on=False)
 
 

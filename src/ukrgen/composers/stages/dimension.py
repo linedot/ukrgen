@@ -8,6 +8,7 @@ from .composition import composition_stage
 from .unvec import unvec_stage
 
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 
 from ...specializers.asm import op_support
 
@@ -15,18 +16,25 @@ class dimension_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
+        #TODO: dims are ukr-specific, this is gemm/mm specific, decouple and generalize
         for dim in ["m","n","k"]:
-            self.params[dim] = None
-            self.default_values[dim] = None
-            self.choices[dim] = None
+            self.params[dim] = stage_param(
+                    value=None,
+                    description=f"Microkernel dimension {dim}")
 
-        self.params["vecdir"] = "M"
-        self.default_values["vecdir"] = "M"
-        self.choices["vecdir"] = ["M","N"] # TODO: K
+        # TODO: This is op-specific, decouple and generalize
+        self.params["vecdir"] = stage_param(
+                value="M",
+                default="M",
+                description="Microkernel dimension along which to vectorize",
+                choices=["M","N"]
+                )
 
-        self.params["order"] = "mnkMNK"
-        self.default_values["order"] = "mnkMNK"
-        self.choices["order"] = None
+        self.params["order"] = stage_param(
+                value="mnkMNK",
+                default="mnkMNK",
+                description="Order in which to tile the kernel"
+                )
 
     def progress(self) -> list[composition_stage]:
 
@@ -39,7 +47,7 @@ class dimension_stage(composition_stage):
         self.context.params.update(self.params)
 
         # Do we need to unvec?
-        if self.context.params["op"] == "fma" and \
+        if self.context.params["op"].value == "fma" and \
                 self.context.sup.b_tile.is_vector and \
                 self.context.sup.a_tile.is_vector:
 

@@ -4,7 +4,6 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
-from dataclasses import dataclass
 from asmgen.registers import asm_data_type as adt
 from ..models.load_store_cpu import load_store_cpu
 from ..models.load_store_operations import lsc_operation
@@ -12,12 +11,14 @@ from ..models.offset_mapper import offset_mapper
 from ..specializers.asm import lsc_specializer,op_support
 from ..generators.mm import mm_op
 
+from .stage_param import stage_param
 
 class gemm_context:
     def __init__(self):
         self.gen             : asmgen = None
         self.rt              : register_tracker = None
-        self.params          : dict[str,str] = dict()
+        self.params          : dict[str,stage_param] = dict()
+
         self.model           : load_store_cpu = None
         self.specializer     : lsc_specializer = None
         self.op_support_list : list[op_support] = list()

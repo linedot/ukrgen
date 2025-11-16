@@ -22,11 +22,11 @@ class mm_tif_stage(composition_stage):
 
         sup = context.sup
 
-        ma = context.params["ma"]
-        nb = context.params["nb"]
-        mc = context.params["mc"]
-        nc = context.params["nc"]
-        k = context.params["k"]
+        ma = context.params["ma"].value
+        nb = context.params["nb"].value
+        mc = context.params["mc"].value
+        nc = context.params["nc"].value
+        k = context.params["k"].value
 
         self.a_tile = simple_ukr_tile(
                 a_size=ma, b_size=k,
@@ -40,19 +40,19 @@ class mm_tif_stage(composition_stage):
 
     def progress(self):
 
-        order = order2D(self.context.params["order"])
-        m = self.context.params["m"]
-        n = self.context.params["n"]
-        k = self.context.params["k"]
+        order = order2D(self.context.params["order"].value)
+        m = self.context.params["m"].value
+        n = self.context.params["n"].value
+        k = self.context.params["k"].value
         sup = self.context.sup
 
-        if "mm" == self.context.params["ukr"]:
+        if "mm" == self.context.params["ukr"].value:
             genmm = mm(a=self.a_tile, b=self.b_tile, c=self.c_tile,
-                       lo=order, opstr=self.context.params["op"],
+                       lo=order, opstr=self.context.params["op"].value,
                        tile_strs=["A","B","C"])
-        if "gemm" == self.context.params["ukr"]:
+        if "gemm" == self.context.params["ukr"].value:
             genmm = mm(a=self.a_tile, b=self.b_tile, c=self.c_tile,
-                       lo=order, opstr=self.context.params["op"],
+                       lo=order, opstr=self.context.params["op"].value,
                        tile_strs=["A","B","AB"])
 
             scale_tile = simple_ukr_tile(a_size=m,
@@ -81,7 +81,7 @@ class mm_tif_stage(composition_stage):
             self.debug(str(op))
         self.debug("### BETA SCALE ###")
 
-        if "gemm" == self.context.params["ukr"]:
+        if "gemm" == self.context.params["ukr"].value:
             for op in self.context.tifs["betascale"]:
                 self.debug(str(op))
             self.debug("### ALPHA SCALE ###")

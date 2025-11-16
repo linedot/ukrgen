@@ -6,32 +6,35 @@
 
 from .composition import composition_stage
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 from ...components.tile import dimension_properties,dimension_type
 
 class unvec_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
-        self.params["unvec-method"] = "load_bcast"
-        self.default_values["unvec-method"] = "load_bcast"
-        self.choices["unvec-method"] = ["load_bcast","lane_select","lane_bcast"]
+        self.params["unvec-method"] = stage_param(
+                value="load_bcast", 
+                default="load_bcast",
+                description="Method to handle scalar data when using vector registers",
+                choices=["load_bcast","lane_select","lane_bcast"])
 
     def progress(self) -> list[composition_stage]:
 
-        if self.context.params["vecdir"] == "M":
+        if self.context.params["vecdir"].value == "M":
             modified_tile = self.context.sup.b_tile
             mod_dt = self.context.sup.triple.b
-            mod_dim = self.context.params["n"]
-        elif self.context.params["vecdir"] == "N":
+            mod_dim = self.context.params["n"].value
+        elif self.context.params["vecdir"].value == "N":
             modified_tile = self.context.sup.a_tile
             mod_dt = self.context.sup.triple.a
-            mod_dim = self.context.params["m"]
+            mod_dim = self.context.params["m"].value
         
-        if self.params["unvec-method"] in ['load_bcast']:
+        if self.params["unvec-method"].value in ['load_bcast']:
             modified_tile.dima = dimension_properties(
                     dt=dimension_type.fixed, size=1,
                     sdt=dimension_type.fixed, sd_size=1)
-        elif self.params["unvec-method"] in ['lane_select','lane_bcast']:
+        elif self.params["unvec-method"].value in ['lane_select','lane_bcast']:
             # TODO: needs more involved changes, crash for now
             raise NotImplementedError("lane_select and lane_bcast not yet implemented")
 
@@ -45,13 +48,13 @@ class unvec_stage(composition_stage):
                     dt=dimension_type.fixed, size=into_size,
                     sdt=dimension_type.fixed, sd_size=into_size)
 
-        if self.context.params["vecdir"] == "M":
+        if self.context.params["vecdir"].value == "M":
             self.context.sup.b_tile = modified_tile
-            self.context.params["nb"] = mod_dim
+            self.context.params["nb"].value = mod_dim
 
-        elif self.context.params["vecdir"] == "N":
+        elif self.context.params["vecdir"].value == "N":
             self.context.sup.a_tile = modified_tile
-            self.context.params["ma"] = mod_dim
+            self.context.params["ma"].value = mod_dim
 
         self.context.params.update(self.params)
 

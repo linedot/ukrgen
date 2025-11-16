@@ -12,6 +12,7 @@ from asmgen.asmblocks.noarch import asmgen
 from asmgen.registers import reg_tracker,asm_data_type as adt
 
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 from ...specializers.asm import lsc_specializer
 
 asmgen_modules = {
@@ -79,23 +80,30 @@ class support_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
-        self.params["isa"] = None
-        self.default_values["isa"] = None
-        self.choices["isa"] = ["rvv","rvv071","sve","neon","avx128","avx256","avx512"]
+        supported_isas = ["rvv","rvv071","sve","neon","avx128","avx256","avx512"]
+        supported_instructions = ["fma","dota","fopa","mma"]
+        supported_ukrs = ["gemm","mm"]
 
-        self.params["op"] = "fma"
-        self.default_values["op"] = "fma"
-        self.choices["op"] = ["fma","dota","fopa","mma"]
-
-        self.params["ukr"] = "gemm"
-        self.default_values["ukr"] = "gemm"
-        self.choices["ukr"] = ["gemm","mm"]
+        self.params["isa"] = stage_param(
+                value=None,
+                description="Instruction set to use",
+                choices=supported_isas)
+        self.params["op"] = stage_param(
+                value=None,
+                description="Arithmentic instruction to base the kernel on",
+                choices=supported_instructions
+                )
+        self.params["ukr"] = stage_param(
+                value="gemm",
+                default="gemm",
+                description="Type of Microkernel to generate",
+                choices=supported_ukrs,
+                required=False
+                )
 
     def progress(self):
 
-        assert self.params["isa"] is not None
-
-        isa = self.params["isa"]
+        isa = self.params["isa"].value
 
         module = importlib.import_module(f"asmgen.asmblocks.{asmgen_modules[isa]}")
         self.context.gen = module.__dict__[asmgen_map[isa]]()
@@ -108,10 +116,10 @@ class support_stage(composition_stage):
             ('vreg',self.context.gen.max_vregs),
             ('treg',self.context.gen.max_tregs(adt.FP64))])
 
-        self.context.ukr_components = get_ukr_components(self.params["ukr"])
-        self.context.mru_map = get_ukr_mru_map(self.params["ukr"])
-        self.context.sched_map = get_ukr_sched_map(self.params["ukr"])
-        self.context.specialization_order = get_ukr_specialization_order(self.params["ukr"])
+        self.context.ukr_components = get_ukr_components(self.params["ukr"].value)
+        self.context.mru_map = get_ukr_mru_map(self.params["ukr"].value)
+        self.context.sched_map = get_ukr_sched_map(self.params["ukr"].value)
+        self.context.specialization_order = get_ukr_specialization_order(self.params["ukr"].value)
 
         self.context.specializer = lsc_specializer(
                 model=None,

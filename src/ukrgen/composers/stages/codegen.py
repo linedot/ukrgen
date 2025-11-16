@@ -10,6 +10,7 @@ from asmgen.asmblocks.noarch import comparison
 
 from .composition import composition_stage
 from ..gemm import gemm_context
+from ..stage_param import stage_param
 
 from ...codegen.fngen import fngen
 from ...codegen.blis import get_blis_gemm_cc
@@ -25,9 +26,10 @@ class blis_ukr_codegen_stage(composition_stage):
         self.debug = logging.getLogger("CODEGEN").debug
 
 
-        self.params["function-name"] = None
-        self.default_values["function-name"] = None
-        self.choices["function-name"] = None
+        self.params["function-name"] = stage_param(
+                value=None, 
+                description="Override ASM Symbol/function name with a custom one",
+                required=False)
 
 
     def progress(self) -> list[composition_stage]:
@@ -110,7 +112,7 @@ class blis_ukr_codegen_stage(composition_stage):
         asmblock += gen.asmwrap(
             "# LAST ITERATION -----------------------------")
         asmblock += "  "+"  ".join(self.context.asmblocks["lastiter"])
-        if "gemm" == self.context.params["ukr"]:
+        if "gemm" == self.context.params["ukr"].value:
             asmblock += gen.asmwrap(
                 "# SCALE+STOREBLOCK ---------------------------")
         else:
@@ -141,7 +143,7 @@ class blis_ukr_codegen_stage(composition_stage):
         self.debug("END MAIN LOOP ---------------------------")
         self.debug("LAST ITERATION --------------------------")
         self.debug("  "+"  ".join(self.context.asmblocks["lastiter"]))
-        if "gemm" == self.context.params["ukr"]:
+        if "gemm" == self.context.params["ukr"].value:
             self.debug("SCALE+STOREBLOCK ------------------------")
         else:
             self.debug("STOREBLOCK ------------------------------")
@@ -175,14 +177,14 @@ class blis_ukr_codegen_stage(composition_stage):
         elif (strides["C"][1] is not None) and (strides["C"][0] is not None):
             suffix = "_csrs"
 
-        isa = self.context.params["isa"]
-        ukr = self.context.params["ukr"]
-        m = self.context.params["m"]
-        n = self.context.params["n"]
+        isa = self.context.params["isa"].value
+        ukr = self.context.params["ukr"].value
+        m = self.context.params["m"].value
+        n = self.context.params["n"].value
 
         fnname = f"ukrgen_{ukr}_{isa}_{m}Vx{n}"
-        if self.params["function-name"] is not None:
-            fnname = self.params["function-name"]
+        if self.params["function-name"].value is not None:
+            fnname = self.params["function-name"].value
         
 
         asmheader = (
