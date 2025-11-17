@@ -4,6 +4,8 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import logging
+
 from .composition import composition_stage
 from ..gemm import gemm_context
 
@@ -13,6 +15,8 @@ from ...models.load_store_operations import lsc_load,lsc_transformation,ldst_mod
 class unvec_lsc_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
+
+        self.debug = logging.getLogger("LSC").debug
 
     def progress(self) -> list[composition_stage]:
 
@@ -43,5 +47,23 @@ class unvec_lsc_stage(composition_stage):
                     self.context.irs[key] = [mod(op) for op in self.context.irs[key]]
         
         self.context.params.update(self.params)
+
+        self.debug("################### PSEUDO-ASM ###################")
+        self.debug("\n".join(map(str,self.context.irs["preload"])))
+        self.debug("MAIN LOOP -------------------------------")
+        self.debug("  "+"\n  ".join(map(str,self.context.irs["main"])))
+        self.debug("PRELOAD NEXT ----------------------------")
+        self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
+        self.debug("END MAIN LOOP ---------------------------")
+        if "gemm" == self.context.params["ukr"].value:
+            self.debug("BETASCALE BLOCK -------------------------")
+            self.debug("\n".join(map(str,self.context.irs["betascale"])))
+            self.debug("END BETASCALE BLOCK ---------------------")
+            self.debug("ALPHASCALE BLOCK ------------------------")
+            self.debug("\n".join(map(str,self.context.irs["alphascale"])))
+            self.debug("END ALPHASCALE BLOCK --------------------")
+        self.debug("STOREBLOCK ------------------------------")
+        self.debug("\n".join(map(str,self.context.irs["store"])))
+        self.debug("ENDSTOREBLOCK ---------------------------")
 
         return list()

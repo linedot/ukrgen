@@ -250,4 +250,23 @@ class lsc_model_stage(composition_stage):
         if "unvec-method" in self.context.params:
             return [unvec_lsc_stage]
 
+
+        self.debug("################### PSEUDO-ASM ###################")
+        self.debug("\n".join(map(str,self.context.irs["preload"])))
+        self.debug("MAIN LOOP -------------------------------")
+        self.debug("  "+"\n  ".join(map(str,self.context.irs["main"])))
+        self.debug("PRELOAD NEXT ----------------------------")
+        self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
+        self.debug("END MAIN LOOP ---------------------------")
+        if "gemm" == self.context.params["ukr"].value:
+            self.debug("BETASCALE BLOCK -------------------------")
+            self.debug("\n".join(map(str,self.context.irs["betascale"])))
+            self.debug("END BETASCALE BLOCK ---------------------")
+            self.debug("ALPHASCALE BLOCK ------------------------")
+            self.debug("\n".join(map(str,self.context.irs["alphascale"])))
+            self.debug("END ALPHASCALE BLOCK --------------------")
+        self.debug("STOREBLOCK ------------------------------")
+        self.debug("\n".join(map(str,self.context.irs["store"])))
+        self.debug("ENDSTOREBLOCK ---------------------------")
+
         return list()
