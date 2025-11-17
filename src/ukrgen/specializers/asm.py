@@ -840,6 +840,13 @@ class lsc_specializer:
                 numbers = re.findall(r'\d+',opstr)
                 if numbers:
                     return False
+
+            local_dts = [ component_dts[idx.component] for idx in op.indices]
+            min_dtsize = min([adt_size(dt) for dt in local_dts])
+            max_dtsize = max([adt_size(dt) for dt in local_dts])
+
+            local_ways = max_dtsize//min_dtsize
+
             first_op = deepcopy(op)
             for i in range(ways):
                 part_op = copy.deepcopy(op)
@@ -849,7 +856,8 @@ class lsc_specializer:
                     if c in acc_components and lsc_reg_type.data == part_op.reg_types[j]:
                         part_op.indices[j].indices[0] += i
                 if isinstance(op, lsc_transformation):
-                    part_op.op += f"{i}"
+                    if local_ways == ways:
+                        part_op.op += f"{i}"
                 if isinstance(op, (lsc_load,lsc_store)):
                     baseoff = deepcopy(op.off)
                     ca = op.addr_idx.component
