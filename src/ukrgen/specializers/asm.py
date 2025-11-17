@@ -348,7 +348,7 @@ class lsc_specializer:
                     return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
                 else:
                     lsfunc = getattr(self.gen, f"{action}_vector{suffix}_immoff")
-                    return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
+                    return lsfunc(areg=areg, offset=op.off.immoff*dt_bytes, vreg=dreg, dt=dt)
 
         else:
             if lsc_offset.zero_offset() == op.off:
