@@ -34,6 +34,7 @@ def helpexit_if_last_parser(rest : list[str], parser : ArgumentParser):
 class argparse_prolog:
     def __init__(self, parser : ArgumentParser):
         self.parser=parser
+        self.rest=list()
 
     def __call__(self, stage: composition_stage):
         params = stage.get_parameter_names()
@@ -50,8 +51,8 @@ class argparse_prolog:
                 required=stage.get_param(pname).required)
 
 
-        args, rest = self.parser.parse_known_args()
-        helpexit_if_last_parser(rest=rest, parser=self.parser)
+        args, self.rest = self.parser.parse_known_args()
+        helpexit_if_last_parser(rest=self.rest, parser=self.parser)
 
         for pname in params:
 
@@ -66,6 +67,15 @@ def ukrgen2():
     ukr_ctx = gemm_context()
 
     parser = ArgumentParser(add_help=False)
+
+    parser.add_argument("--debug",
+                        help="Enable debug information",
+                        action="store_true")
+
+    args,rest = parser.parse_known_args()
+
+    if args.debug:
+        logging.basicConfig(level=logging.DEBUG)
 
     stages = [
         support_stage,
@@ -85,6 +95,13 @@ def ukrgen2():
                       prolog=prolog)
 
     se.run()
+
+    # prolog won't print help if there are any parameters not consumed
+    # by stages
+    if any(a in prolog.rest for a in helpargs):
+        parser.print_help()
+        sys.exit(0)
+
     print(ukr_ctx.asmblocks["full_function"])
 
 if __name__ == "__main__":
