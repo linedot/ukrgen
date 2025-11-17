@@ -115,6 +115,10 @@ class tile:
                 (self.dimb.size == 1))
 
     @property
+    def is_vector(self) -> bool:
+        return self.is_vla_vector or self.is_fixed_vector
+
+    @property
     def is_vla_tile(self) -> bool:
         return (self.dima.dt == dimension_type.vla and \
                 self.dima.size == 1 and \

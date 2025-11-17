@@ -372,7 +372,6 @@ class load_store_cpu:
                         preloads_done[component] += 1
                         continue
                     preload_dos[component][op.res_idx.indices[0]] = new_do
-                    tsize = op.t.dima.size*op.t.dimb.size
                     preload_addr_reg_last_used_tile[component][op.addr_idx.indices[0]] = op.t
 
                     preloads_done[component] += 1

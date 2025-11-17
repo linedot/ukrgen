@@ -52,7 +52,7 @@ from ukrgen.models.offset_mapper import (
     )
 from ukrgen.schedulers import simple_dependency_scheduler,minreguse_scheduler
 
-from .internal.addr_parameters import calculate_addr_parameters
+from ukrgen.models.addr_parameters import calculate_addr_parameters
 from .internal.ukr import get_ukr_components
 from .internal.compose_mm import fngen,get_blis_gemm_cc
 

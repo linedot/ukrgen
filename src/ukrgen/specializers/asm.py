@@ -228,12 +228,13 @@ class lsc_specializer:
         aregidx = self.rt.aliased_regs['greg'][alias]
         areg = self.gen.greg(aregidx)
         data_t = op.tiles[1]
+        tsize=data_t.dima.size*data_t.dimb.size
         ca = op.indices[0].component
         dt = component_dts[ca]
         dt_bytes = adt_size(dt)
 
         if op.off.is_vector():
-            factor = op.off.vlen_strides[0]
+            factor = op.off.vlen_strides[0]*tsize
 
             if factor < self.gen.max_add_voff and factor > 0:
                 return self.gen.add_greg_voff(reg=areg, 
@@ -250,7 +251,7 @@ class lsc_specializer:
         elif op.off.is_scalar():
             return self.gen.add_greg_imm(
                 reg=areg,
-                imm=op.off.immoff*dt_bytes)
+                imm=op.off.immoff*tsize*dt_bytes)
 
         else:
             regidx = self.rt.aliased_regs['greg'][f"{ca}off:{str(op.off)}"]
@@ -348,7 +349,7 @@ class lsc_specializer:
                     return lsfunc(areg=areg, voffset=op.off.vlen_strides[0], vreg=dreg, dt=dt)
                 else:
                     lsfunc = getattr(self.gen, f"{action}_vector{suffix}_immoff")
-                    return lsfunc(areg=areg, offset=op.off.immoff, vreg=dreg, dt=dt)
+                    return lsfunc(areg=areg, offset=op.off.immoff*dt_bytes, vreg=dreg, dt=dt)
 
         else:
             if lsc_offset.zero_offset() == op.off:
@@ -823,7 +824,7 @@ class lsc_specializer:
                 addoff = sum([deepcopy(multoff) for j in \
                         range(ways-1)], lsc_offset.zero_offset())
 
-                print(f"widening {op.off} by adding {addoff}")
+                #print(f"widening {op.off} by adding {addoff}")
                 if component in self.offset_registry:
                     if op.off in self.offset_registry[component]:
                         self.offset_registry[component].remove(op.off)
@@ -840,6 +841,13 @@ class lsc_specializer:
                 numbers = re.findall(r'\d+',opstr)
                 if numbers:
                     return False
+
+            local_dts = [ component_dts[idx.component] for idx in op.indices]
+            min_dtsize = min([adt_size(dt) for dt in local_dts])
+            max_dtsize = max([adt_size(dt) for dt in local_dts])
+
+            local_ways = max_dtsize//min_dtsize
+
             first_op = deepcopy(op)
             for i in range(ways):
                 part_op = copy.deepcopy(op)
@@ -849,7 +857,8 @@ class lsc_specializer:
                     if c in acc_components and lsc_reg_type.data == part_op.reg_types[j]:
                         part_op.indices[j].indices[0] += i
                 if isinstance(op, lsc_transformation):
-                    part_op.op += f"{i}"
+                    if local_ways == ways:
+                        part_op.op += f"{i}"
                 if isinstance(op, (lsc_load,lsc_store)):
                     baseoff = deepcopy(op.off)
                     ca = op.addr_idx.component
@@ -1013,7 +1022,7 @@ class lsc_specializer:
                             def subtract_addoff(op, results):
                                 ca = op.addr_idx.component
                                 if op.addr_idx == mod_idx:
-                                    print(f"subtracting {addoff} from {op.off}")
+                                    #print(f"subtracting {addoff} from {op.off}")
                                     if op.off in self.offset_registry[ca]:
                                         self.offset_registry[ca].remove(op.off)
                                     op.off -= addoff
@@ -1133,7 +1142,7 @@ class lsc_specializer:
                 sos = self.model.ar.starting_offsets[component]
                 step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
                 self.register_offset(component=component, off=step)
-                print(f"calculated {step} for {component}")
+                #print(f"calculated {step} for {component}")
 
 
         # reserve offset registers
@@ -1193,7 +1202,7 @@ class lsc_specializer:
                 step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
 
                 reg_alias = f"ADDR:{aidx}"
-                print(f"processing {reg_alias}")
+                #print(f"processing {reg_alias}")
                 if reg_alias not in self.rt.aliased_regs['greg']:
                     aregidx = self.rt.reserve_any_reg('greg')
                     self.rt.alias_reg('greg', reg_alias, aregidx)

@@ -326,11 +326,11 @@ class minreguse_scheduler:
                         used_tile.dimb)
                 if not self.rut.reads[used_reg]:
                     if used_reg not in free_deques[dreg_tag]:
-                        print(f"{used_reg} has no more reads, adding it to free regs")
+                        #print(f"{used_reg} has no more reads, adding it to free regs")
                         free_deques[dreg_tag].append(used_reg)
                     continue
                 if op_idx == self.rut.last_read(used_reg):
-                    print(f"Last read of {used_reg}, releasing it")
+                    #print(f"Last read of {used_reg}, releasing it")
                     if used_reg not in free_deques[dreg_tag]:
                         free_deques[dreg_tag].append(used_reg)
 
