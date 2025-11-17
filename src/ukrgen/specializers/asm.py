@@ -228,12 +228,13 @@ class lsc_specializer:
         aregidx = self.rt.aliased_regs['greg'][alias]
         areg = self.gen.greg(aregidx)
         data_t = op.tiles[1]
+        tsize=data_t.dima.size*data_t.dimb.size
         ca = op.indices[0].component
         dt = component_dts[ca]
         dt_bytes = adt_size(dt)
 
         if op.off.is_vector():
-            factor = op.off.vlen_strides[0]
+            factor = op.off.vlen_strides[0]*tsize
 
             if factor < self.gen.max_add_voff and factor > 0:
                 return self.gen.add_greg_voff(reg=areg, 
@@ -250,7 +251,7 @@ class lsc_specializer:
         elif op.off.is_scalar():
             return self.gen.add_greg_imm(
                 reg=areg,
-                imm=op.off.immoff*dt_bytes)
+                imm=op.off.immoff*tsize*dt_bytes)
 
         else:
             regidx = self.rt.aliased_regs['greg'][f"{ca}off:{str(op.off)}"]
