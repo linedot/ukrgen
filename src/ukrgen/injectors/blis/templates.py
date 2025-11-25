@@ -54,7 +54,7 @@ components = {
     % endfor
 
         BLIS_VA_END
-    )
+    );
 """,
     "cntx_set_blocksizes" : """
 
@@ -93,6 +93,14 @@ components = {
 }
 
 files = {
+    "config/${configname}/bli_kernel_defs_${configname}.h" : """
+${license}
+// Nothing here atm
+""",
+    "kernels/${configname}/bli_family_${configname}.h" : """
+${license}
+// Nothing here atm
+""",
     "kernels/${configname}/bli_kernels_${configname}.h" : """
 ${license}
 <% dtchars = {"FLOAT" : "s", "DOUBLE" : "d"} %>
@@ -103,6 +111,8 @@ GEMM_UKR_PROT(${type.lower()}, ${dtchars[type]}, ${name[5:]})
     "config/${configname}/bli_cntx_init_${configname}.c" : """
 
 ${license}
+
+#include "blis.h"
 
 ${cntx_extra_defs}
 
@@ -133,8 +143,7 @@ CC             := gcc
 CC_VENDOR      := gcc
 endif
 
-CPPROCFLAGS    := -D_POSIX_C_SOURCE=200112L
-CMISCFLAGS     := -std=c99 -m64
+CMISCFLAGS     := ${archflags}
 CPICFLAGS      := -fPIC
 CWARNFLAGS     := -Wall -Wno-unused-function -Wfatal-errors
 
@@ -151,13 +160,12 @@ endif
 CKOPTFLAGS     := $(COPTFLAGS)
 
 ifeq ($(CC_VENDOR),gcc)
-CVECFLAGS      := ${archflags}
+CVECFLAGS      := ${archflags} -O3 -ffast-math
 else
 ifeq ($(CC_VENDOR),clang)
-CVECFLAGS      := ${archflags}
+CVECFLAGS      := ${archflags} -funsafe-math-optimizations -ffp-contract=fast
 else
 $(error gcc or clang is required for this configuration.)
-endif
 endif
 endif
 
@@ -258,7 +266,7 @@ index f6f3af20..54fa99ac 100644
 +// -- Generated architectures --------------------------------------------------
 +
 +#ifdef BLIS_CONFIG_${configname.upper()}
-+#define INSERT_GENTCONF_${configname.upper()} GENTCONF( ${configname.upper()}, generic )
++#define INSERT_GENTCONF_${configname.upper()} GENTCONF( ${configname.upper()}, ${configname} )
 +#else
 +#define INSERT_GENTCONF_${configname.upper()}
 +#endif
@@ -266,13 +274,13 @@ index f6f3af20..54fa99ac 100644
  // -- Generic architectures ----------------------------------------------------
  
  #ifdef BLIS_CONFIG_GENERIC
-@@ -288,7 +296,9 @@ INSERT_GENTCONF_RV64IV ${r"\"}
- INSERT_GENTCONF_SIFIVE_RVV ${r"\"}
- INSERT_GENTCONF_SIFIVE_X280 ${r"\"}
- ${r"\"}
+@@ -288,7 +296,9 @@ INSERT_GENTCONF_RV64IV ${"\\\\"}
+ INSERT_GENTCONF_SIFIVE_RVV ${"\\\\"}
+ INSERT_GENTCONF_SIFIVE_X280 ${"\\\\"}
+ ${"\\\\"}
 -INSERT_GENTCONF_GENERIC
-+INSERT_GENTCONF_${configname.upper()} ${r"\"}
-+${r"\"}
++INSERT_GENTCONF_${configname.upper()} ${"\\\\"}
++${"\\\\"}
 +INSERT_GENTCONF_GENERIC 
  
  
@@ -340,11 +348,14 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
 {
     dim_t mr = ${mr};
     dim_t nr = ${nr};
-    dim_t kstart = 0;
+    uint64_t rs_c = rs_c0;
+    uint64_t cs_c = cs_c0;
+
+    GEMM_UKR_SETUP_CT_ANY(${dtchar}, mr, nr, false)
+
     dim_t kiter = k / ${kunroll};
-    if(m == mr && n == nr &&
-       ((k % ${kunroll}) == 0) && (kiter > 2) &&
-       rs_c0 == 1)
+
+    if((kiter > 2) && rs_c == 1)
     {
         ${blis_ukr_name}_cs(
             m,n,kiter-1,
@@ -352,11 +363,8 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
             beta,c,
             rs_c0,cs_c0,
             data,cntx);
-        kstart += kiter*${kunroll};
     }
-    else if(m == mr && n == nr &&
-       ((k % ${kunroll}) == 0) && (kiter > 2) &&
-       cs_c0 == 1)
+    else if((kiter > 2) && cs_c == 1)
     {
         ${blis_ukr_name}_rs(
             m,n,kiter-1,
@@ -364,10 +372,8 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
             beta,c,
             rs_c0,cs_c0,
             data,cntx);
-        kstart += kiter*${kunroll};
     }
-    else if(m == mr && n == nr &&
-       ((k % ${kunroll}) == 0) && (kiter > 2))
+    else if(kiter > 2)
     {
         ${blis_ukr_name}_csrs(
             m,n,kiter-1,
@@ -375,17 +381,8 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
             beta,c,
             rs_c0,cs_c0,
             data,cntx);
-        kstart += kiter*${kunroll};
     }
-
-    if (k != kstart)
-    {
-        // Use reference kernel for the rest
-        bli_${dtchar}${ukr}_${configname}_ref(
-            m,n,kstart-k,
-            alpha, a+kstart*mr, b+kstart*nr,
-        )
-    }
+    GEMM_UKR_FLUSH_CT(${dtchar})
     
 }
 """

@@ -114,15 +114,8 @@ class blis_patcher:
             k = ctx.params["k"].value
 
             cstrides = ctx.strides["C"]
-
-            suf = "_"
-            if cstrides[1] is not None:
-                suf += "cs"
-            if cstrides[0] is not None:
-                suf += "rs"
-
             
-            return f"bli_{dtchar}gemm_{params['configname']}_{m}Vx{n}x{k}{suf}"
+            return f"bli_{dtchar}gemm_{params['configname']}_{m}Vx{n}x{k}"
 
 
 
@@ -186,7 +179,7 @@ class blis_patcher:
             params[f"kunroll_{dtchar}"] = k
 
             # remove the _cs
-            ukr_name = ctx.params["function-name"].value[:-3]
+            ukr_name = ctx.params["function-name"].value
 
             ksrc = Template(ktpl).render(
                     configname=params["configname"],
@@ -289,7 +282,9 @@ class blis_patcher:
             if not bpatch:
                 print(f"Error parsing patch:\n{pdata}")
 
-            bpatch.apply(root=out_dir)
+            if not bpatch.apply(root=out_dir):
+                print(f"Bad patch: \n{pdata}")
+                raise RuntimeError(f"Failed patching {key}")
 
         for key,fdata in self.tpl_files.items():
 
