@@ -60,10 +60,11 @@ components = {
 
     const uint32_t mr_d = ${simd_size}/sizeof(double);
     const uint32_t mr_s = ${simd_size}/sizeof(float);
-    const uint32_t nr_d = ${n};
-    const uint32_t nr_s = ${n};
+    const uint32_t nr_d = ${nr_d};
+    const uint32_t nr_s = ${nr_s};
 
-    const uint32_t kc = ${kunroll}*32;
+    const uint32_t kc_d = ${kunroll_d}*32;
+    const uint32_t kc_s = ${kunroll_s}*32;
     const uint32_t nc_d = 200*nr_d;
     const uint32_t nc_s = 200*nr_s;
 
@@ -72,7 +73,7 @@ components = {
     bli_blksz_init_easy( &blkszs[ BLIS_MR ],     mr_s,    mr_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_NR ],     nr_s,    nr_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_MC ],  20*mr_s, 20*mr_d,      -1,      -1 );
-    bli_blksz_init_easy( &blkszs[ BLIS_KC ],       kc,      kc,      -1,      -1 );
+    bli_blksz_init_easy( &blkszs[ BLIS_KC ],     kc_s,    kc_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_NC ],     nc_s,    nc_d,      -1,      -1 );
 
     bli_cntx_set_blkszs
@@ -92,6 +93,13 @@ components = {
 }
 
 files = {
+    "kernels/${configname}/bli_kernels_${configname}.h" : """
+${license}
+<% dtchars = {"FLOAT" : "s", "DOUBLE" : "d"} %>
+% for kind,type,name in kernels:
+GEMM_UKR_PROT(${type.lower()}, ${dtchars[type]}, ${name[5:]})
+% endfor
+""",
     "config/${configname}/bli_cntx_init_${configname}.c" : """
 
 ${license}
@@ -288,4 +296,97 @@ index 758f9eb3..2305c6a0 100644
  
 """
 
+}
+
+
+kernels = {
+    "gemm" : """
+#include "blis.h"
+
+${ukr_extra_def}
+
+extern void ${blis_ukr_name}_cs(dim_t m, dim_t n, dim_t k,
+    const void* alpha,
+    const void* a,
+    const void* b,
+    const void* beta,
+    void* c, inc_t rs_c0, inc_t cs_c0,
+    const auxinfo_t* data, const cntx_t* cntx
+);
+extern void ${blis_ukr_name}_rs(dim_t m, dim_t n, dim_t k,
+    const void* alpha,
+    const void* a,
+    const void* b,
+    const void* beta,
+    void* c, inc_t rs_c0, inc_t cs_c0,
+    const auxinfo_t* data, const cntx_t* cntx
+);
+extern void ${blis_ukr_name}_csrs(dim_t m, dim_t n, dim_t k,
+    const void* alpha,
+    const void* a,
+    const void* b,
+    const void* beta,
+    void* c, inc_t rs_c0, inc_t cs_c0,
+    const auxinfo_t* data, const cntx_t* cntx
+);
+
+void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
+    const void* alpha,
+    const void* a,
+    const void* b,
+    const void* beta,
+    void* c, inc_t rs_c0, inc_t cs_c0,
+    const auxinfo_t* data, const cntx_t* cntx)
+{
+    dim_t mr = ${mr};
+    dim_t nr = ${nr};
+    dim_t kstart = 0;
+    dim_t kiter = k / ${kunroll};
+    if(m == mr && n == nr &&
+       ((k % ${kunroll}) == 0) && (kiter > 2) &&
+       rs_c0 == 1)
+    {
+        ${blis_ukr_name}_cs(
+            m,n,kiter-1,
+            alpha,a,b,
+            beta,c,
+            rs_c0,cs_c0,
+            data,cntx);
+        kstart += kiter*${kunroll};
+    }
+    else if(m == mr && n == nr &&
+       ((k % ${kunroll}) == 0) && (kiter > 2) &&
+       cs_c0 == 1)
+    {
+        ${blis_ukr_name}_rs(
+            m,n,kiter-1,
+            alpha,a,b,
+            beta,c,
+            rs_c0,cs_c0,
+            data,cntx);
+        kstart += kiter*${kunroll};
+    }
+    else if(m == mr && n == nr &&
+       ((k % ${kunroll}) == 0) && (kiter > 2))
+    {
+        ${blis_ukr_name}_csrs(
+            m,n,kiter-1,
+            alpha,a,b,
+            beta,c,
+            rs_c0,cs_c0,
+            data,cntx);
+        kstart += kiter*${kunroll};
+    }
+
+    if (k != kstart)
+    {
+        // Use reference kernel for the rest
+        bli_${dtchar}${ukr}_${configname}_ref(
+            m,n,kstart-k,
+            alpha, a+kstart*mr, b+kstart*nr,
+        )
+    }
+    
+}
+"""
 }
