@@ -179,6 +179,7 @@ class blis_patcher:
             n = ctx.params["n"].value
             k = ctx.params["k"].value
 
+            params[f"mr_{dtchar}"] = m
             params[f"nr_{dtchar}"] = n
             params[f"kunroll_{dtchar}"] = k
 

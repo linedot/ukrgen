@@ -58,8 +58,9 @@ components = {
 """,
     "cntx_set_blocksizes" : """
 
-    const uint32_t mr_d = ${simd_size}/sizeof(double);
-    const uint32_t mr_s = ${simd_size}/sizeof(float);
+    // TODO: vecdir
+    const uint32_t mr_d = ${mr_d}*${simd_size}/sizeof(double);
+    const uint32_t mr_s = ${mr_s}*${simd_size}/sizeof(float);
     const uint32_t nr_d = ${nr_d};
     const uint32_t nr_s = ${nr_s};
 
