@@ -680,7 +680,8 @@ class lsc_specializer:
 
             reg = self.gen.greg(idx)
             asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
-            
+
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)            
             asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
             self.rt.unuse_reg('greg', tmpreg_idx)
 
