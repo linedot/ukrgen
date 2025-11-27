@@ -177,6 +177,9 @@ class blis_ukr_codegen_stage(composition_stage):
         elif (strides["C"][1] is not None) and (strides["C"][0] is not None):
             suffix = "_csrs"
 
+        if not suffix:
+            suffix = "_nostride"
+
         isa = self.context.params["isa"].value
         ukr = self.context.params["ukr"].value
         m = self.context.params["m"].value

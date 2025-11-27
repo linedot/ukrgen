@@ -313,6 +313,14 @@ kernels = {
 
 ${ukr_extra_def}
 
+extern void ${blis_ukr_name}_nostride(dim_t m, dim_t n, dim_t k,
+    const void* alpha,
+    const void* a,
+    const void* b,
+    const void* beta,
+    void* c, inc_t rs_c0, inc_t cs_c0,
+    const auxinfo_t* data, const cntx_t* cntx
+);
 extern void ${blis_ukr_name}_cs(dim_t m, dim_t n, dim_t k,
     const void* alpha,
     const void* a,
@@ -354,8 +362,17 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
     GEMM_UKR_SETUP_CT_ANY(${dtchar}, mr, nr, false)
 
     dim_t kiter = k / ${kunroll};
-
-    if((kiter > 2) && rs_c == 1)
+    
+    if((kiter > 2) && rs_c == 1 && cs_c == 1)
+    {
+        ${blis_ukr_name}_nostride(
+            m,n,kiter-1,
+            alpha,a,b,
+            beta,c,
+            rs_c0,cs_c0,
+            data,cntx);
+    }
+    else if((kiter > 2) && rs_c == 1)
     {
         ${blis_ukr_name}_cs(
             m,n,kiter-1,

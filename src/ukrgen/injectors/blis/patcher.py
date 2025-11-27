@@ -64,9 +64,11 @@ class config_prolog:
 
 class blis_kernel:
     def __init__(self,
+                 nsctx : gemm_context,
                  csctx : gemm_context,
                  rsctx : gemm_context,
                  csrsctx : gemm_context):
+        self.ns = nsctx
         self.cs = csctx
         self.rs = rsctx
         self.csrs = csrsctx
@@ -97,6 +99,7 @@ class blis_patcher:
             blis_ukr_codegen_stage]
 
         stride_configs = [
+            ([],[],"_nostride"),
             ([],["C"],"_cs"),
             (["C"],[],"_rs"),
             (["C"],["C"],"_csrs"),
@@ -141,9 +144,10 @@ class blis_patcher:
 
 
             self.kernels.append(
-                blis_kernel(csctx=contexts[0],
-                            rsctx=contexts[1],
-                            csrsctx=contexts[2]))
+                blis_kernel(nsctx=contexts[0],
+                            csctx=contexts[1],
+                            rsctx=contexts[2],
+                            csrsctx=contexts[3]))
 
 
 
@@ -192,6 +196,8 @@ class blis_patcher:
                     nr=n
                     )
 
+            self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_nostride.s"] = \
+                    kernel.ns.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_cs.s"] = \
                     kernel.cs.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_rs.s"] = \
