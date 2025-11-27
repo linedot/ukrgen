@@ -230,6 +230,7 @@ class lsc_model_stage(composition_stage):
                 zero_components=["C","AB"],
                 ignore_components=[])
         self.context.irs["main"] = self.context.model(mm_ops)
+        self.context.irs["lastiter"] = deepcopy(self.context.irs["main"])
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
                 mm_ops_p2k,

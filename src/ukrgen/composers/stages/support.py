@@ -64,7 +64,7 @@ def get_ukr_sched_map(ukr : str) -> dict[str,tuple[list[str],bool]]:
         return { 
             "preload" : (["preload"],False),
             "main" : (["main","preload_next"],True),
-            "lastiter" : (["main"],False),
+            "lastiter" : (["lastiter"],False),
             #"store" : (["store"],False) # Don't reschedule store for now (it will fail)
         }
 
