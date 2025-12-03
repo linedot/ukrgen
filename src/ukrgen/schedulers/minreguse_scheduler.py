@@ -69,7 +69,7 @@ class minreguse_scheduler:
     def register_exists(self, reg : lsc_reg, dreg_tag : str):
         if dreg_tag not in self.allocated_registers:
             self.allocated_registers[dreg_tag] = set()
-        #print(f"registering existing reg: {reg}")
+        #print(f"registering existing {dreg_tag} reg: {reg}")
         self.allocated_registers[dreg_tag].add(reg)
 
     def analyze_preceeding(self, ops: list[lsc_operation]):
@@ -87,23 +87,23 @@ class minreguse_scheduler:
 
     def register_to_read(self, reg: lsc_reg, dreg_tag : str, pos : int):
         if not reg in self.allocated_registers[dreg_tag]:
-            #print(f"registering to alloc reg: {reg}")
+            #print(f"registering to alloc {dreg_tag} reg: {reg}")
             if dreg_tag not in self.new_registers:
                 self.new_registers[dreg_tag] = set()
             self.new_registers[dreg_tag].add(reg)
-        else:
-            #print(f"removing from free list: {reg}")
+        elif reg in self.free_allocated_registers[dreg_tag]:
+            #print(f"removing from free {dreg_tag} list: {reg}")
             self.free_allocated_registers[dreg_tag].remove(reg)
         self.rut.add_read(reg, pos)
 
     def register_to_write(self, reg: lsc_reg, dreg_tag : str, pos : int):
         if not reg in self.allocated_registers[dreg_tag]:
-            #print(f"registering to alloc reg: {reg}")
+            #print(f"registering to alloc {dreg_tag} reg: {reg}")
             if dreg_tag not in self.new_registers:
                 self.new_registers[dreg_tag] = set()
             self.new_registers[dreg_tag].add(reg)
-        else:
-            #print(f"removing from free list: {reg}")
+        elif reg in self.free_allocated_registers[dreg_tag]:
+            #print(f"removing from free {dreg_tag} list: {reg}")
             self.free_allocated_registers[dreg_tag].remove(reg)
         self.rut.add_write(reg, pos)
 
