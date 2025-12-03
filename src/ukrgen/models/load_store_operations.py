@@ -40,6 +40,11 @@ class lsc_operation:
         self.writes = writes
         self.reg_types = reg_types
 
+        self.properties : dict[str,int|str] = dict()
+
+    def add_property(self, name : str, value : int|str):
+        self.properties[name] = value
+
 
 def can_reorder(first : lsc_operation, second : lsc_operation) -> bool:
     """
@@ -70,6 +75,7 @@ def can_reorder(first : lsc_operation, second : lsc_operation) -> bool:
 
 class ldst_modifier(Enum):
     bcast1 = auto()
+    lane = auto()
 
 class lsc_load(lsc_operation):
     def __init__(self,
