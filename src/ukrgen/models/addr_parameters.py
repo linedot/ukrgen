@@ -46,11 +46,13 @@ def calculate_addr_parameters(sup : op_support,
         count = addr_reg_counts[c]
 
         max_val = gen.max_fload_immoff(dt=dt)
-        if (real_t.is_vla_tile or real_t.is_vla_vector) and \
+        if (real_t.is_tile or real_t.is_vector) and \
             data_t.is_scalar:
-            max_val = gen.max_load_immoff(dt=dt)
+            max_val = gen.max_bcast_immoff(dt=dt)
         elif data_t.is_vla_tile or data_t.is_vla_vector:
             max_val = gen.max_load_voff
+        elif data_t.is_fixed_tile or data_t.is_fixed_vector:
+            max_val = gen.max_load_immoff(dt=dt)
 
         if getattr(gen,primary_op).widening_method == wm.SPLIT_INSTRUCTIONS \
            and c in wide_components:
