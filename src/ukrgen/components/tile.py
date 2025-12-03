@@ -125,6 +125,18 @@ class tile:
                 self.dimb.dt == dimension_type.vla and \
                 self.dimb.size == 1)
 
+    @property
+    def is_fixed_tile(self) -> bool:
+
+        return (self.dima.dt == dimension_type.fixed and \
+                self.dimb.dt == dimension_type.fixed) and \
+               ((self.dima.size > 1) and \
+                (self.dimb.size > 1))
+
+    @property
+    def is_tile(self) -> bool:
+        return self.is_vla_tile or self.is_fixed_tile
+
     def __str__(self):
         sdt = lambda dt : "V" if dt==dimension_type.vla else ""
 
