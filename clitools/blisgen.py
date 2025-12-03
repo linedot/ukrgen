@@ -15,6 +15,7 @@ from git import Repo
 
 from argparse import ArgumentParser
 
+from ukrgen.codegen.isa_compiler_support import isa_flags
 from ukrgen.injectors.blis.patcher import blis_patcher
 
 def blisgen():
@@ -73,6 +74,11 @@ def blisgen():
     with open(args.dgemm_config, "r") as df:
         dgemm_config = yaml.safe_load(df)
 
+    # TODO: compatible ISAs (sme<->sve<->neon, avx512<->avx2, etc...)
+    assert(sgemm_config["isa"] == dgemm_config["isa"])
+
+    isa = sgemm_config["isa"]
+
     blis_dir = ""
     if args.from_git is not None:
         temp_dir = ""
@@ -85,7 +91,9 @@ def blisgen():
     else:
         blis_dir = args.from_dir
 
-    configname="ukrgen_rvv"
+    configname=f"ukrgen_{isa}"
+    if args.config_name is not None:
+        configname = args.config_name
 
     bp = blis_patcher()
 
@@ -96,8 +104,8 @@ def blisgen():
         "cntx_extra_defs" : "",
         "cntx_init_extra" : "",
         "simd_size" : "get_simd_size()",
-        "archflags" : "-march=rv64gcv",
-        }
+        "archflags" : isa_flags[isa],
+    }
 
     bp.make_kernels([sgemm_config,dgemm_config],
                     blis_params)
