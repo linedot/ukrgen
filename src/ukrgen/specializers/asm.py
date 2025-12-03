@@ -16,6 +16,7 @@ from asmgen.registers import (
     reg_tracker,
     data_reg,
     asm_data_type as adt,
+    asm_index_type as ait,
     it_from_dt_samesize,
     adt_is_float,
     adt_is_int,
@@ -73,23 +74,29 @@ class op_modification:
                  component_match : set[str],
                  reg_type_match : set[lsc_reg_type],
                  modification : Callable[
-                     [lsc_operation,list[lsc_operation]],
+                     [lsc_operation,
+                      list[lsc_operation],
+                      list[lsc_operation]],
                      bool]):
         self.op_match = op_match
         self.component_match = component_match
         self.reg_type_match = reg_type_match
         self.modification = modification
 
-    def __call__(self, op : lsc_operation, result_ops : list[lsc_operation]) -> bool:
+    def __call__(self, op : lsc_operation,
+                 prepend_ops : list[lsc_operation],
+                 append_ops : list[lsc_operation]) -> bool:
 
         if not isinstance(op,tuple(self.op_match)):
             return False
 
-        indices = [i for i,idx in enumerate(op.indices) \
-                if idx.component in self.component_match]
+        indices = [i for i,idx in enumerate(op.indices)]
+        if self.component_match:
+            indices = [i for i,idx in enumerate(op.indices) \
+                    if idx.component in self.component_match]
 
         if any(op.reg_types[i] in self.reg_type_match for i in indices):
-            return self.modification(op, result_ops)
+            return self.modification(op, prepend_ops, append_ops)
         return False
 
 
@@ -317,19 +324,31 @@ class lsc_specializer:
         # - differentiate voffset,immoffset, nonoffset, ...
         # - differentiate tile/vreg/freg
 
+        kwargs = dict()
         suffix = ""
         if ldst_modifier.bcast1 in op.mods:
-            suffix = "_bcast1"
+            suffix += "_bcast1"
+        if ldst_modifier.lane in op.mods:
+            suffix += "_lane"
+            kwargs["lane"] = op.properties["lane"]
 
-        if op.stride is None:
+        if op.stride is None or \
+                (ldst_modifier.lane in op.mods) or \
+                (dreg_tag == "freg"):
             
             if lsc_offset.zero_offset() == op.off:
                 if 'treg' == dreg_tag:
                     lsfunc = getattr(self.gen, f"{action}_tile{suffix}")
-                    return lsfunc(areg=areg,treg=dreg,dt=dt)
+                    kwargs["areg"] = areg
+                    kwargs["treg"] = dreg
+                    kwargs["dt"] = dt
+                    return lsfunc(**kwargs)
                 if 'vreg' == dreg_tag:
                     lsfunc = getattr(self.gen, f"{action}_vector{suffix}")
-                    return lsfunc(areg=areg,vreg=dreg,dt=dt)
+                    kwargs["areg"] = areg
+                    kwargs["vreg"] = dreg
+                    kwargs["dt"] = dt
+                    return lsfunc(**kwargs)
 
             if 'freg' == dreg_tag:
                 lsfunc = getattr(self.gen, f"{action}_scalar{suffix}_immoff")
@@ -792,7 +811,8 @@ class lsc_specializer:
         split_instructions = False
         vec_groups = False
         if ways > 1:
-            wms = [getattr(self.gen, op, None).widening_method for op in self.ops_used if getattr(self.gen, op, None) != None]
+            wms = [getattr(self.gen, op, None).widening_method \
+                    for op in self.ops_used if getattr(self.gen, op, None) != None]
             if any([wmtd==wm.SPLIT_INSTRUCTIONS for wmtd in wms]):
                 split_instructions = True
             if any([wmtd==wm.VEC_GROUP for wmtd in wms]):
@@ -805,7 +825,9 @@ class lsc_specializer:
 
         modifications=[]
 
-        def widen_data_regs(op : lsc_operation, result_ops : list[lsc_operation]):
+        def widen_data_regs(op : lsc_operation,
+                            prepend_ops : list[lsc_operation],
+                            append_ops : list[lsc_operation]):
             for i,idx in enumerate(op.indices):
                 idx_list = idx.indices
                 c = idx.component
@@ -816,7 +838,9 @@ class lsc_specializer:
                         self.data_registers[c].add(op.indices[i].indices[0]+wayreg)
             return False
 
-        def widen_offsets(op : lsc_operation, result_ops : list[lsc_operation]):
+        def widen_offsets(op : lsc_operation,
+                            prepend_ops : list[lsc_operation],
+                            append_ops : list[lsc_operation]):
             component = op.addr_idx.component
             if component in acc_components:
                 mapper = self.model.offset_mappers[component]
@@ -833,7 +857,9 @@ class lsc_specializer:
                 self.register_offset(component=component,off=op.off)
             return False
 
-        def split_arith_ldst(op : lsc_operation, result_ops : list[lsc_operation]):
+        def split_arith_ldst(op : lsc_operation,
+                             prepend_ops : list[lsc_operation],
+                             append_ops : list[lsc_operation]):
             if need_stls:
                 raise NotImplementedError("split instruction and special tile ld/st not implemented")
            
@@ -875,10 +901,10 @@ class lsc_specializer:
                                    lsc_offset.zero_offset())
                     part_op.off = baseoff+addoff
 
-                # TODO: cleaner way to handle this - maybe result_ops should be the
+                # TODO: cleaner way to handle this - maybe append_ops should be the
                 # only way to return ops?
                 if i > 0:
-                    result_ops.append(part_op)
+                    append_ops.append(part_op)
                 else:
                     first_op = deepcopy(part_op)
 
@@ -888,6 +914,133 @@ class lsc_specializer:
                 op.off = first_op.off
             op.indices = first_op.indices
             return False
+
+        def ensure_ldst_gregstride(op : lsc_operation,
+                                   prepend_ops : list[lsc_operation],
+                                   append_ops : list[lsc_operation]):
+            if not isinstance(op, (lsc_load, lsc_store)):
+                return False
+
+            ca = op.addr_idx.component
+            # Strides
+            mapper = self.model.offset_mappers[ca]
+            if not isinstance(mapper, strided_mapper):
+                return False
+
+            # TODO: arbitrary vectorization direction
+            vecdim = 0
+
+            for a,b,c in self.component_triples:
+                if b == ca:
+                    vecdim = 1
+
+            stridx = mapper.stride_indices[vecdim]
+            if stridx is None:
+                return False
+
+            if ldst_modifier.lane in op.mods:
+                return False
+
+            op.stride = lsc_offset({}, [0 for i in range(stridx)]+[1], [], 0)
+            self.register_offset(component=ca, off=op.stride)
+            can_gregstride = False
+            can_gather = False
+            can_lane = False
+            try:
+                self.gen.load_vector_gregstride(areg=None,sreg=None,vreg=None,dt=None)
+                can_gregstride = True
+            except:
+                pass
+            try:
+                self.gen.load_vector_gather(
+                        areg=self.gen.greg(1),
+                        vreg=self.gen.vreg(1),
+                        offvreg=self.gen.vreg(1),
+                        dt=adt.FP64, it=ait.INT64)
+                can_gather = True
+            except:
+                pass
+            try:
+                self.gen.load_vector_lane(
+                        areg=self.gen.greg(1),
+                        vreg=self.gen.vreg(1),
+                        lane=0,
+                        dt=adt.FP64)
+                can_lane = True
+            except:
+                pass
+            if can_gregstride:
+                return False
+            elif not can_gregstride and can_gather:
+                self.register_vindex(component=ca, stride=op.stride)
+                return False
+            elif can_lane:
+                # Emulate gregstride with lane loads
+                elements = op.t.dima.sd_size*op.t.dimb.sd_size
+                for i in range(1,elements):
+                    append_ops.append(
+                        lsc_addr_add(component=op.addr_idx.component,
+                                     addr_idx=op.addr_idx.indices[0],
+                                     off=op.stride, 
+                                     t=op.t)
+                    )
+                    lane_load = lsc_load(
+                            component=op.addr_idx.component, 
+                            res_idx=op.res_idx.indices[0], 
+                            addr_idx=op.addr_idx.indices[0], 
+                            off=op.off, 
+                            stride=op.stride, 
+                            t = op.t, 
+                            mods=op.mods.union({ldst_modifier.lane}))
+                    lane_load.add_property("lane", i)
+                    append_ops.append(lane_load)
+
+                op.mods = op.mods.union({ldst_modifier.lane})
+                op.add_property("lane", 0)
+
+                addoff = sum([op.stride for i in range(elements)],
+                             lsc_offset.zero_offset())
+
+                def subtract_addoff(op_mod, prepend_ops, append_ops):
+                    ca = op_mod.addr_idx.component
+                    if op_mod.addr_idx == op.addr_idx:
+                        new_off = op.off - addoff
+                        if self.model.ar.toff_in_range(
+                                lsc_offset.zero_offset(),
+                                new_off,
+                                self.model.ar.offset_ranges[ca][op_mod.addr_idx.indices[0]]):
+                            if op.off in self.offset_registry[ca]:
+                                self.offset_registry[ca].remove(op.off)
+                            op.off = new_off
+                            self.register_offset(component=ca,
+                                                 off=op.off)
+                            return True
+                        else:
+                            prepend_ops.append(
+                                    lsc_addr_add(ca,
+                                                 op_mod.addr_idx.indices[0],
+                                                 off=addoff,
+                                                 t=op.t)
+                                    )
+                            return True
+                    return False
+                modifications.append(op_modification(
+                    {lsc_addr_add,lsc_load,lsc_store},
+                    [op.addr_idx.component],
+                    {lsc_reg_type.address},
+                    subtract_addoff
+                    ))
+                return False
+            else:
+                raise RuntimeError("ISA has no gathers, no strided loads and no lane loads. Can't continue")
+
+
+
+        modifications.append(op_modification(
+            {lsc_load,lsc_store},
+            {},
+            {lsc_reg_type.address},
+            ensure_ldst_gregstride))
 
         if split_instructions or vec_groups:
             modifications.append(op_modification(
@@ -912,11 +1065,13 @@ class lsc_specializer:
         for op in ops:
 
             # Apply modifications
-            mod_ops = []
+            premod_ops = []
+            postmod_ops = []
             remove_list = [i for i,mod in enumerate(modifications)\
-                    if mod(op, mod_ops)]
+                    if mod(op, premod_ops, postmod_ops)]
             for i in remove_list:
                 modifications.pop(i)
+            result_ops.extend(premod_ops)
 
             if isinstance(op, lsc_loop):
                 for div in reversed(op.divergences):
@@ -930,6 +1085,7 @@ class lsc_specializer:
                 if stls.check_store_flush(op):
                     result_ops.extend(stls.flush_store())
                     print(f"flushing treg store")
+
             if isinstance(op, (lsc_load, lsc_store)):
                 ca = op.addr_idx.component
                 # Strides
@@ -942,18 +1098,6 @@ class lsc_specializer:
                     if b == ca:
                         vecdim = 1
 
-                if isinstance(mapper, strided_mapper):
-                    stridx = mapper.stride_indices[vecdim]
-                    if stridx is not None:
-                        op.stride = lsc_offset({}, [0 for i in range(stridx)]+[1], [], 0)
-                        self.register_offset(component=ca, off=op.stride)
-                        try:
-                            self.gen.load_vector_gregstride(areg=None,sreg=None,vreg=None,dt=None)
-                        except NotImplementedError as e:
-                            self.register_vindex(component=ca, stride=op.stride)
-                        except:
-                            pass
-                    
 
                 if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
                    (op.t.dima.dt == dimension_type.vla and \
@@ -1046,7 +1190,7 @@ class lsc_specializer:
             else:
                 result_ops.append(op)
 
-            result_ops.extend(mod_ops)
+            result_ops.extend(postmod_ops)
         if need_stls:
             result_ops.extend(stls.flush_load())
             result_ops.extend(stls.flush_store())
