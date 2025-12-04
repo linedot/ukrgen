@@ -29,6 +29,7 @@ from ...composers.stages import (
     dimension_stage,
     mm_tif_stage,
     lsc_model_stage,
+    irmod_inserter_stage,
     lsc_mru_stage,
     lsc_schedule_stage,
     specialize_lsc_stage,
@@ -94,6 +95,7 @@ class blis_patcher:
             mm_tif_stage,
             lsc_model_stage,
             specialize_lsc_stage,
+            irmod_inserter_stage,
             lsc_mru_stage,
             lsc_schedule_stage,
             blis_ukr_codegen_stage]

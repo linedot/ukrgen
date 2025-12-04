@@ -2,7 +2,7 @@ from .composition import composition_stage
 from .codegen import blis_ukr_codegen_stage
 from .datatype import datatype_stage
 from .dimension import dimension_stage
-from .irmod import unvec_lsc_stage
+from .irmod import unvec_lsc_stage,irmod_inserter_stage
 from .model import lsc_model_stage
 from .mru import lsc_mru_stage
 from .schedule import lsc_schedule_stage

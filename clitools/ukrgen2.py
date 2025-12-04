@@ -18,6 +18,7 @@ from ukrgen.composers.stages.model import lsc_model_stage
 from ukrgen.composers.stages.mru import lsc_mru_stage
 from ukrgen.composers.stages.schedule import lsc_schedule_stage
 from ukrgen.composers.stages.specialize import specialize_lsc_stage
+from ukrgen.composers.stages.irmod_inserter_stage import irmod_inserter_stage
 from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
 
 from ukrgen.composers.gemm import gemm_context
@@ -84,6 +85,7 @@ def ukrgen2():
         mm_tif_stage,
         lsc_model_stage,
         specialize_lsc_stage,
+        irmod_inserter_stage,
         lsc_mru_stage,
         lsc_schedule_stage,
         blis_ukr_codegen_stage]

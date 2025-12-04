@@ -240,7 +240,7 @@ class lsc_specializer:
         dt = component_dts[ca]
         dt_bytes = adt_size(dt)
 
-        if op.off.is_vector():
+        if op.off.is_vector:
             factor = op.off.vlen_strides[0]*tsize
 
             if factor < self.gen.max_add_voff and factor > 0:
@@ -255,7 +255,7 @@ class lsc_specializer:
                                           reg1=areg,
                                           reg2=vlenreg)
 
-        elif op.off.is_scalar():
+        elif op.off.is_scalar:
             return self.gen.add_greg_imm(
                 reg=areg,
                 imm=op.off.immoff*tsize*dt_bytes)
@@ -274,7 +274,7 @@ class lsc_specializer:
         return self.transform_val_add(op=op, component_dts=component_dts, alias=alias)
 
     def transform_add_val_off(self, op : lsc_operation, component_dts : dict[str,adt]):
-        if not op.off.is_scalar():
+        if not op.off.is_scalar:
             raise NotImplementedError(
                 "Non-scalar offsets not implemented for non-address values")
         alias = op.valname
@@ -331,12 +331,20 @@ class lsc_specializer:
         if ldst_modifier.lane in op.mods:
             suffix += "_lane"
             kwargs["lane"] = op.properties["lane"]
+        if ldst_modifier.postinc in op.mods:
+            if op.off.is_scalar:
+                suffix += "_inc"
+                kwargs["offset"] = op.off.immoff*dt_bytes
+            elif op.off.is_regstride:
+                suffix += "_greginc"
+                offreg_idx = self.rt.aliased_regs['greg'][f"{ca}off:{str(op.off)}"]
+                kwargs["offreg"] = self.gen.greg(offreg_idx)
 
         if op.stride is None or \
                 (ldst_modifier.lane in op.mods) or \
                 (dreg_tag == "freg"):
             
-            if lsc_offset.zero_offset() == op.off:
+            if lsc_offset.zero_offset() == op.off or ldst_modifier.postinc in op.mods:
                 if 'treg' == dreg_tag:
                     lsfunc = getattr(self.gen, f"{action}_tile{suffix}")
                     kwargs["areg"] = areg
@@ -1016,6 +1024,7 @@ class lsc_specializer:
                                                  off=op.off)
                             return True
                         else:
+                            self.register_offset(component=ca, off=addoff)
                             prepend_ops.append(
                                     lsc_addr_add(ca,
                                                  op_mod.addr_idx.indices[0],
@@ -1230,7 +1239,7 @@ class lsc_specializer:
 
         for component in self.offset_registry.keys():
             for off in self.offset_registry[component]:
-                if not off.is_vector():
+                if not off.is_vector:
                     continue
 
                 alias = f"{component}off:{str(off)}"
@@ -1293,10 +1302,10 @@ class lsc_specializer:
         # reserve offset registers
         for component in self.offset_registry.keys():
             for off in self.offset_registry[component]:
-                if off.is_scalar():
+                if off.is_scalar:
                     continue
                 
-                if off.is_vector():
+                if off.is_vector:
                     factor = off.vlen_strides[0]
                     if factor < self.gen.max_add_voff and factor > 0:
                         continue

@@ -89,6 +89,7 @@ class lsc_offset:
             one.vlen_strides.extend([0 for i in range(l1,l2)])
 
 
+    @property
     def is_scalar(self) -> bool:
         result = False
         if self.immoff != 0:
@@ -102,6 +103,7 @@ class lsc_offset:
 
         return result
 
+    @property
     def is_vector(self) -> bool:
         result = False
         if 1 == sum([1 for v in self.vlen_strides if 0 != v]):
@@ -116,18 +118,26 @@ class lsc_offset:
 
         return result
 
+    @property
     def is_regstride(self) -> bool:
-        result = False
-        if 1 == sum(self.reg_strides):
-            result = True
-        if any([v != 0 for v in self.vlen_strides]):
-            result = False
-        if any([v != 0 for k,v in self.sxv_strides.items()]):
-            result = False
-        if self.immoff != 0:
-            result = False
+        #result = False
+        #if 1 == sum(self.reg_strides):
+        #    result = True
+        #if any([v != 0 for v in self.vlen_strides]):
+        #    result = False
+        #if any([v != 0 for k,v in self.sxv_strides.items()]):
+        #    result = False
+        #if self.immoff != 0:
+        #    result = False
 
-        return result
+        #return result
+        only_ones_or_zeroes = all(v in {0,1} for v in self.reg_strides)
+        only_one_nz = sum(1 for v in self.reg_strides if v != 0) == 1
+
+        return (only_ones_or_zeroes and only_one_nz and 
+                all(v == 0 for v in self.vlen_strides) and 
+                all(v == 0 for v in self.sxv_strides.values()) and 
+                self.immoff == 0)
 
     def __abs__(self):
         return lsc_offset(
