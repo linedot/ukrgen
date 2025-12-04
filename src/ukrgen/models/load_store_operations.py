@@ -76,6 +76,7 @@ def can_reorder(first : lsc_operation, second : lsc_operation) -> bool:
 class ldst_modifier(Enum):
     bcast1 = auto()
     lane = auto()
+    postinc = auto()
 
 class lsc_load(lsc_operation):
     def __init__(self,
