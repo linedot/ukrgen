@@ -118,7 +118,16 @@ class lsc_load(lsc_operation):
         return self.tiles[1]
 
     def __str__(self):
-        return f"RES:{self.res_idx} <- LOAD ADDR:{self.addr_idx} + {self.off}"
+        offsetstr = f" + {self.off}"
+        resstr = f"RES:{self.res_idx}"
+        opstr = "LOAD"
+        if ldst_modifier.bcast1 in self.mods:
+            opstr = "BCAST"
+        if ldst_modifier.lane in self.mods:
+            resstr += f"[lane:{self.properties['lane']}]"
+        if ldst_modifier.postinc in self.mods:
+            offsetstr = f"; ADDR:{self.addr_idx} <- ADDR:{self.addr_idx} + {self.off}"
+        return f"{resstr} <- {opstr} ADDR:{self.addr_idx}{offsetstr}"
 
 class lsc_store(lsc_operation):
     def __init__(self,
@@ -159,7 +168,15 @@ class lsc_store(lsc_operation):
         return self.tiles[1]
 
     def __str__(self):
-        return f"ADDR:{self.addr_idx} + {self.off} <- STORE RES:{self.res_idx}"
+        offsetstr = f" + {self.off}"
+        poststr = ""
+        resstr = f"RES:{self.res_idx}"
+        if ldst_modifier.lane in self.mods:
+            resstr += f"[lane:{self.properties['lane']}]"
+        if ldst_modifier.postinc in self.mods:
+            offsetstr = ""
+            poststr = f"; ADDR:{self.addr_idx} <- ADDR:{self.addr_idx} + {self.off}"
+        return f"ADDR:{self.addr_idx}{offsetstr} <- STORE {resstr}{poststr}"
 
 class lsc_zero(lsc_operation):
     def __init__(self, component : str, res_idx : int, t : tile):
