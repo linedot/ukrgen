@@ -79,6 +79,12 @@ class mm_tif_stage(composition_stage):
         self.debug("### MAIN ###")
         for op in self.context.tifs["mm"]:
             self.debug(str(op))
+        self.debug("### MAIN +1k ###")
+        for op in self.context.tifs["mm_p1k"]:
+            self.debug(str(op))
+        self.debug("### MAIN +2k ###")
+        for op in self.context.tifs["mm_p2k"]:
+            self.debug(str(op))
         self.debug("### BETA SCALE ###")
 
         if "gemm" == self.context.params["ukr"].value:
