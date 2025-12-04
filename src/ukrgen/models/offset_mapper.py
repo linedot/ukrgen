@@ -84,19 +84,21 @@ class strided_mapper(offset_mapper):
         #       This will probably need a direction parameter
         #       Alternatively this could be handled in some other manner so that
         #       always using the first component in the mapper is correct
-        idx = (1,0)
+
+
+        idx = (t.dima.size,0)
         if self.vecdim == 1:
-            idx = (0,1)
+            idx = (0,t.dimb.size)
         return self.map_tile_idx(t=t, idx=idx)
 
     def map_tile_idx(self, t : tile, idx : tuple[int,int]) -> lsc_offset:
 
         # I think those are already pre-multiplied in the TIF
-        #first_t_size = t.dima.size
-        #second_t_size = t.dimb.size
-        #if self.flip_tile_dims:
-        #    first_t_size = t.dimb.size
-        #    second_t_size = t.dima.size
+        first_t_size = t.dima.size
+        second_t_size = t.dimb.size
+        if self.flip_tile_dims:
+            first_t_size = t.dimb.size
+            second_t_size = t.dima.size
 
         #first  = first_t_size*idx[0]
         #second = second_t_size*idx[1]
@@ -165,12 +167,12 @@ class strided_mapper(offset_mapper):
 
 
         if s1 is None and 0 == self.vecdim:
-            #first_size = self.dims[0]*first_t_size
-            first_size = self.dims[0]
+            first_size = self.dims[0]*first_t_size
+            #first_size = self.dims[0]
             second_off_base = sum([first_off_base for i in range(first_size)],lsc_offset.zero_offset()) 
         if s0 is None and 1 == self.vecdim:
-            #second_size = self.dims[1]*second_t_size
-            second_size = self.dims[1]
+            second_size = self.dims[1]*second_t_size
+            #second_size = self.dims[1]
             first_off_base = sum([second_off_base for i in range(second_size)],lsc_offset.zero_offset()) 
 
         
