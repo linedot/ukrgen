@@ -116,6 +116,19 @@ class lsc_offset:
 
         return result
 
+    def is_regstride(self) -> bool:
+        result = False
+        if 1 == sum(self.reg_strides):
+            result = True
+        if any([v != 0 for v in self.vlen_strides]):
+            result = False
+        if any([v != 0 for k,v in self.sxv_strides.items()]):
+            result = False
+        if self.immoff != 0:
+            result = False
+
+        return result
+
     def __abs__(self):
         return lsc_offset(
             sxv_strides={key : abs(val) for \
