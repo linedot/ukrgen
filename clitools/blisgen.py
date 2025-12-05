@@ -56,10 +56,16 @@ def blisgen():
                         type=str,
                         required=True)
 
+    parser.add_argument("--overwrite",
+                        help="overwrite the output directory if it exists",
+                        action="store_true",
+                        required=False)
+
     parser.add_argument("--author",
                         help="Author to insert in the copyright string",
                         type=str,
                         required=True)
+
 
 
 
@@ -113,7 +119,7 @@ def blisgen():
 
     bp.prepare_code(blis_params)
 
-    bp.patch(blis_dir, args.out_dir)
+    bp.patch(blis_dir, args.out_dir, overwrite=args.overwrite)
 
 
 if __name__ == "__main__":

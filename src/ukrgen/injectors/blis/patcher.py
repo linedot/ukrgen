@@ -275,10 +275,13 @@ class blis_patcher:
                     raise RuntimeError("Nothing new resolved")
 
 
-    def patch(self, blis_dir : str, out_dir : str):
+    def patch(self, blis_dir : str, out_dir : str, overwrite : bool = False):
 
         log = logging.getLogger("BLISPATCH")
         log.setLevel(logging.DEBUG)
+
+        if os.path.isdir(out_dir) and overwrite:
+            shutil.rmtree(out_dir)
         
         shutil.copytree(blis_dir, out_dir)
 

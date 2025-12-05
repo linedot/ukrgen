@@ -62,7 +62,6 @@ class ldinc_lsc_stage(composition_stage):
 
                     data_not_scalar = ldst.mods.isdisjoint(
                             {ldst_modifier.lane, ldst_modifier.bcast1})
-                    print(f"is data of {ldst} not scalar: {data_not_scalar}")
 
                     # Actually this would be an ldr, so it's fine
                     # data_not_scalar = data_not_scalar and not op.t.is_scalar
@@ -71,12 +70,6 @@ class ldinc_lsc_stage(composition_stage):
                     # the size of the data for ld1r/ld1/st1,
                     # but can be [-256,255] for ldr/str
                     if add.off.is_regstride:
-                        print(f"{add} is regstride")
-                        print(add.off.reg_strides)
-                        print("sum=" + str(sum(add.off.reg_strides)))
-                        print(add.off.immoff)
-                        print(add.off.sxv_strides)
-                        print(add.off.vlen_strides)
                         index_pairs.append((i,j))
                     elif add.off.is_scalar:
                         if (add.off.immoff == 1) or data_not_scalar:
@@ -117,6 +110,8 @@ class ldinc_lsc_stage(composition_stage):
         self.debug("ENDSTOREBLOCK ---------------------------")
 
         return list()
+
+
 
 class unvec_lsc_stage(composition_stage):
     def __init__(self, context : gemm_context):
