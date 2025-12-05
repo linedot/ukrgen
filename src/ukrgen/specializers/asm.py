@@ -4,6 +4,8 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+from __future__ import annotations
+
 import re
 from typing import Self,Callable,Union
 
@@ -76,7 +78,8 @@ class op_modification:
                  modification : Callable[
                      [lsc_operation,
                       list[lsc_operation],
-                      list[lsc_operation]],
+                      list[lsc_operation],
+                      list[op_modification]],
                      bool]):
         self.op_match = op_match
         self.component_match = component_match
@@ -85,10 +88,12 @@ class op_modification:
 
     def __call__(self, op : lsc_operation,
                  prepend_ops : list[lsc_operation],
-                 append_ops : list[lsc_operation]) -> bool:
+                 append_ops : list[lsc_operation],
+                 new_mods : list[op_modification]) -> bool:
 
         if not isinstance(op,tuple(self.op_match)):
             return False
+
 
         indices = [i for i,idx in enumerate(op.indices)]
         if self.component_match:
@@ -96,7 +101,9 @@ class op_modification:
                     if idx.component in self.component_match]
 
         if any(op.reg_types[i] in self.reg_type_match for i in indices):
-            return self.modification(op, prepend_ops, append_ops)
+            return self.modification(op, prepend_ops, append_ops, new_mods)
+
+            
         return False
 
 
@@ -835,7 +842,8 @@ class lsc_specializer:
 
         def widen_data_regs(op : lsc_operation,
                             prepend_ops : list[lsc_operation],
-                            append_ops : list[lsc_operation]):
+                            append_ops : list[lsc_operation],
+                            new_mods : list[op_modification]):
             for i,idx in enumerate(op.indices):
                 idx_list = idx.indices
                 c = idx.component
@@ -847,8 +855,9 @@ class lsc_specializer:
             return False
 
         def widen_offsets(op : lsc_operation,
-                            prepend_ops : list[lsc_operation],
-                            append_ops : list[lsc_operation]):
+                          prepend_ops : list[lsc_operation],
+                          append_ops : list[lsc_operation],
+                          new_mods : list[op_modification]):
             component = op.addr_idx.component
             if component in acc_components:
                 mapper = self.model.offset_mappers[component]
@@ -867,7 +876,8 @@ class lsc_specializer:
 
         def split_arith_ldst(op : lsc_operation,
                              prepend_ops : list[lsc_operation],
-                             append_ops : list[lsc_operation]):
+                             append_ops : list[lsc_operation],
+                             new_mods : list[op_modification]):
             if need_stls:
                 raise NotImplementedError("split instruction and special tile ld/st not implemented")
            
@@ -925,7 +935,8 @@ class lsc_specializer:
 
         def ensure_ldst_gregstride(op : lsc_operation,
                                    prepend_ops : list[lsc_operation],
-                                   append_ops : list[lsc_operation]):
+                                   append_ops : list[lsc_operation],
+                                   new_mods : list[op_modifications]):
             if not isinstance(op, (lsc_load, lsc_store)):
                 return False
 
@@ -977,6 +988,7 @@ class lsc_specializer:
                 can_lane = True
             except:
                 pass
+
             if can_gregstride:
                 return False
             elif not can_gregstride and can_gather:
@@ -992,7 +1004,10 @@ class lsc_specializer:
                                      off=op.stride, 
                                      t=op.t)
                     )
-                    lane_load = lsc_load(
+                    lsc_ldst = lsc_load
+                    if isinstance(op, lsc_store):
+                        lsc_ldst = lsc_store
+                    lane_load = lsc_ldst(
                             component=op.addr_idx.component, 
                             res_idx=op.res_idx.indices[0], 
                             addr_idx=op.addr_idx.indices[0], 
@@ -1006,39 +1021,44 @@ class lsc_specializer:
                 op.mods = op.mods.union({ldst_modifier.lane})
                 op.add_property("lane", 0)
 
-                addoff = sum([op.stride for i in range(elements)],
+                addoff = sum([op.stride for i in range(1,elements)],
                              lsc_offset.zero_offset())
 
-                def subtract_addoff(op_mod, prepend_ops, append_ops):
+                def modify_next_offset(op_mod, prepend_ops, append_ops, new_mods):
                     ca = op_mod.addr_idx.component
                     if op_mod.addr_idx == op.addr_idx:
-                        new_off = op.off - addoff
-                        if self.model.ar.toff_in_range(
+                        new_off = op_mod.off - addoff
+                        if isinstance(op_mod, lsc_addr_add) or \
+                                self.model.ar.toff_in_range(
                                 lsc_offset.zero_offset(),
                                 new_off,
                                 self.model.ar.offset_ranges[ca][op_mod.addr_idx.indices[0]]):
-                            if op.off in self.offset_registry[ca]:
-                                self.offset_registry[ca].remove(op.off)
-                            op.off = new_off
+                            if op_mod.off in self.offset_registry[ca]:
+                                self.offset_registry[ca].remove(op_mod.off)
+                            op_mod.off = new_off
                             self.register_offset(component=ca,
-                                                 off=op.off)
+                                                 off=op_mod.off)
                             return True
                         else:
                             self.register_offset(component=ca, off=addoff)
+                            suboff = lsc_offset.zero_offset()-addoff
+                            if suboff not in self.offset_registry[ca]:
+                                self.register_offset(component=ca, off=suboff)
                             prepend_ops.append(
                                     lsc_addr_add(ca,
                                                  op_mod.addr_idx.indices[0],
-                                                 off=addoff,
+                                                 off=suboff,
                                                  t=op.t)
                                     )
                             return True
                     return False
-                modifications.append(op_modification(
+                offsetmod = op_modification(
                     {lsc_addr_add,lsc_load,lsc_store},
-                    [op.addr_idx.component],
+                    {op.addr_idx.component},
                     {lsc_reg_type.address},
-                    subtract_addoff
-                    ))
+                    modify_next_offset
+                    )
+                new_mods.append(offsetmod)
                 return False
             else:
                 raise RuntimeError("ISA has no gathers, no strided loads and no lane loads. Can't continue")
@@ -1072,15 +1092,17 @@ class lsc_specializer:
 
         result_ops = []
         for op in ops:
-
             # Apply modifications
-            premod_ops = []
-            postmod_ops = []
+            premod_ops = list()
+            postmod_ops = list()
+            new_mods = list()
+
             remove_list = [i for i,mod in enumerate(modifications)\
-                    if mod(op, premod_ops, postmod_ops)]
-            for i in remove_list:
-                modifications.pop(i)
+                    if mod(op, premod_ops, postmod_ops, new_mods)]
+            for x in reversed(remove_list):
+                modifications.pop(x)
             result_ops.extend(premod_ops)
+            modifications.extend(deepcopy(new_mods))
 
             if isinstance(op, lsc_loop):
                 for div in reversed(op.divergences):
@@ -1107,10 +1129,7 @@ class lsc_specializer:
                     if b == ca:
                         vecdim = 1
 
-
-                if (op.t.dima.size > 1 and op.t.dimb.size > 1) or \
-                   (op.t.dima.dt == dimension_type.vla and \
-                    op.t.dimb.dt == dimension_type.vla):
+                if op.t.is_tile:
                     action = "load"
                     if isinstance(op, lsc_store):
                         action = "store"
@@ -1173,7 +1192,8 @@ class lsc_specializer:
                             group_op.off = baseoff
 
                             mod_idx = op.addr_idx
-                            def subtract_addoff(op, results):
+                            def subtract_addoff(op, prepend_ops,
+                                                append_ops, new_mods):
                                 ca = op.addr_idx.component
                                 if op.addr_idx == mod_idx:
                                     #print(f"subtracting {addoff} from {op.off}")
@@ -1187,7 +1207,7 @@ class lsc_specializer:
 
                             modifications.append(
                                     op_modification(
-                                        op_match=[lsc_addr_add,lsc_load,lsc_store],
+                                        op_match={lsc_addr_add,lsc_load,lsc_store},
                                         component_match=acc_components, 
                                         reg_type_match={lsc_reg_type.address},
                                         modification=subtract_addoff)

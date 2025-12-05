@@ -46,12 +46,7 @@ def get_ukr_components(ukr : str) -> list[str]:
     raise ValueError(f"Invalid microkernel {ukr}")
 
 def get_ukr_mru_map(ukr : str) -> dict[str,tuple[list[str],list[str]]]:
-    if "gemm" == ukr:
-        return { "store" : (
-            ["preload","main","preload_next"],
-            ["betascale","alphascale","store"])
-        }
-    if "mm" == ukr:
+    if ukr in {"gemm","mm"}:
         return { "store" : (
             ["preload","main","preload_next"],
             ["store"])

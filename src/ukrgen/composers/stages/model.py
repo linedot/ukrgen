@@ -245,6 +245,12 @@ class lsc_model_stage(composition_stage):
             self.context.irs["alphascale"] = self.context.model(alphascale_ops)
 
         self.context.irs["store"] = self.context.model.store_modified(ignore_components="AB")
+        if "gemm" == self.context.params["ukr"].value:
+            self.context.irs["store"] = \
+                    self.context.irs["betascale"] + \
+                    self.context.irs["alphascale"] + \
+                    self.context.irs["store"]
+
 
         self.context.params.update(self.params)
 
@@ -259,13 +265,6 @@ class lsc_model_stage(composition_stage):
         self.debug("PRELOAD NEXT ----------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
         self.debug("END MAIN LOOP ---------------------------")
-        if "gemm" == self.context.params["ukr"].value:
-            self.debug("BETASCALE BLOCK -------------------------")
-            self.debug("\n".join(map(str,self.context.irs["betascale"])))
-            self.debug("END BETASCALE BLOCK ---------------------")
-            self.debug("ALPHASCALE BLOCK ------------------------")
-            self.debug("\n".join(map(str,self.context.irs["alphascale"])))
-            self.debug("END ALPHASCALE BLOCK --------------------")
         self.debug("STOREBLOCK ------------------------------")
         self.debug("\n".join(map(str,self.context.irs["store"])))
         self.debug("ENDSTOREBLOCK ---------------------------")
