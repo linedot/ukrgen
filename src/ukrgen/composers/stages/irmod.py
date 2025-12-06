@@ -86,6 +86,9 @@ class ldinc_lsc_stage(composition_stage):
                 new_op.off = ir[add_idx].off
                 new_op.mods = ir[ldst_idx].mods.union(
                         {ldst_modifier.postinc})
+                # Add addr idx to writes
+                new_op.writes.append(0)
+                new_op.writes = sorted(new_op.writes)
                 ir[ldst_idx] = new_op
                 ir[add_idx] = None
 
