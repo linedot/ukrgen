@@ -6,6 +6,7 @@
 
 import sys
 import logging
+from copy import deepcopy
 
 from .composition import composition_stage
 from ..gemm import gemm_context
@@ -80,10 +81,12 @@ class ldinc_lsc_stage(composition_stage):
                     break
 
             for ldst_idx,add_idx in index_pairs:
-                self.debug(f"combining {ir[ldst_idx]} with {ir[add_idx]}")
-                ir[ldst_idx].off = ir[add_idx].off
-                ir[ldst_idx].mods = ir[ldst_idx].mods.union(
+                self.debug(f"combining {ldst_idx}:{ir[ldst_idx]} with {add_idx}:{ir[add_idx]}")
+                new_op = deepcopy(ir[ldst_idx])
+                new_op.off = ir[add_idx].off
+                new_op.mods = ir[ldst_idx].mods.union(
                         {ldst_modifier.postinc})
+                ir[ldst_idx] = new_op
                 ir[add_idx] = None
 
             # Filter out deleted adds
@@ -91,7 +94,7 @@ class ldinc_lsc_stage(composition_stage):
         
         self.context.params.update(self.params)
 
-        self.debug("################### PSEUDO-ASM ###################")
+        self.debug("################### LDSTINC PSEUDO-ASM ###################")
         self.debug("\n".join(map(str,self.context.irs["preload"])))
         self.debug("MAIN LOOP -------------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["main"])))
@@ -142,7 +145,7 @@ class unvec_lsc_stage(composition_stage):
         
         self.context.params.update(self.params)
 
-        self.debug("################### PSEUDO-ASM ###################")
+        self.debug("################### UNVEC PSEUDO-ASM ###################")
         self.debug("\n".join(map(str,self.context.irs["preload"])))
         self.debug("MAIN LOOP -------------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["main"])))
