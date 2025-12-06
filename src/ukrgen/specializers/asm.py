@@ -968,7 +968,11 @@ class lsc_specializer:
             can_gather = False
             can_lane = False
             try:
-                self.gen.load_vector_gregstride(areg=None,sreg=None,vreg=None,dt=None)
+                self.gen.load_vector_gregstride(
+                        areg=self.gen.greg(1),
+                        sreg=self.gen.greg(2),
+                        vreg=self.gen.vreg(1),
+                        dt=adt.FP64)
                 can_gregstride = True
             except:
                 pass
