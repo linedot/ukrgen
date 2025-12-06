@@ -71,7 +71,7 @@ class blis_kernel:
                  csrsctx : gemm_context):
         self.ns = nsctx
         self.cs = csctx
-        self.rs = rsctx
+        #self.rs = rsctx
         self.csrs = csrsctx
 
 class blis_patcher:
@@ -103,7 +103,7 @@ class blis_patcher:
         stride_configs = [
             ([],[],"_nostride"),
             ([],["C"],"_cs"),
-            (["C"],[],"_rs"),
+            #(["C"],[],"_rs"),
             (["C"],["C"],"_csrs"),
         ]
 
@@ -148,8 +148,10 @@ class blis_patcher:
             self.kernels.append(
                 blis_kernel(nsctx=contexts[0],
                             csctx=contexts[1],
-                            rsctx=contexts[2],
-                            csrsctx=contexts[3]))
+                            #rsctx=contexts[2],
+                            #csrsctx=contexts[3]))
+                            rsctx=None,
+                            csrsctx=contexts[2]))
 
 
 
@@ -203,8 +205,8 @@ class blis_patcher:
                     kernel.ns.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_cs.s"] = \
                     kernel.cs.asmblocks["full_function"]
-            self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_rs.s"] = \
-                    kernel.rs.asmblocks["full_function"]
+            #self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_rs.s"] = \
+            #        kernel.rs.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_csrs.s"] = \
                     kernel.csrs.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}.c"] = ksrc
