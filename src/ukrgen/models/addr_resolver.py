@@ -6,6 +6,7 @@
 
 # See: addr_resolver.md
 
+import logging
 import string
 from typing import Self
 from copy import deepcopy
@@ -68,6 +69,8 @@ class addr_resolver:
         self.offset_ranges=offset_ranges
         self.steps = steps
         self.max_incs = max_incs
+
+        self.debug = logging.getLogger("ADDR").debug
 
 
         self.candidate_selectors = {
@@ -162,7 +165,7 @@ class addr_resolver:
         incs_to_do = self.max_incs
         off = lsc_offset.zero_offset()
         
-        #print(f"Resolving {toff} for {component}")
+        self.debug(f"Resolving {toff} for {component}")
         
         while addr_idx_to_use is None and 0 < incs_to_do:
 
@@ -182,7 +185,7 @@ class addr_resolver:
                                   offset_range=self.offset_ranges[component][best_candidate_idx]):
                 addr_idx_to_use = best_candidate_idx
                 off = toff-offset_min
-                #print(f"will use ADDR:{component}{addr_idx_to_use} (first)")
+                self.debug(f"Initial candidate ADDR:{component}{addr_idx_to_use}")
 
             # check if we can address the data with one of the address registers
             # + immediate/vector offset
@@ -195,42 +198,37 @@ class addr_resolver:
                     continue
                 offset_range = self.offset_ranges[component][addr_list_idx]
 
-                #NOTE: This causes the interleaving behaviour
-                #if caoff < offset_min:
-                #    offset_min = caoff
-                #    best_candidate_idx = addr_list_idx
-                #    print(f"Smallest offset on ADDR:{component}{addr_list_idx}")
                 if(self.candidate_selectors[component](
                             current_offset=caoff,
                             target_offset=toff,
                             offset_range=offset_range)):
                     best_candidate_idx = addr_list_idx
-                    #print(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
+                    self.debug(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
                     if self.toff_in_range(
                             caoff=caoff,
                             toff=toff,
                             offset_range=offset_range):
-                        #print(f"Candidate in range of {toff}: ADDR:{component}{addr_list_idx}: {caoff}")
+                        self.debug(f"Candidate in range of {toff}: ADDR:{component}{addr_list_idx}: {caoff}")
                         addr_idx_to_use = best_candidate_idx
                         off = toff-caoff
-                #else:
-                    #print(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
+                else:
+                    self.debug(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
             if not addr_idx_to_use is None:
                 break
 
             incs_to_do -= 1
             if incs_to_do <= 0:
-                print("current offsets:")
+                self.debug("current offsets:")
                 for addr_list_idx in range(addr_reg_count):
                     caoff = current_offsets[addr_list_idx]
-                    print(f"  {component}a{addr_list_idx}: {caoff}")
+                    self.debug(f"  {component}a{addr_list_idx}: {caoff}")
 
-                print(f"Target offset: {toff}")
-                print(f"offset ranges:")
+                self.debug(f"Target offset: {toff}")
+                self.debug(f"offset ranges:")
                 for addr_list_idx in range(addr_reg_count):
                     minoff = self.offset_ranges[component][addr_list_idx][0]
                     maxoff = self.offset_ranges[component][addr_list_idx][1]
-                    print(f"  {component}a{addr_list_idx} : [{minoff},{maxoff}]")
+                    self.debug(f"  {component}a{addr_list_idx} : [{minoff},{maxoff}]")
                 raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
             # TODO: Unmessify this (perhaps a set of allowed steps?)
@@ -240,7 +238,7 @@ class addr_resolver:
                 add_value = toff - self.current_offsets[component][best_candidate_idx]
             else:
                 add_value = self.steps[component][best_candidate_idx]
-            #print(f"Adding {add_value} to {component}a{best_candidate_idx}")
+            self.debug(f"Adding {add_value} to {component}a{best_candidate_idx}")
             new_add = addr_add(component=component,
                                addr_idx=self.indices[component][best_candidate_idx],
                                offset=add_value)

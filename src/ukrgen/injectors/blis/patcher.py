@@ -280,7 +280,6 @@ class blis_patcher:
     def patch(self, blis_dir : str, out_dir : str, overwrite : bool = False):
 
         log = logging.getLogger("BLISPATCH")
-        log.setLevel(logging.DEBUG)
 
         if os.path.isdir(out_dir) and overwrite:
             shutil.rmtree(out_dir)
@@ -289,15 +288,15 @@ class blis_patcher:
 
         for key,pdata in self.tpl_patches.items():
 
-            print(f"patching {key}")            
+            log.debug(f"patching {key}")            
 
             bpatch = fromstring(pdata.encode("UTF-8"))
 
             if not bpatch:
-                print(f"Error parsing patch:\n{pdata}")
+                log.debug(f"Error parsing patch:\n{pdata}")
 
             if not bpatch.apply(root=out_dir):
-                print(f"Bad patch: \n{pdata}")
+                log.debug(f"Bad patch: \n{pdata}")
                 raise RuntimeError(f"Failed patching {key}")
 
         for key,fdata in self.tpl_files.items():

@@ -17,14 +17,16 @@ from argparse import ArgumentParser
 
 from ukrgen.codegen.isa_compiler_support import isa_flags
 from ukrgen.injectors.blis.patcher import blis_patcher
+from ukrgen.logging import setup_loggers
 
 def blisgen():
 
     parser = ArgumentParser()
 
     parser.add_argument("--debug",
-                        help="Enable debug information",
-                        action="store_true")
+                        help="Enables debug output for a specific subsystem; without any arguments, all debug output is enabled",
+                        nargs="*",
+                        type=str)
 
     kernels = ["sgemm","dgemm"]
     for k in kernels:
@@ -71,8 +73,16 @@ def blisgen():
 
     args,rest = parser.parse_known_args()
 
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
+    debugall = False
+    debug_systems = list()
+
+    if args.debug is not None:
+        if len(args.debug) > 0:
+            debug_systems = set(args.debug)
+        else:
+            debugall = True
+
+    setup_loggers(debugall=debugall, debug_systems=debug_systems)
 
 
     with open(args.sgemm_config, "r") as sf:
