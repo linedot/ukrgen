@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import logging
 from typing import Callable
 from abc import abstractmethod
 
@@ -77,6 +78,8 @@ class strided_mapper(offset_mapper):
         self.stride_indices = stride_indices
         self.flip_tile_dims = flip_tile_dims
         self.vecdim = vecdim
+
+        self.debug = logging.getLogger("ADDR").debug
 
 
     def get_ldst_size(self, t : tile) -> lsc_offset:
@@ -180,5 +183,5 @@ class strided_mapper(offset_mapper):
                  sum([second_off_base for i in range(second)],lsc_offset.zero_offset())
             
 
-        #print(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
+        self.debug(f"mapped {idx} onto {result} (strides: {self.stride_indices})")
         return result

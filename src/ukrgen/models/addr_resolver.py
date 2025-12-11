@@ -165,26 +165,29 @@ class addr_resolver:
         incs_to_do = self.max_incs
         off = lsc_offset.zero_offset()
         
-        self.debug(f"Resolving {toff} for {component}")
+        self.debug(f"========================================")
+        self.debug(f"=== Resolving {toff} for {component} ===")
         
         while addr_idx_to_use is None and 0 < incs_to_do:
 
             # Start with first reg
-            best_candidate_idx = 0
+            first_candidate_idx = 0
+            best_candidate_idx = None
             current_offsets = self.current_offsets[component]
-            offset_min = current_offsets[best_candidate_idx]
+            first_off = current_offsets[first_candidate_idx]
 
             self.candidate_selectors[component].reset(
-                            current_offset=offset_min,
-                            target_offset=toff,
-                            offset_range=self.offset_ranges[component][best_candidate_idx])
+                    current_index = first_candidate_idx,
+                    current_offset=first_off,
+                    target_offset=toff,
+                    offset_range=self.offset_ranges[component][first_candidate_idx])
 
             # if the first one is also in range, we can use it
-            if self.toff_in_range(caoff=offset_min,
+            if self.toff_in_range(caoff=first_off,
                                   toff=toff,
-                                  offset_range=self.offset_ranges[component][best_candidate_idx]):
-                addr_idx_to_use = best_candidate_idx
-                off = toff-offset_min
+                                  offset_range=self.offset_ranges[component][first_candidate_idx]):
+                addr_idx_to_use = first_candidate_idx
+                off = toff-first_off
                 self.debug(f"Initial candidate ADDR:{component}{addr_idx_to_use}")
 
             # check if we can address the data with one of the address registers
@@ -192,27 +195,42 @@ class addr_resolver:
             for addr_list_idx in range(addr_reg_count):
                 caoff = current_offsets[addr_list_idx]
 
-                # ignore registers containing the same offset
-                if addr_list_idx != best_candidate_idx and \
-                   caoff == current_offsets[best_candidate_idx]:
-                    continue
+                if best_candidate_idx is not None:
+                    # ignore registers containing the same offset
+                    if addr_list_idx != best_candidate_idx and \
+                       caoff == current_offsets[best_candidate_idx]:
+                        continue
+
                 offset_range = self.offset_ranges[component][addr_list_idx]
 
                 if(self.candidate_selectors[component](
-                            current_offset=caoff,
-                            target_offset=toff,
-                            offset_range=offset_range)):
+                      current_index=addr_list_idx,
+                      current_offset=caoff,
+                      target_offset=toff,
+                      offset_range=offset_range)):
+
                     best_candidate_idx = addr_list_idx
                     self.debug(f"Selected candidate ADDR:{component}{addr_list_idx}: {caoff}")
-                    if self.toff_in_range(
-                            caoff=caoff,
-                            toff=toff,
-                            offset_range=offset_range):
-                        self.debug(f"Candidate in range of {toff}: ADDR:{component}{addr_list_idx}: {caoff}")
-                        addr_idx_to_use = best_candidate_idx
-                        off = toff-caoff
                 else:
                     self.debug(f"Equal or worse candidate ADDR:{component}{addr_list_idx}: {caoff}")
+
+            if best_candidate_idx is None:
+                best_candidate_idx = first_candidate_idx
+
+            caoff = current_offsets[best_candidate_idx]
+            if self.toff_in_range(
+                    caoff=caoff,
+                    toff=toff,
+                    offset_range=offset_range):
+                self.debug(f"Best Candidate in range of {toff}: ADDR:{component}{best_candidate_idx}: {caoff}")
+                addr_idx_to_use = best_candidate_idx
+                off = toff-caoff
+            else:
+                addr_idx_to_use = None
+
+            if best_candidate_idx != addr_idx_to_use:
+                addr_idx_to_use = None
+                    
             if not addr_idx_to_use is None:
                 break
 

@@ -1,3 +1,5 @@
+import logging
+
 from ..lsc.offset import lsc_offset
 
 class interleaving_selector:
@@ -12,6 +14,7 @@ class interleaving_selector:
         self.this_best = None
 
     def reset(self,
+              current_index : int,
               current_offset : lsc_offset,
               target_offset : lsc_offset,
               offset_range : tuple[lsc_offset,lsc_offset]):
@@ -22,6 +25,7 @@ class interleaving_selector:
         self.last_best = self.this_best
 
     def __call__(self,
+                 current_index : int,
                  current_offset : lsc_offset,
                  target_offset : lsc_offset,
                  offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
@@ -61,12 +65,14 @@ class mindist_selector:
         self.dist_min = None
 
     def reset(self,
+              current_index : int,
               current_offset : lsc_offset,
               target_offset : lsc_offset,
               offset_range : tuple[lsc_offset,lsc_offset]):
         self.dist_min = abs(target_offset - current_offset)
 
     def __call__(self,
+                 current_index : int,
                  current_offset : lsc_offset,
                  target_offset : lsc_offset,
                  offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
@@ -84,31 +90,59 @@ class phasing_selector:
     the first offset again
     """
     def __init__(self):
-        self.last_target = None
-        self.this_target = None
+        self.last_chosen = None
+        self.current_candidate = None
+        self.phases_done = set()
+        self.phases_in_progress = set()
+
+        self.debug = logging.getLogger("ADDR").debug
 
 
     def reset(self,
+              current_index : int,
               current_offset : lsc_offset,
               target_offset : lsc_offset,
               offset_range : tuple[lsc_offset,lsc_offset]):
         
-        self.last_target = self.this_target
+
+        if self.current_candidate is not None:
+            self.phases_in_progress.add(self.current_candidate)
+
+            if self.last_chosen is None:
+                pass
+            elif self.current_candidate != self.last_chosen:
+                self.debug(f"********************************")
+                self.debug(f"Phase {self.last_chosen} is done")
+                self.debug(f"********************************")
+                self.phases_done.add(self.last_chosen)
+                self.phases_in_progress.remove(self.last_chosen)
+
+        self.last_chosen = self.current_candidate
+        self.current_candidate = current_index
         
 
     def __call__(self,
+                 current_index : int,
                  current_offset : lsc_offset,
                  target_offset : lsc_offset,
                  offset_range : tuple[lsc_offset,lsc_offset]) -> bool:
+        
+        choose = False
 
 
+        # prefer exact match
         if current_offset == target_offset:
-            self.this_target = target_offset
-            return True
+            choose = True
+        # prefer last chosen
+        elif current_index == self.last_chosen:
+            choose = True
 
-        if current_offset == self.last_target:
-            self.this_target = target_offset
-            return True
+        # Don't choose completed phases
+        if current_index in self.phases_done:
+            choose = False
+        
 
+        if choose:
+            self.current_candidate = current_index
 
-        return False
+        return choose

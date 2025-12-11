@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import logging
 import copy
 import string
 from abc import abstractmethod
@@ -58,6 +59,8 @@ class load_store_cpu:
         self.resolve_order = resolve_order
         self.ar = ar
 
+        self.debug = logging.getLogger("LSC").debug
+
         self.reset()
 
     def reset(self):
@@ -94,7 +97,7 @@ class load_store_cpu:
         corg = self.cdos[component][res_idx]
         result = []
 
-        #print(f"Resolving {toff} into {component}{res_idx}")
+        self.debug(f"Requiring {toff} in {component}{res_idx}")
         if (not corg is None) and \
                 (not lsc_state.invalid == self.states[component][res_idx]):
             if corg == toff:
@@ -117,6 +120,7 @@ class load_store_cpu:
                                     t=t,
                                     mods=set()))
 
+        self.debug(f"Resolving {toff} for {component}{res_idx}")
         # load
         addr_adds,idx,off = self.ar.resolve_addr(component=component, toff=toff)
         for add in addr_adds:
@@ -225,17 +229,17 @@ class load_store_cpu:
 
             #result.append(lsc_debugmsg(f"idx {i}:{indices[i]} translated to offset {toff}"))
 
+            self.debug(f"Looking for {toff} for component {component}")
             # check if any of the registers have the data
             for j in range(res_count):
-                #print(f"Looking for {toff}, {component}{j} has {dos[j]}")
+                self.debug(f"RES:{component}{j} has {dos[j]}")
                 if dos[j] is None:
                     continue
-                #print(f"toff-caoff ={toff-dos[j]}")
-                #print(f"{dos[j].sxv_strides.keys()}")
+                self.debug(f"toff-caoff ={toff-dos[j]}")
                 if (toff == dos[j]):
-                    #print(f"ADDR:{component}{j} has target {toff}")
+                    self.debug(f"RES:{component}{j} has target {toff}")
                     res_idx = j
-                    break
+                    #break
 
             # use the current index for this input, use the next next time
             if res_idx is None:
@@ -363,6 +367,7 @@ class load_store_cpu:
                 if isinstance(op, lsc_load):
                     #caoff = self.addr_reg_offsets[component][op.addr_idx]
                     caoff = self.ar.current_offsets[component][op.addr_idx.indices[0]]
+                    self.debug(f"caoff for ADDR:{component}{op.addr_idx.indices[0]}: {caoff}")
                     # Some updates to offsets are implicit, therefore update
                     new_do = caoff + op.off
 
@@ -371,6 +376,7 @@ class load_store_cpu:
                         preload_next_offsets[component] = new_do
                         preloads_done[component] += 1
                         continue
+                    self.debug(f"New do for RES:{component}{op.res_idx.indices[0]}: {new_do}")
                     preload_dos[component][op.res_idx.indices[0]] = new_do
                     preload_addr_reg_last_used_tile[component][op.addr_idx.indices[0]] = op.t
 
@@ -413,17 +419,17 @@ class load_store_cpu:
                 # Add to tracked offset
                 self.ar.current_offsets[add.component][add.addr_idx] += add.offset
 
-        #def print_cdos(dos):
-        #    for c,do in dos.items():
-        #        print(f"{c}:")
-        #        for idx,off in do.items():
-        #            print(f"  {idx}:{off}")
-        #print("cdos")
-        #print_cdos(self.cdos)
-        #print("initial cdos")
-        #print_cdos(initial_cdos)
-        #print("preload cdos")
-        #print_cdos(preload_dos)
+        def print_cdos(dos):
+            for c,do in dos.items():
+                self.debug(f"{c}:")
+                for idx,off in do.items():
+                    self.debug(f"  {idx}:{off}")
+        self.debug("cdos")
+        print_cdos(self.cdos)
+        self.debug("initial cdos")
+        print_cdos(initial_cdos)
+        self.debug("preload cdos")
+        print_cdos(preload_dos)
 
         # use the original dos and assign the preloaded data
         self.cdos = copy.deepcopy(initial_cdos)

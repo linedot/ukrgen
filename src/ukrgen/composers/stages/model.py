@@ -225,12 +225,16 @@ class lsc_model_stage(composition_stage):
         mm_ops_p1k = self.context.tifs["mm_p1k"]
         mm_ops_p2k = self.context.tifs["mm_p2k"]
 
+        self.debug("TIF->LSC: Preload")
         self.context.irs["preload"] = self.context.model.preload(
                 ops=mm_ops,next_ops=mm_ops_p1k,
                 zero_components=["C","AB"],
                 ignore_components=[])
+        self.debug("TIF->LSC: main")
         self.context.irs["main"] = self.context.model(mm_ops)
+        self.debug("TIF->LSC: lastiter")
         self.context.irs["lastiter"] = deepcopy(self.context.irs["main"])
+        self.debug("TIF->LSC: preload_next")
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
                 mm_ops_p2k,
@@ -241,9 +245,12 @@ class lsc_model_stage(composition_stage):
         if "gemm" == self.context.params["ukr"].value:
             betascale_ops = self.context.tifs["betascale"]
             alphascale_ops = self.context.tifs["alphascale"]
+            self.debug("TIF->LSC: betascale")
             self.context.irs["betascale"] = self.context.model(betascale_ops)
+            self.debug("TIF->LSC: alphascale")
             self.context.irs["alphascale"] = self.context.model(alphascale_ops)
 
+        self.debug("TIF->LSC: store")
         self.context.irs["store"] = self.context.model.store_modified(ignore_components="AB")
         if "gemm" == self.context.params["ukr"].value:
             self.context.irs["store"] = \
