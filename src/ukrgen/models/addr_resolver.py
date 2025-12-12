@@ -6,9 +6,10 @@
 
 # See: addr_resolver.md
 
+from __future__ import annotations
+
 import logging
 import string
-from typing import Self
 from copy import deepcopy
 
 from .load_store_operations import lsc_offset
@@ -23,7 +24,7 @@ class addr_add:
         self.addr_idx = addr_idx
         self.offset = offset
 
-    def __eq__(self, other : Self):
+    def __eq__(self, other : addr_add):
         return self.component == other.component and \
                self.addr_idx == other.addr_idx and \
                self.offset == other.offset

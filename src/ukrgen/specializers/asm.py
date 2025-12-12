@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import re
-from typing import Self,Callable,Union
+from typing import Callable,Union
 
 import logging
 import traceback

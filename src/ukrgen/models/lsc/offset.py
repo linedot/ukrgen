@@ -4,7 +4,9 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
-from typing import Self, Callable
+from __future__ import annotations
+
+from typing import Callable
 
 class stridexvlen:
     """
@@ -148,7 +150,7 @@ class lsc_offset:
             immoff = abs(self.immoff)
         )
 
-    def __add__(self, other : Self):
+    def __add__(self, other : lsc_offset):
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't add lsc_offset and {type(other)}")
 
@@ -162,7 +164,7 @@ class lsc_offset:
             immoff=self.immoff+other.immoff)
 
 
-    def __sub__(self, other : Self):
+    def __sub__(self, other : lsc_offset):
         if not isinstance(other, lsc_offset):
             raise NotImplementedError(f"can't subtract {type(other)} from lsc_offset")
 
@@ -175,7 +177,7 @@ class lsc_offset:
             vlen_strides=[s-o for s,o in zip(self.vlen_strides,other.vlen_strides)],
             immoff=self.immoff-other.immoff)
 
-    def colin(self, other : Self):
+    def colin(self, other : lsc_offset):
         """
         Return the "colinear" part of this offset with the other offset
         All different strides/vlens/strides*vlens are treated as independent
@@ -204,8 +206,8 @@ class lsc_offset:
 
         return result
 
-    def allcompare(self, other : Self,
-                   comparison : Callable[[Self,Self],bool]):
+    def allcompare(self, other : lsc_offset,
+                   comparison : Callable[[lsc_offset,lsc_offset],bool]):
         
         lsc_offset.adjust_offlists(self,other)
 
@@ -217,8 +219,8 @@ class lsc_offset:
                    zip(self.vlen_strides, other.vlen_strides)]) and \
                (comparison(self.immoff,other.immoff))
 
-    def anycompare(self, other : Self,
-                   comparison : Callable[[Self,Self],bool]):
+    def anycompare(self, other : lsc_offset,
+                   comparison : Callable[[lsc_offset,lsc_offset],bool]):
         
         lsc_offset.adjust_offlists(self,other)
 
@@ -231,7 +233,7 @@ class lsc_offset:
                (comparison(self.immoff,other.immoff))
 
 
-    def __lt__(self, other : Self):
+    def __lt__(self, other : lsc_offset):
         # NOTE: this is sketchy. It's used in addr_resolver,
         #       perhaps this should be removed and a more elaborate check that
         #       takes the required offset to target into account should be 
@@ -271,7 +273,7 @@ class lsc_offset:
         return self.immoff < other.immoff
 
 
-    def __eq__(self, other : Self):
+    def __eq__(self, other : lsc_offset):
         return self.allcompare(other, lambda s,o : s == o)
 
     def __str__(self):

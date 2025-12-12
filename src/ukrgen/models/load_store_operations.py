@@ -5,7 +5,7 @@
 # ------------------------------------------------------------------------------
 
 import string
-from typing import Self,Callable
+from typing import Callable
 from enum import Enum,auto
 from ..components.tile import tile,scalar_tile
 from ..components.operation import dimension_type
