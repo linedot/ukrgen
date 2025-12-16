@@ -19,6 +19,12 @@ from ...models.loop import lsc_condition,lsc_loop,lsc_comparison
 from ...models.lsc.offset import lsc_offset
 from ...models.load_store_operations import lsc_add_val_off
 
+
+# NOTE: Currently not using m,n,data,cntx inside the kernel. rs_C and cs_C
+#       should get replaced with stride0 or stride1 if they are used, so
+#       add them to unused list as well
+blis_unused_parameters = {'m', 'n', 'rs_C', 'cs_C', 'data', 'cntx'}
+
 class blis_ukr_codegen_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
@@ -49,7 +55,8 @@ class blis_ukr_codegen_stage(composition_stage):
         cc = get_blis_gemm_cc(gen=self.context.gen)
 
         gemm_fngen.init_cc(cc=cc,
-                           reverse_alias_map=stride_map)
+                           reverse_alias_map=stride_map,
+                           unused_parameters=blis_unused_parameters)
 
         # TODO: decouple loopification
         condition = lsc_condition(first="k", second=None, 
@@ -89,7 +96,8 @@ class blis_ukr_codegen_stage(composition_stage):
                 component_dts=self.context.component_dts)
 
 
-        fnsave,fnload,fnrestore = gemm_fngen.get_boilerplate(cc=cc)
+        fnsave,fnload,fnrestore = gemm_fngen.get_boilerplate(
+                cc=cc, unused_parameters=blis_unused_parameters)
 
 
         gen = self.context.gen
