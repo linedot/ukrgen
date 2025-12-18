@@ -136,6 +136,7 @@ class blis_ukr_codegen_stage(composition_stage):
             "# FUNC OUTRO ---------------------------------")
         asmblock += fnrestore
         asmblock += gen.asmwrap("ret") # TODO: add ret() to asmgen
+        asmblock += gen.isadata()
 
 
         self.debug("################### ASM ###################")
