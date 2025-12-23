@@ -58,22 +58,30 @@ components = {
 """,
     "cntx_set_blocksizes" : """
 
+    const uint32_t mr_in_mc_d = bli_env_get_var("BLIS_MR_IN_MC_D", 16);
+    const uint32_t mr_in_mc_s = bli_env_get_var("BLIS_MR_IN_MC_S", 16);
+    const uint32_t nr_in_nc_d = bli_env_get_var("BLIS_NR_IN_NC_D", 200);
+    const uint32_t nr_in_nc_s = bli_env_get_var("BLIS_NR_IN_NC_S", 200);
+    const uint32_t kc_d = bli_env_get_var("BLIS_KC_D", 256);
+    const uint32_t kc_s = bli_env_get_var("BLIS_KC_S", 256);
+
     // TODO: vecdir
     const uint32_t mr_d = ${mr_d}*${simd_size}/sizeof(double);
     const uint32_t mr_s = ${mr_s}*${simd_size}/sizeof(float);
     const uint32_t nr_d = ${nr_d};
     const uint32_t nr_s = ${nr_s};
 
-    const uint32_t kc_d = ${kunroll_d}*32;
-    const uint32_t kc_s = ${kunroll_s}*32;
-    const uint32_t nc_d = 200*nr_d;
-    const uint32_t nc_s = 200*nr_s;
+    const uint32_t nc_d = nr_in_nc_d*nr_d;
+    const uint32_t nc_s = nr_in_nc_s*nr_s;
+
+    const uint32_t mc_d = mr_in_mc_d*mr_d;
+    const uint32_t mc_s = mr_in_mc_s*mr_s;
 
     // Initialize level-3 blocksize objects with architecture-specific values.
     //                                              s        d        c        z
     bli_blksz_init_easy( &blkszs[ BLIS_MR ],     mr_s,    mr_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_NR ],     nr_s,    nr_d,      -1,      -1 );
-    bli_blksz_init_easy( &blkszs[ BLIS_MC ],  20*mr_s, 20*mr_d,      -1,      -1 );
+    bli_blksz_init_easy( &blkszs[ BLIS_MC ],     mc_s,    mc_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_KC ],     kc_s,    kc_d,      -1,      -1 );
     bli_blksz_init_easy( &blkszs[ BLIS_NC ],     nc_s,    nc_d,      -1,      -1 );
 
