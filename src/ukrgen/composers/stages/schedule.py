@@ -38,8 +38,14 @@ class lsc_schedule_stage(composition_stage):
 
         for dst,(targets,is_loop) in self.context.sched_map.items():
             src = []
+            self.debug(f"Dependency re-scheduling {dst} from {','.join(targets)}")
             for bname in targets:
                 src.extend(self.context.irs[bname])
+
+            self.debug(f"################### {dst.upper()} UN-SCHEDULED PSEUDO-ASM ###################")
+            for bname in targets:
+                self.debug(f"======= {bname} =======")
+                self.debug("\n".join(map(str,self.context.irs[bname])))
 
             rescheduled = scheduler(src,loop=is_loop)
 
