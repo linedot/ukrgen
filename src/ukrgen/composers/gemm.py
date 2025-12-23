@@ -14,6 +14,10 @@ from ..generators.mm import mm_op
 from .stage_param import stage_param
 
 class gemm_context:
+    """
+    Contains data, parameters and structures involved in the generation of a gemm kernel
+    as well as it's state through the different composition stages
+    """
     def __init__(self):
         self.gen             : asmgen = None
         self.rt              : register_tracker = None
@@ -34,6 +38,3 @@ class gemm_context:
         self.irs             : dict[str,list[lsc_operation]] = dict()
         self.asmblocks       : dict[str,str] = dict()
 
-
-class blis_composer:
-    pass
