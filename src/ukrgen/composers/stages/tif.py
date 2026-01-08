@@ -38,6 +38,16 @@ class mm_tif_stage(composition_stage):
                 a_size=mc, b_size=nc,
                 subdims=(sup.c_tile.dima, sup.c_tile.dimb))
 
+        if k > 1:
+            self.a_tile_k1 = simple_ukr_tile(
+                    a_size=ma, b_size=1,
+                    subdims=(sup.a_tile.dima, sup.a_tile.dimb)
+                    )
+            self.b_tile_k1 = simple_ukr_tile(
+                    a_size=1, b_size=nb,
+                    subdims=(sup.b_tile.dima, sup.b_tile.dimb)
+                    )
+
     def progress(self):
 
         order = order2D(self.context.params["order"].value)
@@ -46,14 +56,36 @@ class mm_tif_stage(composition_stage):
         k = int(self.context.params["k"].value)
         sup = self.context.sup
 
-        if "mm" == self.context.params["ukr"].value:
-            genmm = mm(a=self.a_tile, b=self.b_tile, c=self.c_tile,
-                       lo=order, opstr=self.context.params["op"].value,
-                       tile_strs=["A","B","C"])
-        if "gemm" == self.context.params["ukr"].value:
-            genmm = mm(a=self.a_tile, b=self.b_tile, c=self.c_tile,
-                       lo=order, opstr=self.context.params["op"].value,
-                       tile_strs=["A","B","AB"])
+        tile_strs = []
+        ukr = self.context.params["ukr"].value
+        if "mm" == ukr:
+            tile_strs = ["A","B","C"]
+        elif "gemm" == ukr:
+            tile_strs = ["A","B","AB"]
+        else:
+            raise ValueError(f"Tile names for {ukr} unknown")
+
+        genmm = mm(a=self.a_tile, b=self.b_tile, c=self.c_tile,
+                   lo=order, opstr=self.context.params["op"].value,
+                   tile_strs=tile_strs)
+
+        if "gemm" == ukr:
+
+            # TODO: Haven't brained through this, but this is necessary
+            #       for correct order when vecdir=N. Investigate and
+            #       understand why
+            # NOTE: I'm pulling the Ks in front of the order, i.e
+            #       mnkMNK -> kKmnMN; nmkNMK -> kKmnMN
+            #       It might be more correct to do
+            #       mnkMNK -> kmnKMN, etc...
+            scaleorder_str = self.context.params["order"].value
+            scaleorder_str = scaleorder_str.replace("k","")
+            scaleorder_str = scaleorder_str.replace("K", "")
+            scaleorder_str = "kK"+scaleorder_str
+
+            self.debug(f"SCALE ORDER: {scaleorder_str}")
+
+            scaleorder = order2D(scaleorder_str)
 
             scale_tile = simple_ukr_tile(a_size=m,
                                          b_size=n,
@@ -63,15 +95,28 @@ class mm_tif_stage(composition_stage):
                                         subdims=(scalar_dp,scalar_dp),
                                         bands=(0,0))
             genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
+                              lo=order2D("knmKNM"),
                               opstr="fmul", tile_strs=["C","beta","C"])
             genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                            opstr="fma", tile_strs=["AB","alpha","C"])
+                               lo=order2D("knmKNM"),
+                               opstr="fma", tile_strs=["AB","alpha","C"])
             self.context.tifs["betascale"] = genbetascale.generate()
             self.context.tifs["alphascale"] = genalphascale.generate()
 
         self.context.tifs["mm"]     = genmm.generate()
         self.context.tifs["mm_p1k"] = genmm.generate(add_dims=[0,0,0,0,0,k])
         self.context.tifs["mm_p2k"] = genmm.generate(add_dims=[0,0,0,0,0,2*k])
+
+        # We additionally need k = 1 for tail handling
+        if k > 1:
+            genmm1k = mm(a=self.a_tile_k1, b=self.b_tile_k1, c=self.c_tile,
+                         lo=order, opstr=self.context.params["op"].value,
+                         tile_strs=tile_strs)
+            self.context.tifs["mm1k_p1k"] = genmm1k.generate(
+                    add_dims=[0,0,0,0,0,k])
+            self.context.tifs["mm1k_p1kp1"] = genmm1k.generate(
+                    add_dims=[0,0,0,0,0,k+1])
+
 
         self.context.params.update(self.params)
 
@@ -85,9 +130,18 @@ class mm_tif_stage(composition_stage):
         self.debug("### MAIN +2k ###")
         for op in self.context.tifs["mm_p2k"]:
             self.debug(str(op))
-        self.debug("### BETA SCALE ###")
 
-        if "gemm" == self.context.params["ukr"].value:
+        if k > 1:
+            self.debug("### k1 MAIN +1k ###")
+            for op in self.context.tifs["mm1k_p1k"]:
+                self.debug(str(op))
+            self.debug("### k1 MAIN +1k+1 ###")
+            for op in self.context.tifs["mm1k_p1kp1"]:
+                self.debug(str(op))
+
+
+        if "gemm" == ukr:
+            self.debug("### BETA SCALE ###")
             for op in self.context.tifs["betascale"]:
                 self.debug(str(op))
             self.debug("### ALPHA SCALE ###")

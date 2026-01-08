@@ -121,9 +121,17 @@ class unvec_lsc_stage(composition_stage):
     def progress(self) -> list[composition_stage]:
 
         sup = self.context.sup
-        unvec_components = ["B","alpha","beta"]
+        vecdir = self.context.params["vecdir"].value
+
+        scalar_input = "B"
+        if vecdir == "M":
+            scalar_input = "B"
+        elif vecdir == "N":
+            scalar_input = "A"
+        unvec_components = [scalar_input,"alpha","beta"]
+
         if "load_bcast" == self.context.params["unvec-method"].value:
-            vec_tile = sup.a_tile
+            vec_tile = sup.c_tile
             def mod_load(op : lsc_load) -> lsc_load:
                 if not isinstance(op,lsc_load):
                     return op

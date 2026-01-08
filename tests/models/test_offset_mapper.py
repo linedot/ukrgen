@@ -19,7 +19,7 @@ from ukrgen.components import (
         x4_vector
         )
 
-from ukrgen.models.load_store_operations import lsc_offset,stridexvlen
+from ukrgen.models.lsc.offset import lsc_offset,stridexvlen
 from ukrgen.models.offset_mapper import strided_mapper
 
 class test_strided_mapper(unittest.TestCase):
@@ -50,6 +50,44 @@ class test_strided_mapper(unittest.TestCase):
         self.assertEqual(
                 mapper.map_tile_idx(vtile, (0,3)),
                 lsc_offset({}, [], [12], 0))
+        
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (1,1)),
+                lsc_offset({}, [], [5], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (2,2)),
+                lsc_offset({}, [], [10], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (3,3)),
+                lsc_offset({}, [], [15], 0))
+
+    def test_rr_41(self):
+        mapper = strided_mapper((1,4), (None,None), vecdim=1)
+
+        vtile = tile(scalar_dp,vla_vector)
+
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (0,0)),
+                lsc_offset.zero_offset())
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (1,0)),
+                lsc_offset({}, [], [4], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (2,0)),
+                lsc_offset({}, [], [8], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (3,0)),
+                lsc_offset({}, [], [12], 0))
+
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (0,1)),
+                lsc_offset({}, [], [1], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (0,2)),
+                lsc_offset({}, [], [2], 0))
+        self.assertEqual(
+                mapper.map_tile_idx(vtile, (0,3)),
+                lsc_offset({}, [], [3], 0))
         
         self.assertEqual(
                 mapper.map_tile_idx(vtile, (1,1)),

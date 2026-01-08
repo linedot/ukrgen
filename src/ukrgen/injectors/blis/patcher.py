@@ -71,7 +71,7 @@ class blis_kernel:
                  csrsctx : gemm_context):
         self.ns = nsctx
         self.cs = csctx
-        #self.rs = rsctx
+        self.rs = rsctx
         self.csrs = csrsctx
 
 class blis_patcher:
@@ -103,7 +103,7 @@ class blis_patcher:
         stride_configs = [
             ([],[],"_nostride"),
             ([],["C"],"_cs"),
-            #(["C"],[],"_rs"),
+            (["C"],[],"_rs"),
             (["C"],["C"],"_csrs"),
         ]
 
@@ -120,7 +120,11 @@ class blis_patcher:
 
             cstrides = ctx.strides["C"]
             
-            return f"bli_{dtchar}gemm_{params['configname']}_{m}Vx{n}x{k}"
+            vecdir = ctx.params["vecdir"].value
+            mr = f"{m}" + ("V" if "M" == vecdir else "")
+            nr = f"{n}" + ("V" if "N" == vecdir else "")
+
+            return f"bli_{dtchar}gemm_{params['configname']}_{mr}x{nr}x{k}"
 
 
 
@@ -148,10 +152,10 @@ class blis_patcher:
             self.kernels.append(
                 blis_kernel(nsctx=contexts[0],
                             csctx=contexts[1],
-                            #rsctx=contexts[2],
-                            #csrsctx=contexts[3]))
-                            rsctx=None,
-                            csrsctx=contexts[2]))
+                            rsctx=contexts[2],
+                            csrsctx=contexts[3]))
+                            #rsctx=None,
+                            #csrsctx=contexts[2]))
 
 
 
@@ -169,6 +173,7 @@ class blis_patcher:
             # just use cs ctx
             ctx = kernel.cs
 
+            # Same data type and only floats and doubles for BLIS
             assert ctx.component_dts["C"] == ctx.component_dts["A"]
             assert ctx.component_dts["C"] in [adt.FP32,adt.FP64]
 
@@ -183,9 +188,26 @@ class blis_patcher:
             n = ctx.params["n"].value
             k = ctx.params["k"].value
 
-            params[f"mr_{dtchar}"] = m
-            params[f"nr_{dtchar}"] = n
             params[f"kunroll_{dtchar}"] = k
+
+            vecdir = ctx.params["vecdir"].value
+            mr = ""
+            nr = ""
+            # TODO: NON-FMA
+            if ctx.sup.a_tile.is_tile or ctx.sup.b_tile.is_tile or ctx.sup.c_tile.is_tile:
+                raise NotImplementedError("Missing mr/nr calc for tile regs")
+            if ctx.sup.c_tile.is_scalar:
+                raise NotImplementedError("Missing mr/nr calc for scalar C tile")
+
+            if "M" == vecdir:
+                mr=f"{m}*get_simd_size()/sizeof({param_type.lower()})"
+                nr=n
+            elif "N" == vecdir:
+                mr=m
+                nr=f"{n}*get_simd_size()/sizeof({param_type.lower()})"
+
+            params[f"mr_{dtchar}"] = mr
+            params[f"nr_{dtchar}"] = nr
 
             # remove the _cs
             ukr_name = ctx.params["function-name"].value
@@ -197,16 +219,19 @@ class blis_patcher:
                     dtchar=dtchar,
                     ukr_extra_def = ctx.gen.c_simd_size_function,
                     kunroll=k,
-                    mr=f"{m}*get_simd_size()/sizeof({param_type.lower()})",
-                    nr=n
+                    mr=mr,
+                    nr=nr,
+                    vecdir=vecdir
                     )
 
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_nostride.s"] = \
                     kernel.ns.asmblocks["full_function"]
-            self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_cs.s"] = \
-                    kernel.cs.asmblocks["full_function"]
-            #self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_rs.s"] = \
-            #        kernel.rs.asmblocks["full_function"]
+            if "M" == vecdir:
+                self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_cs.s"] = \
+                        kernel.cs.asmblocks["full_function"]
+            if "N" == vecdir:
+                self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_rs.s"] = \
+                        kernel.rs.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}_csrs.s"] = \
                     kernel.csrs.asmblocks["full_function"]
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}.c"] = ksrc

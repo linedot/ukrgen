@@ -949,11 +949,7 @@ class lsc_specializer:
                 return False
 
             # TODO: arbitrary vectorization direction
-            vecdim = 0
-
-            for a,b,c in self.component_triples:
-                if b == ca:
-                    vecdim = 1
+            vecdim = mapper.vecdim
 
             stridx = mapper.stride_indices[vecdim]
             if stridx is None:

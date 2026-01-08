@@ -163,7 +163,7 @@ class strided_mapper(offset_mapper):
                 stridelist[s1] = 1
                 second_off_base = lsc_offset({},stridelist,[],0)
         else:
-            if t.dima.dt == dimension_type.vla:
+            if t.dimb.dt == dimension_type.vla:
                 second_off_base = lsc_offset({}, [], [1], 0)
             else:
                 second_off_base = lsc_offset({}, [], [], 1)

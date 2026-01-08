@@ -66,8 +66,8 @@ components = {
     const uint32_t kc_s = bli_env_get_var("BLIS_KC_S", 256);
 
     // TODO: vecdir
-    const uint32_t mr_d = ${mr_d}*${simd_size}/sizeof(double);
-    const uint32_t mr_s = ${mr_s}*${simd_size}/sizeof(float);
+    const uint32_t mr_d = ${mr_d};
+    const uint32_t mr_s = ${mr_s};
     const uint32_t nr_d = ${nr_d};
     const uint32_t nr_s = ${nr_s};
 
@@ -330,7 +330,12 @@ extern void ${blis_ukr_name}_nostride(dim_t m, dim_t n, dim_t k,
     void* c, inc_t rs_c0, inc_t cs_c0,
     const auxinfo_t* data, const cntx_t* cntx
 );
+
+% if "M" == vecdir:
 extern void ${blis_ukr_name}_cs(dim_t m, dim_t n, dim_t k,
+% elif "N" == vecdir:
+extern void ${blis_ukr_name}_rs(dim_t m, dim_t n, dim_t k,
+% endif
     const void* alpha,
     const void* a,
     const void* b,
@@ -370,16 +375,22 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
             m,n,kiter-1,
             alpha,a,b,
             beta,c,
-            rs_c0,cs_c0,
+            rs_c,cs_c,
             data,cntx);
     }
+% if "M" == vecdir:
     else if((kiter > 2) && rs_c == 1)
     {
         ${blis_ukr_name}_cs(
+% elif "N" == vecdir:
+    else if((kiter > 2) && cs_c == 1)
+    {
+        ${blis_ukr_name}_rs(
+% endif:
             m,n,kiter-1,
             alpha,a,b,
             beta,c,
-            rs_c0,cs_c0,
+            rs_c,cs_c,
             data,cntx);
     }
     else if(kiter > 2)
@@ -388,7 +399,7 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
             m,n,kiter-1,
             alpha,a,b,
             beta,c,
-            rs_c0,cs_c0,
+            rs_c,cs_c,
             data,cntx);
     }
     GEMM_UKR_FLUSH_CT(${dtchar})

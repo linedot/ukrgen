@@ -7,6 +7,8 @@
 # annotation for self type
 from __future__ import annotations
 
+from copy import deepcopy
+
 from enum import Enum,auto
 
 class storage_type(Enum):
@@ -137,6 +139,55 @@ class tile:
     def is_tile(self) -> bool:
         return self.is_vla_tile or self.is_fixed_tile
 
+    def tiling_of(self, other : tile) -> tuple[int|float,int|float]:
+        """
+        Determines how this tile could tile another tile.
+
+        Returns a tuple of integers or floats indicating how many
+        times this tile fits into the other tile along
+        the first and second dimensions. 
+        - If the tile doesn't fit, the corresponding number 
+          is set to 0.
+        - If this tiles dimension is fixed and the other one is VLA,
+          returns a negative value -k indicating that the tile
+          fits VLEN*k times into the other tile. 
+        - VLA dimensions are treated as never fitting into 
+          fixed dimensions.
+        - if subtiles are present on any tile, raises ValueError()
+
+        Examples:
+        - both tiles are the same: returns (1,1)
+        - this tile is (X,1), other tile is (N*X,1): returns (N,1)
+        - this tile is (4,1) other tile is 2D VLA (1v,1v): returns (-0.25,-1.0)
+        - this tile is (1,1) other tile is (4v,1): returns (-4.0,1)
+        - this tile is (4,1), other tile is (1,1): returns (0,1)
+        - this tile is (1v,1) other tile is (4v,1v): returns (4,-1.0)
+        - this tile is (4v,1v) other tile is (1v,1): returns (0,0)
+        
+
+        :return: tuple of integers as described above
+        :rtype: tuple[int|float,int|float]
+        :raises: ValueError if either of the tiles has subtiles
+        """
+        if self.subtiles is not None or \
+           other.subtiles is not None:
+               raise ValueError("One of the tiles has subtiles")
+        a_in_a = int(other.dima.size / self.dima.size)
+        b_in_b = int(other.dimb.size / self.dimb.size)
+        if self.dima.dt != other.dima.dt:
+            a_in_a = - other.dima.size / self.dima.size
+        if self.dimb.dt != other.dimb.dt:
+            b_in_b = - other.dimb.size / self.dimb.size
+
+        if self.dima.dt == dimension_type.vla and \
+           other.dima.dt == dimension_type.fixed:
+            a_in_a = 0
+        if self.dimb.dt == dimension_type.vla and \
+           other.dimb.dt == dimension_type.fixed:
+            b_in_b = 0
+
+        return (a_in_a, b_in_b)
+
     def __str__(self):
         sdt = lambda dt : "V" if dt==dimension_type.vla else ""
 
@@ -208,3 +259,27 @@ class composed_ukr_tile(tile):
                 subtile_count_a = len(a_sizes),
                 subtile_count_b = len(b_sizes),
                 stype = storage_type.memory)
+
+
+def copy_with_vecdir(t : tile, vectorized_dimension : int) -> tile:
+    if not t.is_vector:
+        raise ValueError("Tile is not a vector")
+
+    if vectorized_dimension not in [0,1]:
+        raise ValueError(f"vectorization dimension for 2D tile not 0 or 1")
+
+    result = deepcopy(t)
+
+    # Is dima vectorized?
+    if t.dima.dt == dimension_type.vla or t.dima.size > 1:
+        if vectorized_dimension == 0:
+            pass
+        elif vectorized_dimension == 1:
+            result.dima, result.dimb = result.dimb, result.dima
+    if t.dimb.dt == dimension_type.vla or t.dimb.size > 1:
+        if vectorized_dimension == 0:
+            result.dima, result.dimb = result.dimb, result.dima
+        elif vectorized_dimension == 1:
+            pass
+
+    return result

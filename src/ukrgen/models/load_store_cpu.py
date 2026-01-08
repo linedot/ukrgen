@@ -179,30 +179,72 @@ class load_store_cpu:
                 op : str, cnames : list[str]) -> list[lsc_operation]:
 
         tiles = [a_tile,b_tile,c_tile]
+        #a_subidx = None
+        #if a_tile.dima.size > c_tile.dima.size:
+        #    a_subidx = m_subidx
+        #    c_idx = (c_idx[0]+m_subidx, c_idx[1])
+        #if a_tile.dimb.size > b_tile.dima.size:
+        #    a_subidx = k_subidx
+        #    b_idx = (b_idx[0]+k_subidx, b_idx[1])
+
+        #b_subidx = None
+        #if b_tile.dima.size > a_tile.dimb.size:
+        #    b_subidx = k_subidx
+        #    a_idx = (a_idx[0], a_idx[1]+k_subidx)
+        #if b_tile.dimb.size > c_tile.dimb.size:
+        #    b_subidx = n_subidx
+        #    c_idx = (c_idx[0], c_idx[1]+n_subidx)
+        #    
+
+        #c_subidx = None
+        #if c_tile.dima.size > a_tile.dima.size:
+        #    c_subidx = m_subidx
+        #    a_idx = (a_idx[0]+m_subidx, a_idx[1])
+        #if c_tile.dimb.size > b_tile.dimb.size:
+        #    c_subidx = n_subidx
+        #    b_idx = (b_idx[0], b_idx[1]+n_subidx)
+
+
         a_subidx = None
-        if a_tile.dima.size > c_tile.dima.size:
-            a_subidx = m_subidx
-            c_idx = (c_idx[0]+m_subidx, c_idx[1])
-        if a_tile.dimb.size > b_tile.dima.size:
-            a_subidx = k_subidx
-            b_idx = (b_idx[0]+k_subidx, b_idx[1])
-
         b_subidx = None
-        if b_tile.dima.size > a_tile.dimb.size:
-            b_subidx = k_subidx
-            a_idx = (a_idx[0], a_idx[1]+k_subidx)
-        if b_tile.dimb.size > c_tile.dimb.size:
-            b_subidx = n_subidx
-            c_idx = (c_idx[0], c_idx[1]+n_subidx)
-            
-
         c_subidx = None
-        if c_tile.dima.size > a_tile.dima.size:
-            c_subidx = m_subidx
-            a_idx = (a_idx[0]+m_subidx, a_idx[1])
-        if c_tile.dimb.size > b_tile.dimb.size:
-            c_subidx = n_subidx
-            b_idx = (b_idx[0], b_idx[1]+n_subidx)
+
+        # TODO: deduplicate this code and what's in operation.py
+
+        first_input_tiling = a_tile.tiling_of(c_tile)
+        last_input_tiling = b_tile.tiling_of(c_tile)
+
+        if 0 in first_input_tiling and 0 not in last_input_tiling:
+            if 0 == first_input_tiling[0] and 0 != first_input_tiling[1]:
+                # A subidx, C add
+                a_subidx = m_subidx
+                c_idx = (c_idx[0]+m_subidx, c_idx[1])
+                pass
+            elif 0 == first_input_tiling[1] and 0 != first_input_tiling[0]:
+                # A add, C subidx
+                c_subidx = m_subidx
+                a_idx = (a_idx[0]+m_subidx, a_idx[1])
+                pass
+            else:
+                raise NotImplementedError("Can't handle this tiling")
+        elif 0 not in first_input_tiling and 0 in last_input_tiling:
+            if 0 == last_input_tiling[0] and 0 != last_input_tiling[1]:
+                # C subidx, B add
+                c_subidx = n_subidx
+                b_idx = (b_idx[0], b_idx[1]+n_subidx)
+                pass
+            elif 0 == last_input_tiling[1] and 0 != last_input_tiling[0]:
+                # B subidx, C add
+                b_subidx = n_subidx
+                c_idx (c_idx[0], c_idx[1]+n_subidx)
+                pass
+            else:
+                raise NotImplementedError("Can't handle this tiling")
+        elif (0 not in first_input_tiling and 0 not in last_input_tiling) or \
+             (0 in first_input_tiling and 0 in last_input_tiling):
+            pass
+        else:
+            raise NotImplementedError("Can't handle this tiling")
 
         indices = [a_idx,b_idx,c_idx]
 

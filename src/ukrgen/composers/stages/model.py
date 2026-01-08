@@ -86,7 +86,9 @@ class lsc_model_stage(composition_stage):
         data_reg_counts = { c : int(self.params[f"{c}-data-regs"].value)
                            for c in components}
 
-        if "gemm" == self.context.params["ukr"].value:
+        ukr = self.context.params["ukr"].value
+
+        if "gemm" == ukr:
             addr_indices["alpha"] = [0]
             addr_indices["beta"] = [0]
             data_reg_counts["alpha"] = 1
@@ -117,10 +119,16 @@ class lsc_model_stage(composition_stage):
 
         self.context.mappers['A'] = strided_mapper((m,1), strides['A'],vecdim=0)
         self.context.mappers['B'] = strided_mapper((1,n), strides['B'],vecdim=1)
-        self.context.mappers['C'] = strided_mapper((m,n), strides['C'],vecdim=0)
 
-        if "gemm" == self.context.params["ukr"].value:
-            self.context.mappers['AB'] = strided_mapper((m,n), strides['AB'],vecdim=0)
+        c_vecdim = 0
+        if "N" == self.context.params["vecdir"].value:
+            c_vecdim = 1
+        self.context.mappers['C'] = strided_mapper((m,n), strides['C'],
+                                                   vecdim=c_vecdim)
+
+        if "gemm" == ukr:
+            self.context.mappers['AB'] = strided_mapper((m,n), strides['AB'],
+                                                        vecdim=c_vecdim)
 
         self.context.strides = strides
 
@@ -136,7 +144,7 @@ class lsc_model_stage(composition_stage):
             "B" : deepcopy(sup.b_tile),
             "C" : deepcopy(sup.c_tile)
         }
-        if "gemm" == self.context.params["ukr"].value:
+        if "gemm" == ukr:
             component_tiles = component_tiles | {
             "AB" : deepcopy(sup.c_tile),
             "beta" : deepcopy(scalar_tile),
@@ -194,7 +202,7 @@ class lsc_model_stage(composition_stage):
 
         preload_counts = {c : int(self.params[f"{c}-preload"].value) for c in ["A","B"]}
         preload_counts["C"] = int(self.params[f"C-data-regs"].value)
-        if "gemm" == self.context.params["ukr"].value:
+        if "gemm" == ukr:
             preload_counts["AB"] = int(self.params[f"C-data-regs"].value)
             preload_counts["beta"] = 0
             preload_counts["alpha"] = 0
@@ -203,7 +211,7 @@ class lsc_model_stage(composition_stage):
 
 
         resolve_order = deepcopy(components)
-        if "gemm" == self.context.params["ukr"].value:
+        if "gemm" == ukr:
             resolve_order.extend(["beta","alpha"])
 
         self.context.model = load_store_cpu(
@@ -242,7 +250,15 @@ class lsc_model_stage(composition_stage):
                 zero_components=[],
                 ignore_components=["C","AB"])
 
-        if "gemm" == self.context.params["ukr"].value:
+        if k > 1:
+            mm1k_ops_p1k = self.context.tifs["mm1k_p1k"]
+            self.debug("TIF->LSC: 1k main")
+            self.context.irs["1k_main"] = self.context.model(mm1k_ops_p1k)
+            # Might be unnecessary, let's test
+            #self.debug("TIF->LSC: 1k preload_next")
+            #self.context.irs["1k_preload_next"] = ...
+
+        if "gemm" == ukr:
             betascale_ops = self.context.tifs["betascale"]
             alphascale_ops = self.context.tifs["alphascale"]
             self.debug("TIF->LSC: betascale")
@@ -252,7 +268,7 @@ class lsc_model_stage(composition_stage):
 
         self.debug("TIF->LSC: store")
         self.context.irs["store"] = self.context.model.store_modified(ignore_components="AB")
-        if "gemm" == self.context.params["ukr"].value:
+        if "gemm" == ukr:
             self.context.irs["store"] = \
                     self.context.irs["betascale"] + \
                     self.context.irs["alphascale"] + \
