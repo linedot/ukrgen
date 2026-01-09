@@ -44,17 +44,13 @@ class load_store_cpu:
                  res_counts : dict[str,int],
                  res_steps : dict[str,int],
                  ar : addr_resolver,
-                 preload_counts : dict[str,int],
                  offset_mappers : dict[str,offset_mapper],
                  resolve_order : list[str]):
 
-        for c in res_counts.keys():
-            assert preload_counts[c] <= res_counts[c], "Can't preload more than max. specified number of resources"
 
 
         self.res_counts = res_counts
         self.res_steps = res_steps
-        self.preload_counts = preload_counts
         self.offset_mappers = offset_mappers
         self.resolve_order = resolve_order
         self.ar = ar
@@ -320,20 +316,27 @@ class load_store_cpu:
 
     def preload(self, ops : list[mm_op],
                 next_ops : list[mm_op],
+                preload_counts : dict[str,int],
                 zero_components : list[str],
                 ignore_components : list[str],
                 zero_addrs : bool = False,
                 update_addrs : bool = True,
                 add_current_offsets : bool = False,
                 ) -> list[lsc_operation]:
+
+        for c in self.res_counts.keys():
+            if preload_counts[c] > self.res_counts[c]:
+                raise ValueError(
+                    f"{preload_counts[c]} preloads into {self.res_counts[c]} resources for {c}")
+
         results = []
         preloads_done = {c : 0 for c in self.res_counts.keys()}
         preload_states = copy.deepcopy(self.states)
         for c in ignore_components:
-            if c not in self.preload_counts:
+            if c not in preload_counts:
                 continue
             # treat ignored as already preloaded
-            preloads_done[c] = self.preload_counts[c]+1
+            preloads_done[c] = preload_counts[c]+1
             # ignores modified state
             self.states[c] = {i : lsc_state.loaded \
                     for i in range(self.res_counts[c])}
@@ -367,8 +370,8 @@ class load_store_cpu:
         i = 0
         combined_ops = ops+next_ops
         is_next_preload = lambda component : \
-                (self.preload_counts[component]) == preloads_done[component]
-        while any([self.preload_counts[c]+1 > d for c,d in preloads_done.items()])\
+                (preload_counts[component]) == preloads_done[component]
+        while any([preload_counts[c]+1 > d for c,d in preloads_done.items()])\
               and i < len(combined_ops):
             op = combined_ops[i]
             subresults = []
@@ -385,7 +388,7 @@ class load_store_cpu:
                     subresults.append(op)
                     continue
                 component = op.indices[0].component
-                pc = self.preload_counts[component]
+                pc = preload_counts[component]
                 pd = preloads_done[component]
                 #print(f"Preloads for {component}: {pd}/{pc}")
                 if pc+1 <= pd:
@@ -486,7 +489,7 @@ class load_store_cpu:
 
         # reset the indices
         self.res_indices = { c : d % self.res_counts[c] for c,d in\
-                self.preload_counts.items()}
+                preload_counts.items()}
         return results
 
     def __call__(self, ops : list[mm_op]) -> list[str]:

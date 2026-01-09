@@ -218,7 +218,6 @@ class lsc_model_stage(composition_stage):
                 res_counts=data_reg_counts,
                 res_steps=res_steps,
                 ar=ar,
-                preload_counts=preload_counts,
                 offset_mappers=self.context.mappers,
                 #TODO: parameterize resolve order
                 resolve_order=resolve_order)
@@ -236,6 +235,7 @@ class lsc_model_stage(composition_stage):
         self.debug("TIF->LSC: Preload")
         self.context.irs["preload"] = self.context.model.preload(
                 ops=mm_ops,next_ops=mm_ops_p1k,
+                preload_counts=preload_counts,
                 zero_components=["C","AB"],
                 ignore_components=[])
         self.debug("TIF->LSC: main")
@@ -246,6 +246,7 @@ class lsc_model_stage(composition_stage):
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
                 mm_ops_p2k,
+                preload_counts=preload_counts,
                 zero_addrs=False,
                 zero_components=[],
                 ignore_components=["C","AB"])
