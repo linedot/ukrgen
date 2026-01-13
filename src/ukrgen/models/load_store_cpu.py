@@ -10,6 +10,8 @@ import string
 from abc import abstractmethod
 from enum import Enum,auto
 
+from dataclasses import dataclass
+
 from ..generators import mm_op,tile,dimension_type
 from ..components.operation import operation
 from ..components import scalar_tile
@@ -38,6 +40,15 @@ class lsc_state(Enum):
     modified = auto()
 
 
+@dataclass
+class lsc_model_state:
+    res_indices : dict[str,int]
+    res_subindices : dict[str,int]
+    cdos : dict[str,dict[int,lsc_offset|None]]
+    acdos : dict[str,list[lsc_offset|None]]
+    states : dict[str,dict[int,lsc_state]]
+    last_tile_used : dict[str,tile|None]
+
 
 class load_store_cpu:
     def __init__(self,
@@ -57,29 +68,37 @@ class load_store_cpu:
 
         self.debug = logging.getLogger("LSC").debug
 
-        self.reset()
+        self.states : dict[str,lsc_model_state] = dict()
 
-    def reset(self):
+        self.new_state("default")
+        self.current_state : str = "default"
 
-        self.res_indices = {c : 0 for c in self.res_counts.keys()}
-        self.res_subindices = {c : 0 for c in self.res_counts.keys()}
+    def new_state(self, name : str,
+                  copyfrom : str|None = None):
 
-        self.cdos = {
-            c: { i : None for i in range(res_count)}\
+        if name in self.states:
+            raise ValueError(f"state {name} already exists")
+
+        if copyfrom is not None:
+            if copyfrom not in self.states:
+                raise ValueError(f"state {copyfrom} doesn't exist")
+
+
+        self.states[name] = lsc_model_state(
+            res_indices={c : 0 for c in self.res_counts.keys()},
+            res_subindices={c : 0 for c in self.res_counts.keys()},
+            cdos={
+                c: { i : None for i in range(res_count)}\
                     for c,res_count in\
                     self.res_counts.items()
-        }
-
-        self.states = {
-            c: { i : lsc_state.invalid for i in range(res_count)}\
+            },
+            acdos=copy.deepcopy(self.ar.starting_offsets),
+            states={
+                c: { i : lsc_state.invalid for i in range(res_count)}\
                     for c,res_count in\
                     self.res_counts.items()
-        }
-
-        # Track last tile used per res to determine offset to next tile given
-        # last offset used to load data for this res
-        # NOTE: This is currently only used by preload(add_current_offsets=True)
-        self.last_tile_used = { c : None for c in self.res_counts.keys() }
+            },
+            last_tile_used={ c : None for c in self.res_counts.keys() })
 
     def resolve_data(self, t : tile,
                      res_idx : int,
@@ -89,19 +108,22 @@ class load_store_cpu:
         if not isinstance(res_idx, int):
             raise ValueError(f"Invalid res_idx: {res_idx}")
 
+        state = self.states[self.current_state]
+        self.ar.current_offsets = state.acdos
+
         # check if the required data is already in the resource
-        corg = self.cdos[component][res_idx]
+        corg = state.cdos[component][res_idx]
         result = []
 
         self.debug(f"Requiring {toff} in {component}{res_idx}")
         if (not corg is None) and \
-                (not lsc_state.invalid == self.states[component][res_idx]):
+                (not lsc_state.invalid == state.states[component][res_idx]):
             if corg == toff:
                 #print(f"{component}{res_idx} already has offset {toff}")
                 return result
 
         # store if dirty
-        if lsc_state.modified == self.states[component][res_idx]:
+        if lsc_state.modified == state.states[component][res_idx]:
             addr_adds,idx,off = self.ar.resolve_addr(component=component, toff=corg)
             for add in addr_adds:
                 result.append(lsc_addr_add(component=add.component,
@@ -126,10 +148,10 @@ class load_store_cpu:
                                        t=t))
 
         #print(f"cdos for component {component}:")
-        #print(f"\t{self.cdos[component]}")
+        #print(f"\t{state.cdos[component]}")
         #print(f"Updating {component}{res_idx} off to {toff} by loading from {idx} with {off}")
-        self.cdos[component][res_idx] = toff
-        self.states[component][res_idx] = lsc_state.loaded
+        state.cdos[component][res_idx] = toff
+        state.states[component][res_idx] = lsc_state.loaded
 
         assert(idx is not None)
         result.append(lsc_load(component=component, res_idx=res_idx,
@@ -138,20 +160,24 @@ class load_store_cpu:
                                stride=None,
                                t=t,
                                mods=set()))
-        self.last_tile_used[component] = t
+        state.last_tile_used[component] = t
 
         return result
 
     def store_modified(self, ignore_components : list[str]) -> list[lsc_operation]:
+
+        state = self.states[self.current_state]
+        self.ar.current_offsets = state.acdos
+
         result = []
         for component,res_count in self.res_counts.items():
             if component in ignore_components:
                 continue
             for res_idx in range(res_count):
-                if lsc_state.modified == self.states[component][res_idx]:
-                    corg = self.cdos[component][res_idx]
+                if lsc_state.modified == state.states[component][res_idx]:
+                    corg = state.cdos[component][res_idx]
                     # NOTE: are different tiles for different res indices feasible?
-                    t = self.last_tile_used[component]
+                    t = state.last_tile_used[component]
                     addr_adds,idx,off = self.ar.resolve_addr(
                             component=component, toff=corg)
                     for add in addr_adds:
@@ -164,7 +190,7 @@ class load_store_cpu:
                                             off=off,
                                             stride=None,
                                             t=t,mods=set()))
-                    self.states[component][res_idx] = lsc_state.clean
+                    state.states[component][res_idx] = lsc_state.clean
         return result
 
         
@@ -175,35 +201,13 @@ class load_store_cpu:
                 op : str, cnames : list[str]) -> list[lsc_operation]:
 
         tiles = [a_tile,b_tile,c_tile]
-        #a_subidx = None
-        #if a_tile.dima.size > c_tile.dima.size:
-        #    a_subidx = m_subidx
-        #    c_idx = (c_idx[0]+m_subidx, c_idx[1])
-        #if a_tile.dimb.size > b_tile.dima.size:
-        #    a_subidx = k_subidx
-        #    b_idx = (b_idx[0]+k_subidx, b_idx[1])
-
-        #b_subidx = None
-        #if b_tile.dima.size > a_tile.dimb.size:
-        #    b_subidx = k_subidx
-        #    a_idx = (a_idx[0], a_idx[1]+k_subidx)
-        #if b_tile.dimb.size > c_tile.dimb.size:
-        #    b_subidx = n_subidx
-        #    c_idx = (c_idx[0], c_idx[1]+n_subidx)
-        #    
-
-        #c_subidx = None
-        #if c_tile.dima.size > a_tile.dima.size:
-        #    c_subidx = m_subidx
-        #    a_idx = (a_idx[0]+m_subidx, a_idx[1])
-        #if c_tile.dimb.size > b_tile.dimb.size:
-        #    c_subidx = n_subidx
-        #    b_idx = (b_idx[0], b_idx[1]+n_subidx)
-
 
         a_subidx = None
         b_subidx = None
         c_subidx = None
+
+        state = self.states[self.current_state]
+        self.ar.current_offsets = state.acdos
 
         # TODO: deduplicate this code and what's in operation.py
 
@@ -260,7 +264,7 @@ class load_store_cpu:
         for component in ordered_components:
 
             toff = target_offsets[component]
-            dos = self.cdos[component]
+            dos = state.cdos[component]
             res_count = self.res_counts[component]
             t = tiles[component]
             res_idx = None
@@ -281,8 +285,8 @@ class load_store_cpu:
 
             # use the current index for this input, use the next next time
             if res_idx is None:
-                res_idx = self.res_indices[component]
-                self.res_indices[component] = (res_idx+self.res_steps[component]) \
+                res_idx = state.res_indices[component]
+                state.res_indices[component] = (res_idx+self.res_steps[component]) \
                                           % self.res_counts[component]
 
             res_indices[component] = res_idx
@@ -304,14 +308,14 @@ class load_store_cpu:
                                         [a_subidx,b_subidx,c_subidx])
                 ]
 
-        self.states[cnames[2]][creg] = lsc_state.modified
+        state.states[cnames[2]][creg] = lsc_state.modified
         result.append(
                 lsc_transformation(op=op,
                     res_indices=lsc_indices,
                     tiles=[a_tile,b_tile,c_tile]))
-        self.last_tile_used[cnames[0]] = a_tile
-        self.last_tile_used[cnames[1]] = b_tile
-        self.last_tile_used[cnames[2]] = c_tile
+        state.last_tile_used[cnames[0]] = a_tile
+        state.last_tile_used[cnames[1]] = b_tile
+        state.last_tile_used[cnames[2]] = c_tile
         return result
 
     def preload(self, ops : list[mm_op],
@@ -329,16 +333,19 @@ class load_store_cpu:
                 raise ValueError(
                     f"{preload_counts[c]} preloads into {self.res_counts[c]} resources for {c}")
 
+        state = self.states[self.current_state]
+        self.ar.current_offsets = state.acdos
+
         results = []
         preloads_done = {c : 0 for c in self.res_counts.keys()}
-        preload_states = copy.deepcopy(self.states)
+        preload_states = copy.deepcopy(state.states)
         for c in ignore_components:
             if c not in preload_counts:
                 continue
             # treat ignored as already preloaded
             preloads_done[c] = preload_counts[c]+1
             # ignores modified state
-            self.states[c] = {i : lsc_state.loaded \
+            state.states[c] = {i : lsc_state.loaded \
                     for i in range(self.res_counts[c])}
 
 
@@ -346,8 +353,8 @@ class load_store_cpu:
         # Trick: We save the tracked data offsets before the preload
         #        and then restore them, modifying only those that
         #        the preload should affect
-        initial_cdos = copy.deepcopy(self.cdos)
-        self.cdos = { c : { i : None for i in range(res_count)} for \
+        initial_cdos = copy.deepcopy(state.cdos)
+        state.cdos = { c : { i : None for i in range(res_count)} for \
                 c,res_count in self.res_counts.items()}
         if zero_addrs:
             self.ar.zero_current_offsets()
@@ -456,7 +463,7 @@ class load_store_cpu:
                 # no loads happaned, therefor no tile used for a load
                 # Tile will have been set for a tranform, use it
                 if None == t:
-                    t = self.last_tile_used[add.component]
+                    t = state.last_tile_used[add.component]
                 results.append(lsc_addr_add(component=add.component,
                                             addr_idx=add.addr_idx,
                                             off=add.offset,
@@ -470,25 +477,25 @@ class load_store_cpu:
                 for idx,off in do.items():
                     self.debug(f"  {idx}:{off}")
         self.debug("cdos")
-        print_cdos(self.cdos)
+        print_cdos(state.cdos)
         self.debug("initial cdos")
         print_cdos(initial_cdos)
         self.debug("preload cdos")
         print_cdos(preload_dos)
 
         # use the original dos and assign the preloaded data
-        self.cdos = copy.deepcopy(initial_cdos)
+        state.cdos = copy.deepcopy(initial_cdos)
         for c,dos in preload_dos.items():
             for res_idx,orig in dos.items():
-                self.cdos[c][res_idx] = orig
+                state.cdos[c][res_idx] = orig
 
 
 
         # set the reg states
-        self.states = copy.deepcopy(preload_states)
+        state.states = copy.deepcopy(preload_states)
 
         # reset the indices
-        self.res_indices = { c : d % self.res_counts[c] for c,d in\
+        state.res_indices = { c : d % self.res_counts[c] for c,d in\
                 preload_counts.items()}
         return results
 

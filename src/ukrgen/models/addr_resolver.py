@@ -64,9 +64,6 @@ class addr_resolver:
         self.indices=indices
         self.starting_offsets=starting_offsets
         self.current_offsets=deepcopy(self.starting_offsets) 
-        self.last_resolved_offsets={ c : { i : None \
-                for i in idx_list} \
-                for c,idx_list in self.indices.items()}
         self.offset_ranges=offset_ranges
         self.steps = steps
         self.max_incs = max_incs
@@ -266,6 +263,5 @@ class addr_resolver:
             self.current_offsets[component][best_candidate_idx] += add_value
 
 
-        self.last_resolved_offsets[component][addr_idx_to_use] = off
 
         return addr_adds,addr_idx_to_use,off

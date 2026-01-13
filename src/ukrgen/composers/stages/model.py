@@ -242,6 +242,10 @@ class lsc_model_stage(composition_stage):
         self.context.irs["main"] = self.context.model(mm_ops)
         self.debug("TIF->LSC: lastiter")
         self.context.irs["lastiter"] = deepcopy(self.context.irs["main"])
+
+        # Save the state before the next preload to use for 1k
+        self.context.model.new_state(name="1k",copyfrom="default")
+
         self.debug("TIF->LSC: preload_next")
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
@@ -252,12 +256,24 @@ class lsc_model_stage(composition_stage):
                 ignore_components=["C","AB"])
 
         if k > 1:
+            self.context.model.current_state = "1k"
             mm1k_ops_p1k = self.context.tifs["mm1k_p1k"]
+            mm1k_ops_p1kp1 = self.context.tifs["mm1k_p1kp1"]
+            # we can't preload more regs than are used in 1-k iteration
+            preload_counts_1k = deepcopy(preload_counts)
+            preload_counts_1k["A"] = min(m,preload_counts["A"])
+            preload_counts_1k["B"] = min(n,preload_counts["B"])
+            self.debug("TIF->LSC: 1k preload")
+            self.context.irs["1k_preload"] = self.context.model.preload(
+                    mm1k_ops_p1k,
+                    mm1k_ops_p1kp1,
+                    preload_counts=preload_counts_1k,
+                    zero_addrs=False,
+                    zero_components=[],
+                    ignore_components=["C","AB"])
             self.debug("TIF->LSC: 1k main")
             self.context.irs["1k_main"] = self.context.model(mm1k_ops_p1k)
-            # Might be unnecessary, let's test
-            #self.debug("TIF->LSC: 1k preload_next")
-            #self.context.irs["1k_preload_next"] = ...
+            self.context.model.current_state = "default"
 
         if "gemm" == ukr:
             betascale_ops = self.context.tifs["betascale"]
@@ -289,6 +305,16 @@ class lsc_model_stage(composition_stage):
         self.debug("PRELOAD NEXT ----------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
         self.debug("END MAIN LOOP ---------------------------")
+        self.debug("LASTITER --------------------------------")
+        self.debug("\n".join(map(str,self.context.irs["lastiter"])))
+        self.debug("END LASTITER ----------------------------")
+        if k > 1:
+            self.debug("K1 LOOP ---------------------------------")
+            self.debug("K1 PRELOAD ------------------------------")
+            self.debug("  "+"\n  ".join(map(str,self.context.irs["1k_preload"])))
+            self.debug("K1 MAIN ---------------------------------")
+            self.debug("  "+"\n  ".join(map(str,self.context.irs["1k_main"])))
+            self.debug("END K1 LOOP -----------------------------")
         self.debug("STOREBLOCK ------------------------------")
         self.debug("\n".join(map(str,self.context.irs["store"])))
         self.debug("ENDSTOREBLOCK ---------------------------")

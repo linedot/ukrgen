@@ -116,6 +116,8 @@ class mm_tif_stage(composition_stage):
                     add_dims=[0,0,0,0,0,k])
             self.context.tifs["mm1k_p1kp1"] = genmm1k.generate(
                     add_dims=[0,0,0,0,0,k+1])
+            self.context.tifs["mm1k_p1kp2"] = genmm1k.generate(
+                    add_dims=[0,0,0,0,0,k+2])
 
 
         self.context.params.update(self.params)
@@ -137,6 +139,9 @@ class mm_tif_stage(composition_stage):
                 self.debug(str(op))
             self.debug("### k1 MAIN +1k+1 ###")
             for op in self.context.tifs["mm1k_p1kp1"]:
+                self.debug(str(op))
+            self.debug("### k1 MAIN +1k+2 ###")
+            for op in self.context.tifs["mm1k_p1kp2"]:
                 self.debug(str(op))
 
 

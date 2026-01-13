@@ -1396,8 +1396,8 @@ class lsc_specializer:
                         src=self.gen.greg(prev_reg_idx),
                         dst=self.gen.greg(aregidx)
                     )
-
-                    t = self.model.last_tile_used[component]
+                    model_state = self.model.states[self.model.current_state]
+                    t = model_state.last_tile_used[component]
 
                     if step != lsc_offset.zero_offset():
                         aregblock += self.transform_addr_add(
