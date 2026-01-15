@@ -82,6 +82,8 @@ class load_store_cpu:
         if copyfrom is not None:
             if copyfrom not in self.states:
                 raise ValueError(f"state {copyfrom} doesn't exist")
+            self.states[name] = copy.deepcopy(self.states[copyfrom])
+            return
 
 
         self.states[name] = lsc_model_state(
@@ -450,6 +452,8 @@ class load_store_cpu:
         #print(f"pno: {",".join([str(no) for no in preload_next_offsets])}")
         # only the changes that were part of the preload should be propagated
         self.ar.current_offsets = copy.deepcopy(preload_addr_reg_offsets)
+        # TODO: This is error prone. Find better way of handling ar state
+        state.acdos = self.ar.current_offsets
 
         if update_addrs:
             addr_adds = self.ar.get_addr_adds_for_new_offsets(preload_next_offsets)
@@ -487,7 +491,7 @@ class load_store_cpu:
         state.cdos = copy.deepcopy(initial_cdos)
         for c,dos in preload_dos.items():
             for res_idx,orig in dos.items():
-                state.cdos[c][res_idx] = orig
+                state.cdos[c][res_idx] = copy.deepcopy(orig)
 
 
 
@@ -497,6 +501,7 @@ class load_store_cpu:
         # reset the indices
         state.res_indices = { c : d % self.res_counts[c] for c,d in\
                 preload_counts.items()}
+
         return results
 
     def __call__(self, ops : list[mm_op]) -> list[str]:
