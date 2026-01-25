@@ -7,6 +7,7 @@
 import logging
 
 from asmgen.asmblocks.noarch import comparison
+from asmgen.registers import reg_tracker
 
 from .composition import composition_stage
 from ..gemm import gemm_context
@@ -54,6 +55,8 @@ class blis_ukr_codegen_stage(composition_stage):
         # TODO: decouple BLIS-specific code
         cc = get_blis_gemm_cc(gen=self.context.gen)
 
+        k = self.context.params["k"].value
+
         gemm_fngen.init_cc(cc=cc,
                            reverse_alias_map=stride_map,
                            unused_parameters=blis_unused_parameters)
@@ -79,10 +82,40 @@ class blis_ukr_codegen_stage(composition_stage):
         self.context.irs["main"] = [mainloop]
 
 
+        if 1 != k:
+            k1condition = lsc_condition(first="kleft", second=None, 
+                                        comparison=lsc_comparison(comparison.nz))
+            k1loop = lsc_loop(name="k1loop", condition=condition, level=2)
+            k1loop.add_block(self.context.irs["1k_main"]+self.context.irs["1k_preload_next"])
+            k1loop.add_block(ops=[
+                lsc_add_val_off("kleft", off=lsc_offset({},[],[],-1))
+            ])
+            self.context.irs["1k_main"] = [k1loop]
+
+
         specializer = self.context.specializer
 
         self.context.asmblocks["init"] = specializer.code_init(
                 component_dts=self.context.component_dts)
+
+        #TODO: More generalized system for the k1 loop
+        if 1 != k:
+            kleftidx = self.context.rt.reserve_any_reg("greg")
+            self.context.rt.alias_reg("greg", "kleft", kleftidx)
+            kidx = self.context.rt.aliased_regs["greg"]["k"]
+
+            kreg = self.context.gen.greg(kidx)
+            kleftreg = self.context.gen.greg(kleftidx)
+            self.context.asmblocks["init"] += \
+                self.context.gen.asmwrap(f"# {kreg} <- unrolled iterations")
+            self.context.asmblocks["init"] += \
+                self.context.gen.asmwrap(f"# {kleftreg} <- tail iterations")
+            self.context.asmblocks["init"] += \
+                    self.context.gen.kiterkleft(
+                            kreg=kreg,
+                            kleftreg=kleftreg,
+                            unroll=k
+                            )
 
 
         for bname in self.context.specialization_order:
@@ -112,6 +145,19 @@ class blis_ukr_codegen_stage(composition_stage):
         asmblock += gen.asmwrap(
             "# PRELOAD ------------------------------------")
         asmblock += "".join(self.context.asmblocks["preload"])
+
+        #TODO: non-hacky way to handle k checks
+        asmblock += gen.asmwrap(
+            "# KN CHECK 0 ---------------------------------")
+        kregidx = self.context.rt.aliased_regs["greg"]["k"]
+        asmblock += gen.cb(reg1=gen.greg(kregidx), reg2=None,
+                           cmp=comparison.ez, label="kndone")
+        asmblock += gen.asmwrap(
+            "# KN CHECK 1 ---------------------------------")
+        asmblock += gen.add_greg_imm(reg=gen.greg(kregidx), imm=-1)
+        asmblock += gen.cb(reg1=gen.greg(kregidx), reg2=None,
+                           cmp=comparison.ez, label="knlastiter")
+
         asmblock += gen.asmwrap(
             "# MAIN LOOP ----------------------------------")
         asmblock += "  "+"  ".join(self.context.asmblocks["main"])
@@ -119,7 +165,33 @@ class blis_ukr_codegen_stage(composition_stage):
             "# END MAIN LOOP ------------------------------")
         asmblock += gen.asmwrap(
             "# LAST ITERATION -----------------------------")
+        asmblock += gen.label(label="knlastiter")
         asmblock += "  "+"  ".join(self.context.asmblocks["lastiter"])
+        asmblock += gen.label(label="kndone")
+        if 1 != self.context.params["k"].value:
+            asmblock += gen.asmwrap(
+                "# K1 CHECK 0 --------------------------------")
+            kleftregidx = self.context.rt.aliased_regs["greg"]["kleft"]
+            asmblock += gen.cb(reg1=gen.greg(kleftregidx), reg2=None,
+                               cmp=comparison.ez, label="loopsdone")
+            asmblock += gen.asmwrap(
+                "# K1 PRELOAD --------------------------------")
+            asmblock += "".join(self.context.asmblocks["1k_preload"])
+            #TODO: non-hacky way to handle k checks
+            asmblock += gen.asmwrap(
+                "# K1 CHECK 1 --------------------------------")
+            asmblock += gen.add_greg_imm(reg=gen.greg(kleftregidx), imm=-1)
+            asmblock += gen.cb(reg1=gen.greg(kleftregidx), reg2=None,
+                               cmp=comparison.ez, label="k1lastiter")
+            asmblock += gen.asmwrap(
+                "# K1 LOOP ---------------------------")
+            asmblock += "  "+"  ".join(self.context.asmblocks["1k_main"])
+            asmblock += gen.asmwrap(
+                "# K1 LAST ITERATION -----------------")
+            asmblock += gen.label(label="k1lastiter")
+            asmblock += "  "+"  ".join(self.context.asmblocks["1k_lastiter"])
+            
+        asmblock += gen.label(label="loopsdone")
         if "gemm" == self.context.params["ukr"].value:
             asmblock += gen.asmwrap(
                 "# SCALE+STOREBLOCK ---------------------------")

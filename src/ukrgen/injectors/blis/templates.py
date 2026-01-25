@@ -367,36 +367,35 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
 
     GEMM_UKR_SETUP_CT_ANY(${dtchar}, mr, nr, false)
 
-    dim_t kiter = k / ${kunroll};
     
-    if((kiter > 2) && rs_c == 1 && cs_c == 1)
+    if(rs_c == 1 && cs_c == 1)
     {
         ${blis_ukr_name}_nostride(
-            m,n,kiter-1,
+            m,n,k,
             alpha,a,b,
             beta,c,
             rs_c,cs_c,
             data,cntx);
     }
 % if "M" == vecdir:
-    else if((kiter > 2) && rs_c == 1)
+    else if(rs_c == 1)
     {
         ${blis_ukr_name}_cs(
 % elif "N" == vecdir:
-    else if((kiter > 2) && cs_c == 1)
+    else if(cs_c == 1)
     {
         ${blis_ukr_name}_rs(
 % endif:
-            m,n,kiter-1,
+            m,n,k,
             alpha,a,b,
             beta,c,
             rs_c,cs_c,
             data,cntx);
     }
-    else if(kiter > 2)
+    else
     {
         ${blis_ukr_name}_csrs(
-            m,n,kiter-1,
+            m,n,k,
             alpha,a,b,
             beta,c,
             rs_c,cs_c,

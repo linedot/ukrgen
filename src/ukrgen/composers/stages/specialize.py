@@ -24,6 +24,14 @@ class specialize_lsc_stage(composition_stage):
             "store",
             "preload_next"
         ]
+        if 1 != self.context.params["k"].value:
+            blockorder = [
+            "preload",
+            "main",
+            "store",
+            "preload_next",
+            "1k"
+        ]
 
         specializer = self.context.specializer
         component_dts = self.context.component_dts

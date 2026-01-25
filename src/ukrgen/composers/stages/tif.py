@@ -112,12 +112,11 @@ class mm_tif_stage(composition_stage):
             genmm1k = mm(a=self.a_tile_k1, b=self.b_tile_k1, c=self.c_tile,
                          lo=order, opstr=self.context.params["op"].value,
                          tile_strs=tile_strs)
-            self.context.tifs["mm1k_p1k"] = genmm1k.generate(
-                    add_dims=[0,0,0,0,0,k])
-            self.context.tifs["mm1k_p1kp1"] = genmm1k.generate(
-                    add_dims=[0,0,0,0,0,k+1])
-            self.context.tifs["mm1k_p1kp2"] = genmm1k.generate(
-                    add_dims=[0,0,0,0,0,k+2])
+            self.context.tifs["mm1k"] = genmm1k.generate()
+            self.context.tifs["mm1k_p1"] = genmm1k.generate(
+                    add_dims=[0,0,0,0,0,1])
+            self.context.tifs["mm1k_p2"] = genmm1k.generate(
+                    add_dims=[0,0,0,0,0,2])
 
 
         self.context.params.update(self.params)
@@ -134,14 +133,14 @@ class mm_tif_stage(composition_stage):
             self.debug(str(op))
 
         if k > 1:
-            self.debug("### k1 MAIN +1k ###")
-            for op in self.context.tifs["mm1k_p1k"]:
+            self.debug("### k1 MAIN ###")
+            for op in self.context.tifs["mm1k"]:
                 self.debug(str(op))
-            self.debug("### k1 MAIN +1k+1 ###")
-            for op in self.context.tifs["mm1k_p1kp1"]:
+            self.debug("### k1 MAIN +1 ###")
+            for op in self.context.tifs["mm1k_p1"]:
                 self.debug(str(op))
-            self.debug("### k1 MAIN +1k+2 ###")
-            for op in self.context.tifs["mm1k_p1kp2"]:
+            self.debug("### k1 MAIN +2 ###")
+            for op in self.context.tifs["mm1k_p2"]:
                 self.debug(str(op))
 
 
