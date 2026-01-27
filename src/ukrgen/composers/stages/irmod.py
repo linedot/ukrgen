@@ -71,6 +71,9 @@ class ldinc_lsc_stage(composition_stage):
                     # the size of the data for ld1r/ld1/st1,
                     # but can be [-256,255] for ldr/str
                     if add.off.is_regstride:
+                        if data_not_scalar:
+                            # No register post-index ldr/str
+                            break
                         index_pairs.append((i,j))
                     elif add.off.is_scalar:
                         if (add.off.immoff == 1) or data_not_scalar:
