@@ -85,7 +85,7 @@ class blis_ukr_codegen_stage(composition_stage):
         if 1 != k:
             k1condition = lsc_condition(first="kleft", second=None, 
                                         comparison=lsc_comparison(comparison.nz))
-            k1loop = lsc_loop(name="k1loop", condition=condition, level=2)
+            k1loop = lsc_loop(name="k1loop", condition=k1condition, level=2)
             k1loop.add_block(self.context.irs["1k_main"]+self.context.irs["1k_preload_next"])
             k1loop.add_block(ops=[
                 lsc_add_val_off("kleft", off=lsc_offset({},[],[],-1))
