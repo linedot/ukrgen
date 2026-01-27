@@ -247,6 +247,18 @@ class lsc_model_stage(composition_stage):
 
         self.context.model.new_state(name="lastiter_addradd",copyfrom="default")
 
+        # Hack: reset current registers this allows unrolls where the number of used registers
+        # doesn't roll over cleanly
+        # example
+        # MvxN, N=4, k=2, bregs=5, bpload=3:
+        # without reset:
+        # preload b1,b2,b3 -> use b1, b2, b3, b4, b5, b1, b2, b3 -> preload b4, b5, b1
+        # with reset:
+        # preload b1,b2,b3 -> use b1, b2, b3, b4, b5, b1, b2, b3 -> preload b1, b2, b3
+        state = self.context.model.states[self.context.model.current_state]
+        state.res_indices={c : 0 for c in state.res_indices.keys()}
+        state.res_subindices={c : 0 for c in state.res_subindices.keys()}
+
         self.debug("TIF->LSC: preload_next")
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
@@ -287,6 +299,11 @@ class lsc_model_stage(composition_stage):
                     preload_counts=preload_counts_1k,
                     zero_components=["C", "AB"],
                     ignore_components=["A","B"])
+            
+            # Hack: reset current registers
+            state = self.context.model.states[self.context.model.current_state]
+            state.res_indices={c : 0 for c in state.res_indices.keys()}
+            state.res_subindices={c : 0 for c in state.res_subindices.keys()}
 
             self.debug("TIF->LSC: 1k preload")
             self.context.irs["1k_preload"] = self.context.model.preload(
@@ -299,6 +316,11 @@ class lsc_model_stage(composition_stage):
             self.debug("TIF->LSC: 1k main")
             self.context.irs["1k_main"] = self.context.model(mm1k_ops)
             self.context.irs["1k_lastiter"] = deepcopy(self.context.irs["1k_main"])
+
+            # Hack: reset current registers
+            state = self.context.model.states[self.context.model.current_state]
+            state.res_indices={c : 0 for c in state.res_indices.keys()}
+            state.res_subindices={c : 0 for c in state.res_subindices.keys()}
             self.debug("TIF->LSC: 1k preload_next")
             self.context.irs["1k_preload_next"] = self.context.model.preload(
                     mm1k_ops_p1,

@@ -95,10 +95,10 @@ class mm_tif_stage(composition_stage):
                                         subdims=(scalar_dp,scalar_dp),
                                         bands=(0,0))
             genbetascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                              lo=order2D("knmKNM"),
+                              lo=scaleorder,
                               opstr="fmul", tile_strs=["C","beta","C"])
             genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
-                               lo=order2D("knmKNM"),
+                               lo=scaleorder,
                                opstr="fma", tile_strs=["AB","alpha","C"])
             self.context.tifs["betascale"] = genbetascale.generate()
             self.context.tifs["alphascale"] = genalphascale.generate()
