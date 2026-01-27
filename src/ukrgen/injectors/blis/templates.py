@@ -368,7 +368,11 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
     GEMM_UKR_SETUP_CT_ANY(${dtchar}, mr, nr, false)
 
     
-    if(rs_c == 1 && cs_c == 1)
+% if "M" == vecdir:
+    if(rs_c == 1 && cs_c == mr)
+% elif "N" == vecdir:
+    if(rs_c == nr && cs_c == 1)
+% endif
     {
         ${blis_ukr_name}_nostride(
             m,n,k,
@@ -385,7 +389,7 @@ void ${blis_ukr_name}(dim_t m, dim_t n, dim_t k,
     else if(cs_c == 1)
     {
         ${blis_ukr_name}_rs(
-% endif:
+% endif
             m,n,k,
             alpha,a,b,
             beta,c,
