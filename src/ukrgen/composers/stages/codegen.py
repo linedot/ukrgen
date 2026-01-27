@@ -110,12 +110,18 @@ class blis_ukr_codegen_stage(composition_stage):
                 self.context.gen.asmwrap(f"# {kreg} <- unrolled iterations")
             self.context.asmblocks["init"] += \
                 self.context.gen.asmwrap(f"# {kleftreg} <- tail iterations")
+
+            tmpidx = self.context.rt.reserve_any_reg("greg")
+            tmpreg = self.context.gen.greg(tmpidx)
+
             self.context.asmblocks["init"] += \
                     self.context.gen.kiterkleft(
                             kreg=kreg,
                             kleftreg=kleftreg,
+                            tmpreg=tmpreg,
                             unroll=k
                             )
+            self.context.rt.unuse_reg("greg",tmpidx)
 
 
         for bname in self.context.specialization_order:
