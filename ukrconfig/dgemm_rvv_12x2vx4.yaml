@@ -1,0 +1,20 @@
+isa : rvv
+op : fma
+ukr : gemm
+AB-data-type : FP64
+C-data-type : FP64
+variant : 0
+m : 12
+n : 2
+k : 4
+vecdir : N
+order: nmkNMK
+A-data-regs : 8
+B-data-regs : 4
+AB-data-regs : 24
+C-data-regs : 24
+A-addr-regs : 2
+B-addr-regs : 2
+C-addr-regs : 2
+A-preload : 8
+B-preload : 4

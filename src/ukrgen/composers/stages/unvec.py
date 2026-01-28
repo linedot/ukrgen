@@ -27,29 +27,6 @@ class unvec_stage(composition_stage):
 
         vecdir = self.context.params["vecdir"].value 
 
-        assert vecdir in ["M","N"], f"Invalid vecdir: {vecdir}"
-
-
-        # TODO: There should be some kind of generalization
-        # TODO: real/data tile are already used in some places,
-        #       maybe there should be support/component tiles?
-        b_map = {"M" : -1, "N" : 1}
-        a_map = {"M" : 0, "N" : -1}
-        c_map = {"M" : 0, "N" : 1}
-    
-        if -1 != b_map[vecdir]:
-            self.context.sup.b_tile = copy_with_vecdir(
-                    t=self.context.sup.b_tile,
-                    vectorized_dimension=b_map[vecdir])
-        if -1 != a_map[vecdir]:
-            self.context.sup.a_tile = copy_with_vecdir(
-                    t=self.context.sup.a_tile,
-                    vectorized_dimension=a_map[vecdir])
-        if -1 != c_map[vecdir]:
-            self.context.sup.c_tile = copy_with_vecdir(
-                    t=self.context.sup.c_tile,
-                    vectorized_dimension=c_map[vecdir])
-
 
         if vecdir == "M":
             modified_tile = self.context.sup.b_tile

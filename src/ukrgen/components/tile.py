@@ -262,13 +262,15 @@ class composed_ukr_tile(tile):
 
 
 def copy_with_vecdir(t : tile, vectorized_dimension : int) -> tile:
-    if not t.is_vector:
-        raise ValueError("Tile is not a vector")
 
     if vectorized_dimension not in [0,1]:
         raise ValueError(f"vectorization dimension for 2D tile not 0 or 1")
 
     result = deepcopy(t)
+
+    if not t.is_vector:
+        #raise ValueError("Tile is not a vector")
+        return result
 
     # Is dima vectorized?
     if t.dima.dt == dimension_type.vla or t.dima.size > 1:

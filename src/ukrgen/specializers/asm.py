@@ -198,6 +198,10 @@ class lsc_specializer:
         #if there is only 1 freg, this is a VF operation
         if 1 == dreg_tags.count('freg'):
             modifiers.add(mod.VF)
+            # TODO: separate hardware tiles (sup) from kernel tiles
+            #       i.e. what changes with vecdir and handle this properly
+            if dreg_tags[0] == 'freg':
+                dregs[0],dregs[1] = dregs[1],dregs[0]
 
         #if tr_modifier.np in op.mods:
         #    modifiers.add(mod.NP)
