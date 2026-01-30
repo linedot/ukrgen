@@ -55,7 +55,7 @@ class blis_ukr_codegen_stage(composition_stage):
         # TODO: decouple BLIS-specific code
         cc = get_blis_gemm_cc(gen=self.context.gen)
 
-        k = self.context.params["k"].value
+        k = int(self.context.params["k"].value)
 
         gemm_fngen.init_cc(cc=cc,
                            reverse_alias_map=stride_map,
