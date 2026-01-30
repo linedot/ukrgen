@@ -8,11 +8,11 @@ m : 2
 n : 12
 k : 8
 A-data-regs : 4
-B-data-regs : 8
+B-data-regs : 16
 AB-data-regs : 24
 C-data-regs : 24
 A-addr-regs : 2
 B-addr-regs : 2
 C-addr-regs : 2
 A-preload : 4
-B-preload : 8
+B-preload : 16
