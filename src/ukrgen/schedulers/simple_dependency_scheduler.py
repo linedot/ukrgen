@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+import logging
 from enum import Enum,auto
 
 
@@ -64,7 +65,6 @@ class simple_dependency_scheduler:
                  waw : int = 10,
                  patterns : list[str] = [],
                  reg_types : set[lsc_reg_type] = {lsc_reg_type.data},
-                 debug_on : bool = False
                  ):
         self.rar = rar
         self.raw = raw
@@ -72,11 +72,8 @@ class simple_dependency_scheduler:
         self.waw = waw
         self.patterns = patterns
         self.reg_types = reg_types
-        self.debug_on = debug_on
 
-    def debug(self, msg : str):
-        if self.debug_on:
-            print(msg)
+        self.debug = logging.getLogger("SCHED").debug
 
     def get_move_up(self,
                     next_op : lsc_operation,
@@ -89,24 +86,20 @@ class simple_dependency_scheduler:
         next_op_reads = {
             reg_compare(ttype=next_op.reg_types[i],
                         index=next_op.indices[i],
-                        t=next_op.tiles[i]) for i in next_op.reads \
-                                if next_op.reg_types[i] in self.reg_types}
+                        t=next_op.tiles[i]) for i in next_op.reads}
         next_op_writes = {
             reg_compare(ttype=next_op.reg_types[i],
                         index=next_op.indices[i],
-                        t=next_op.tiles[i]) for i in next_op.writes \
-                                if next_op.reg_types[i] in self.reg_types}
+                        t=next_op.tiles[i]) for i in next_op.writes}
 
         cur_op_reads = {
             reg_compare(ttype=cur_op.reg_types[i],
                         index=cur_op.indices[i],
-                        t=cur_op.tiles[i]) for i in cur_op.reads \
-                                if cur_op.reg_types[i] in self.reg_types}
+                        t=cur_op.tiles[i]) for i in cur_op.reads}
         cur_op_writes = {
             reg_compare(ttype=cur_op.reg_types[i],
                         index=cur_op.indices[i],
-                        t=cur_op.tiles[i]) for i in cur_op.writes \
-                                if cur_op.reg_types[i] in self.reg_types}
+                        t=cur_op.tiles[i]) for i in cur_op.writes}
 
         #self.debug(f"cur_op = {cur_op}. reads: {cur_op_reads}")
         #self.debug(f"cur_op = {cur_op}. writes: {cur_op_writes}")
@@ -127,19 +120,39 @@ class simple_dependency_scheduler:
 
         if checks[0] and len(rars)>0:
             move_up = max(move_up,max(0,self.rar - distance))
-            self.debug(f"rar={self.rar-distance}(distance={distance}) between {cur_op} and {next_op}")
-            depends = True
+            if not any([dep.ttype in self.reg_types for dep in rars]):
+                move_up = 0
+            self.debug((f"rar={self.rar-distance}(distance={distance}) between \n"
+                        f"  {cur_op}\n"
+                         "   and\n"
+                        f"  {next_op}"))
+            #depends = True
         if checks[1] and len(raws)>0:
             move_up = max(move_up,max(0,self.raw - distance))
-            self.debug(f"raw={self.raw-distance}(distance={distance}) between {cur_op} and {next_op}")
+            if not any([dep.ttype in self.reg_types for dep in raws]):
+                move_up = 0
+            self.debug((f"raw={self.raw-distance}(distance={distance}) between \n"
+                        f"  {cur_op}\n"
+                         "   and\n"
+                        f"  {next_op}"))
             depends = True
         if checks[2] and len(wars)>0:
             move_up = max(move_up,max(0,self.war - distance))
-            self.debug(f"war={self.war-distance}(distance={distance}) between {cur_op} and {next_op}")
+            if not any([dep.ttype in self.reg_types for dep in wars]):
+                move_up = 0
+            self.debug((f"war={self.war-distance}(distance={distance}) between \n"
+                        f"  {cur_op}\n"
+                         "   and\n"
+                        f"  {next_op}"))
             depends = True
         if checks[3] and len(waws)>0:
             move_up = max(move_up,max(0,self.waw - distance))
-            self.debug(f"waw={self.waw-distance}(distance={distance}) between {cur_op} and {next_op}")
+            if not any([dep.ttype in self.reg_types for dep in waws]):
+                move_up = 0
+            self.debug((f"waw={self.waw-distance}(distance={distance}) between \n"
+                        f"  {cur_op}\n"
+                         "   and\n"
+                        f"  {next_op}"))
             depends = True
         return depends,move_up
 
@@ -164,6 +177,8 @@ class simple_dependency_scheduler:
                 depends,move_up = self.get_move_up(next_op=cur_op,
                                            cur_op=sched_op,
                                            distance=distance)
+                if depends and distance == 0:
+                    move_up = 1
                 if move_up > 0:
                     # save with original index, which we use to filter the lookforward
                     # in the end
@@ -267,9 +282,15 @@ class simple_dependency_scheduler:
                                         # read-after-read is irrelevant
                                         checks=[False,True,True,True])
                         if depends_this:
-                            self.debug(f"{scheduled[test_m_idx][1]} depends on {prev_op} (S-check)")
+                            self.debug((f">FOUND< Dependency of\n"
+                                        f"  {scheduled[test_m_idx][1]}\n"
+                                        f"    on\n"
+                                        f"  {prev_op} (S-check)"))
                         else:
-                            self.debug(f"{scheduled[test_m_idx][1]} does not depend on {prev_op} (S-check)")
+                            self.debug((f">NO< dependency of\n"
+                                        f"  {scheduled[test_m_idx][1]}\n"
+                                        f"    on\n"
+                                        f"  {prev_op} (S-check)"))
                         # op is dependent if it depends on ANY ops from move_indices
                         depends = any([depends,depends_this])
                         move_up_prev_max = max(move_up_prev_max,move_up_prev)

@@ -24,6 +24,8 @@ from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
 from ukrgen.composers.gemm import gemm_context
 from ukrgen.composers.stage_engine import stage_engine
 
+from ukrgen.logging import setup_loggers
+
 helpargs=['-h','--help']
 
 def helpexit_if_last_parser(rest : list[str], parser : ArgumentParser):
@@ -63,20 +65,29 @@ class argparse_prolog:
             stage.set_param(pname, val)
 
 
-def ukrgen2():
+def ukrgen():
 
     ukr_ctx = gemm_context()
 
     parser = ArgumentParser(add_help=False)
 
     parser.add_argument("--debug",
-                        help="Enable debug information",
-                        action="store_true")
+                        help="Enables debug output for a specific subsystem; without any arguments, all debug output is enabled",
+                        nargs="*",
+                        type=str)
 
     args,rest = parser.parse_known_args()
 
-    if args.debug:
-        logging.basicConfig(level=logging.DEBUG)
+    debugall = False
+    debug_systems = list()
+
+    if args.debug is not None:
+        if len(args.debug) > 0:
+            debug_systems = set(args.debug)
+        else:
+            debugall = True
+
+    setup_loggers(debugall=debugall, debug_systems=debug_systems)
 
     stages = [
         support_stage,
@@ -107,4 +118,4 @@ def ukrgen2():
     print(ukr_ctx.asmblocks["full_function"])
 
 if __name__ == "__main__":
-    ukrgen2()
+    ukrgen()

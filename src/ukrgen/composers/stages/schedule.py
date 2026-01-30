@@ -32,8 +32,7 @@ class lsc_schedule_stage(composition_stage):
                 rar=int(self.params["sched-rar-distance"].value),
                 raw=int(self.params["sched-raw-distance"].value),
                 war=int(self.params["sched-war-distance"].value),
-                waw=int(self.params["sched-waw-distance"].value),
-                debug_on=False)
+                waw=int(self.params["sched-waw-distance"].value))
 
 
         for dst,(targets,is_loop) in self.context.sched_map.items():
