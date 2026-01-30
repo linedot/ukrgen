@@ -63,7 +63,7 @@ class blis_ukr_codegen_stage(composition_stage):
 
         # TODO: decouple loopification
         condition = lsc_condition(first="k", second=None, 
-                                  comparison=lsc_comparison(comparison.nz))
+                                  comparison=lsc_comparison(comparison.NZ))
         mainloop = lsc_loop(name="knloop", condition=condition, level=2)
 
         mainloop.add_block(self.context.irs["main"])
@@ -84,7 +84,7 @@ class blis_ukr_codegen_stage(composition_stage):
 
         if 1 != k:
             k1condition = lsc_condition(first="kleft", second=None, 
-                                        comparison=lsc_comparison(comparison.nz))
+                                        comparison=lsc_comparison(comparison.NZ))
             k1loop = lsc_loop(name="k1loop", condition=k1condition, level=2)
             k1loop.add_block(self.context.irs["1k_main"]+self.context.irs["1k_preload_next"])
             k1loop.add_block(ops=[
@@ -157,12 +157,12 @@ class blis_ukr_codegen_stage(composition_stage):
             "# KN CHECK 0 ---------------------------------")
         kregidx = self.context.rt.aliased_regs["greg"]["k"]
         asmblock += gen.cb(reg1=gen.greg(kregidx), reg2=None,
-                           cmp=comparison.ez, label="kndone")
+                           cmp=comparison.EZ, label="kndone")
         asmblock += gen.asmwrap(
             "# KN CHECK 1 ---------------------------------")
         asmblock += gen.add_greg_imm(reg=gen.greg(kregidx), imm=-1)
         asmblock += gen.cb(reg1=gen.greg(kregidx), reg2=None,
-                           cmp=comparison.ez, label="knlastiter")
+                           cmp=comparison.EZ, label="knlastiter")
 
         asmblock += gen.asmwrap(
             "# MAIN LOOP ----------------------------------")
@@ -179,7 +179,7 @@ class blis_ukr_codegen_stage(composition_stage):
                 "# K1 CHECK 0 --------------------------------")
             kleftregidx = self.context.rt.aliased_regs["greg"]["kleft"]
             asmblock += gen.cb(reg1=gen.greg(kleftregidx), reg2=None,
-                               cmp=comparison.ez, label="loopsdone")
+                               cmp=comparison.EZ, label="loopsdone")
             asmblock += gen.asmwrap(
                 "# K1 PRELOAD --------------------------------")
             asmblock += "".join(self.context.asmblocks["1k_preload"])
@@ -188,7 +188,7 @@ class blis_ukr_codegen_stage(composition_stage):
                 "# K1 CHECK 1 --------------------------------")
             asmblock += gen.add_greg_imm(reg=gen.greg(kleftregidx), imm=-1)
             asmblock += gen.cb(reg1=gen.greg(kleftregidx), reg2=None,
-                               cmp=comparison.ez, label="k1lastiter")
+                               cmp=comparison.EZ, label="k1lastiter")
             asmblock += gen.asmwrap(
                 "# K1 LOOP ---------------------------")
             asmblock += "  "+"  ".join(self.context.asmblocks["1k_main"])
