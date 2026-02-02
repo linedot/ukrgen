@@ -15,6 +15,8 @@ from ..gemm import gemm_context
 from ..stage_param import stage_param
 from ...specializers.asm import lsc_specializer
 
+from .isaparam import isaparam_stage
+
 asmgen_modules = {
     'avx128' : 'avx_fma',
     'avx256' : 'avx_fma',
@@ -105,21 +107,28 @@ class support_stage(composition_stage):
         
         self.context.gen.set_output_inline(yesno=False)
 
-        self.context.rt = reg_tracker([
-            ('greg',self.context.gen.max_gregs),
-            ('freg',self.context.gen.max_fregs),
-            ('vreg',self.context.gen.max_vregs),
-            ('treg',self.context.gen.max_tregs(adt.FP64))])
 
         self.context.ukr_components = get_ukr_components(self.params["ukr"].value)
         self.context.mru_map = get_ukr_mru_map(self.params["ukr"].value)
         self.context.sched_map = get_ukr_sched_map(self.params["ukr"].value)
         self.context.specialization_order = get_ukr_specialization_order(self.params["ukr"].value)
 
+
+        self.context.params.update(self.params)
+
+        isaparams = self.context.gen.get_parameters()
+        if len(isaparams) > 0:
+            return [isaparam_stage]
+
+        self.context.rt = reg_tracker([
+            ('greg',self.context.gen.max_gregs),
+            ('freg',self.context.gen.max_fregs),
+            ('vreg',self.context.gen.max_vregs),
+            ('treg',self.context.gen.max_tregs(adt.FP64))])
+
         self.context.specializer = lsc_specializer(
                 model=None,
                 gen=self.context.gen,
                 rt=self.context.rt)
 
-        self.context.params.update(self.params)
         return []

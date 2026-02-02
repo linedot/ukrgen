@@ -4,6 +4,7 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
+from asmgen.asmblocks.noarch import asmgen
 from asmgen.registers import asm_data_type as adt
 from ..models.load_store_cpu import load_store_cpu
 from ..models.load_store_operations import lsc_operation
