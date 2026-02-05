@@ -16,6 +16,9 @@ from ..models.load_store_operations import (
 
 from ..models.lsc.index import lsc_reg_index
 
+from ..components.tile import tile
+from ..components.tile import determine_dreg_tag
+
 from asmgen.registers import greg_base,data_reg
 
 from typing import Type
@@ -32,7 +35,7 @@ class reg_compare:
         assert isinstance(ttype, lsc_reg_type)
         self.ttype = ttype
         self.index = index
-        self.t = t
+        self.t : tile = t
 
     def __eq__(self, other):
         if len(self.index.indices) != len(other.index.indices):
@@ -60,12 +63,42 @@ class reg_compare:
     def __repr__(self):
         return self.__str__()
 
+
 class dependency_type(Enum):
     RAR = auto()
     RAW = auto()
     WAR = auto()
     WAW = auto()
 
+def get_dependencies(op1 : lsc_operation, op2: lsc_operation) ->\
+        dict[dependency_type,set[reg_compare]]:
+
+
+    op2_reads = {
+        reg_compare(ttype=op2.reg_types[i],
+                    index=op2.indices[i],
+                    t=op2.tiles[i]) for i in op2.reads}
+    op2_writes = {
+        reg_compare(ttype=op2.reg_types[i],
+                    index=op2.indices[i],
+                    t=op2.tiles[i]) for i in op2.writes}
+
+    op1_reads = {
+        reg_compare(ttype=op1.reg_types[i],
+                    index=op1.indices[i],
+                    t=op1.tiles[i]) for i in op1.reads}
+    op1_writes = {
+        reg_compare(ttype=op1.reg_types[i],
+                    index=op1.indices[i],
+                    t=op1.tiles[i]) for i in op1.writes}
+
+
+    return {
+       dependency_type.RAR : set(op2_reads) & set(op1_reads),
+       dependency_type.RAW : set(op2_reads) & set(op1_writes),
+       dependency_type.WAR : set(op2_writes) & set(op1_reads),
+       dependency_type.WAW : set(op2_writes) & set(op1_writes),
+    }
 
 @dataclass
 class distance_specification:
@@ -156,6 +189,7 @@ class distance_specification:
         op1_str = split_spec[3]
         op2_str = split_spec[4]
         op_types = {
+            "trf" : lsc_transformation,
             "fma" : lsc_transformation,
             "fmul" : lsc_transformation,
             "dota" : lsc_transformation,
@@ -183,9 +217,9 @@ class distance_specification:
             op2_type = op_types[op2_str]
 
         if op1_type == lsc_transformation:
-            tr1_name = op1_str
+            tr1_name = op1_str if "trf" != op1_str else None
         if op2_type == lsc_transformation:
-            tr1_name = op2_str
+            tr2_name = op2_str if "trf" != op2_str else None
 
         distance = int(split_spec[5])
 
@@ -199,11 +233,58 @@ class distance_specification:
                 tr2_name=tr2_name, 
                 distance=distance)
 
-    def check(op1 : lsc_operation,
-              op2 : lsc_operation,
-              rcomp : reg_compare):
-        pass
+    def apply(self,
+              op1 : lsc_operation,
+              op2 : lsc_operation) -> int:
+        """
+        Check if the distance constraint applies between the specified ops
+        and if it does, returns the distance, otherwise returns 0
+        """
 
+        # Types
+
+        if self.op1_type is not None and \
+          not isinstance(op1, self.op1_type):
+            return 0
+
+        if self.op2_type is not None and \
+          not isinstance(op2, self.op2_type):
+            return 0
+        
+        # Exact transformations
+
+        if self.op1_type == lsc_transformation:
+            if self.tr1_name is not None:
+                if self.tr1_name != op1.op:
+                    return 0
+
+        if self.op2_type == lsc_transformation:
+            if self.tr2_name is not None:
+                if self.tr2_name != op2.op:
+                    return 0
+
+        deps = get_dependencies(op1=op1, op2=op2)
+
+        result = 0
+
+        # registers
+        for dep,regs in deps.items():
+            if not regs:
+                continue
+            if self.dep_type is not None and self.dep_type != dep:
+                continue
+            for rc in regs:
+                if self.reg_type is not None and self.reg_type != rc.ttype:
+                    continue
+                
+                asm_reg_tag = determine_dreg_tag(dima=rc.t.dima, dimb=rc.t.dimb)
+                if self.asm_reg_tag is not None and self.asm_reg_tag != asm_reg_tag:
+                    continue
+                    
+                result = self.distance
+
+
+        return result
 
 
 class simple_dependency_scheduler:
