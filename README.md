@@ -179,7 +179,13 @@ options:
   - ensure 11 instructions of distance between raw dependencies of FP registers
 
 ```
-$ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 --op fma --AB-data-type SINGLE --C-data-type SINGLE --variant 0 --m 2 --n 12 --k 8 --column-strides C --A-data-regs 4 --B-data-regs 24 --C-data-regs 24 --AB-data-regs 24 --A-addr-regs 2 --B-addr-regs 2 --C-addr-regs 2 --B-multiaddr-strat interleave --A-preload 4 --B-preload 12 --sched-distance-specs "raw::vreg:::11" "war::vreg:::5" "raw::freg:::11"
+$ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 \
+         --op fma --AB-data-type SINGLE --C-data-type SINGLE \
+         --variant 0 --m 2 --n 12 --k 8 --column-strides C \
+         --A-data-regs 4 --B-data-regs 24 --C-data-regs 24 --AB-data-regs 24 \
+         --A-addr-regs 2 --B-addr-regs 2 --C-addr-regs 2 \
+         --B-multiaddr-strat interleave --A-preload 4 --B-preload 12 \
+         --sched-distance-specs "raw::vreg:::11" "war::vreg:::5" "raw::freg:::11"
 [...]
   vfmacc.vf v13,f10,v26
   vse32.v v13, (s4)
