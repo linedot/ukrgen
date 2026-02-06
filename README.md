@@ -86,32 +86,38 @@ Inspect the generated ASM function for given parameters directly or debug the ge
 
 Usage:
 ```
-usage: python -m clitools.ukrgen [--debug] --isa {rvv,rvv071,sve,neon,avx128,avx256,avx512} --op {fma,dota,fopa,mma} [--ukr {gemm,mm}]
-                                 --AB-data-type {UINT8,DOUBLE,FP64,SINT64,SINT32,UINT16,FP32,SINGLE,HALF,SINT8,UINT32,SINT16,FP16}
-                                 --C-data-type {DOUBLE,FP64,SINT64,SINT32,UINT64,UINT16,FP32,SINGLE,HALF,SINT8,UINT32,SINT16,FP16}
+usage: python -m clitools.ukrgen [--debug [DEBUG ...]] --isa {rvv,rvv071,sve,neon,avx128,avx256,avx512}
+                                 --op {fma,dota,fopa,mma} [--ukr {gemm,mm}] --rvv-LMUL RVV_LMUL
+                                 --AB-data-type {SINT32,UINT8,FP32,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
+                                 --C-data-type {SINT32,FP32,UINT64,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
                                  [--variant {0,1}] --m M --n N --k K [--vecdir {M,N}] [--order ORDER]
-                                 [--column-strides COLUMN_STRIDES] [--row-strides ROW_STRIDES] --A-data-regs A_DATA_REGS
-                                 [--A-addr-regs A_ADDR_REGS] [--A-multiaddr-strat {interleave,split,phase}] [--A-preload A_PRELOAD]
-                                 --B-data-regs B_DATA_REGS [--B-addr-regs B_ADDR_REGS] [--B-multiaddr-strat {interleave,split,phase}]
-                                 [--B-preload B_PRELOAD] --AB-data-regs AB_DATA_REGS [--AB-addr-regs AB_ADDR_REGS]
-                                 [--AB-multiaddr-strat {interleave,split,phase}] --C-data-regs C_DATA_REGS [--C-addr-regs C_ADDR_REGS]
-                                 [--C-multiaddr-strat {interleave,split,phase}] [--sched-rar-distance SCHED_RAR_DISTANCE]
-                                 [--sched-raw-distance SCHED_RAW_DISTANCE] [--sched-war-distance SCHED_WAR_DISTANCE]
-                                 [--sched-waw-distance SCHED_WAW_DISTANCE] [--function-name FUNCTION_NAME]
+                                 [--column-strides COLUMN_STRIDES] [--row-strides ROW_STRIDES]
+                                 --A-data-regs A_DATA_REGS [--A-addr-regs A_ADDR_REGS]
+                                 [--A-multiaddr-strat {interleave,split,phase}] [--A-preload A_PRELOAD]
+                                 --B-data-regs B_DATA_REGS [--B-addr-regs B_ADDR_REGS]
+                                 [--B-multiaddr-strat {interleave,split,phase}] [--B-preload B_PRELOAD]
+                                 --AB-data-regs AB_DATA_REGS [--AB-addr-regs AB_ADDR_REGS]
+                                 [--AB-multiaddr-strat {interleave,split,phase}]
+                                 --C-data-regs C_DATA_REGS [--C-addr-regs C_ADDR_REGS]
+                                 [--C-multiaddr-strat {interleave,split,phase}]
+                                 [--sched-distance-specs SCHED_DISTANCE_SPECS [SCHED_DISTANCE_SPECS ...]]
 
 options:
-  --debug               Enable debug information
+  --debug [DEBUG ...]   Enables debug output for a specific subsystem; without any arguments, all debug
+                        output is enabled
   --isa {rvv,rvv071,sve,neon,avx128,avx256,avx512}
                         Instruction set to use
   --op {fma,dota,fopa,mma}
                         Arithmentic instruction to base the kernel on
   --ukr {gemm,mm}       Type of Microkernel to generate
-  --AB-data-type {UINT8,DOUBLE,FP64,SINT64,SINT32,UINT16,FP32,SINGLE,HALF,SINT8,UINT32,SINT16,FP16}
+  --rvv-LMUL RVV_LMUL   rvv parameter: LMUL
+  --AB-data-type {SINT32,UINT8,FP32,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
                         Data type for component AB
-  --C-data-type {DOUBLE,FP64,SINT64,SINT32,UINT64,UINT16,FP32,SINGLE,HALF,SINT8,UINT32,SINT16,FP16}
+  --C-data-type {SINT32,FP32,UINT64,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
                         Data type for component C
-  --variant {0,1}       Variant of the supported instruction. 0 ==> A: SINGLE with 1vx1 B: SINGLE with 1x1 C: SINGLE with 1vx1 ; 1 ==>
-                        A: SINGLE with 1vx1 B: SINGLE with 1vx1 C: SINGLE with 1vx1
+  --variant {0,1}       Variant of the supported instruction. 0 ==> A: SINGLE with 1vx1 B: SINGLE with
+                        1x1 C: SINGLE with 1vx1 ; 1 ==> A: SINGLE with 1vx1 B: SINGLE with 1vx1 C: SINGLE
+                        with 1vx1
   --m M                 Microkernel dimension m
   --n N                 Microkernel dimension n
   --k K                 Microkernel dimension k
@@ -149,14 +155,8 @@ options:
                         Number of address register to use for component C
   --C-multiaddr-strat {interleave,split,phase}
                         Strategy for using multiple address registers for component C
-  --sched-rar-distance SCHED_RAR_DISTANCE
-                        Minimum distance for rar dependencies (in instructions)
-  --sched-raw-distance SCHED_RAW_DISTANCE
-                        Minimum distance for raw dependencies (in instructions)
-  --sched-war-distance SCHED_WAR_DISTANCE
-                        Minimum distance for war dependencies (in instructions)
-  --sched-waw-distance SCHED_WAW_DISTANCE
-                        Minimum distance for waw dependencies (in instructions)
+  --sched-distance-specs SCHED_DISTANCE_SPECS [SCHED_DISTANCE_SPECS ...]
+                        distance specifications for the scheduler in "dep:regt:rtag:op1:op2:dist" format
   --function-name FUNCTION_NAME
                         Override ASM Symbol/function name with a custom one
 ```
@@ -170,24 +170,25 @@ options:
   - unroll 8x
   - FP32 (sgemm)
   - use 4 vregs for A
-  - use 8 fregs for B
-  - preload all used regs
+  - use 24 fregs for B
+  - preload all A regs and 12 B regs
   - 2 address regs for each component
   - general column strides for C matrix
-  - ensure 11 instructions of distance between raw dependencies
-  - ensure 1 instructions of distance between war dependencies
+  - ensure 11 instructions of distance between raw dependencies of vector registers
+  - ensure 5 instructions of distance between war dependencies of vector registers
+  - ensure 11 instructions of distance between raw dependencies of FP registers
 
 ```
-$ python -m clitools.ukrgen --ukr gemm --isa rvv --op fma --AB-data-type SINGLE --C-data-type SINGLE --variant 0 --m 2 --n 12 --k 8 --column-strides C --A-data-regs 4 --B-data-regs 8 --C-data-regs 24 --AB-data-regs 24 --A-addr-regs 2 --B-addr-regs 2 --C-addr-regs 2 --B-multiaddr-strat interleave --A-preload 4 --B-preload 8 --sched-war-distance 1 --sched-raw-distance 11 --sched-war-distance 1
+$ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 --op fma --AB-data-type SINGLE --C-data-type SINGLE --variant 0 --m 2 --n 12 --k 8 --column-strides C --A-data-regs 4 --B-data-regs 24 --C-data-regs 24 --AB-data-regs 24 --A-addr-regs 2 --B-addr-regs 2 --C-addr-regs 2 --B-multiaddr-strat interleave --A-preload 4 --B-preload 12 --sched-distance-specs "raw::vreg:::11" "war::vreg:::5" "raw::freg:::11"
 [...]
-  vfmacc.vf v13,f2,v26
+  vfmacc.vf v13,f10,v26
   vse32.v v13, (s4)
   add s4,s4,s1
   add a7,a7,s1
-  vle32.v v2, (a7)
-  vfmul.vf v2,v2,f0
-  vfmacc.vf v2,f2,v27
-  vse32.v v2, (s4)
+  vle32.v v0, (a7)
+  vfmul.vf v0,v0,f13
+  vfmacc.vf v0,f10,v27
+  vse32.v v0, (s4)
   # END STOREBLOCK -----------------------------
   # FINALIZE -----------------------------------
   # FUNC OUTRO ---------------------------------
@@ -196,7 +197,15 @@ $ python -m clitools.ukrgen --ukr gemm --isa rvv --op fma --AB-data-type SINGLE 
   ld s3,16(sp)
   ld s4,24(sp)
   ld s5,32(sp)
-  add sp,sp,40
+  fld f8, 40(sp)
+  fld f9, 48(sp)
+  fld f18, 56(sp)
+  fld f19, 64(sp)
+  fld f20, 72(sp)
+  fld f21, 80(sp)
+  fld f22, 88(sp)
+  fld f23, 96(sp)
+  add sp,sp,104
   ret
 ```
 

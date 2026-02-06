@@ -121,7 +121,7 @@ class distance_specification:
             "opa" : lsc_transformation,
             "mma" : lsc_transformation,
             "ld" : lsc_load,
-        "st" : lsc_store,
+            "st" : lsc_store,
             "z" : lsc_zero,
             "aadd" : lsc_addr_add,
             "oadd" : lsc_add_val_off,

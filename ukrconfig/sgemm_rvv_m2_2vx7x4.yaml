@@ -1,0 +1,20 @@
+isa : rvv
+rvv-LMUL : 2
+op : fma
+ukr : gemm
+AB-data-type : FP32
+C-data-type : FP32
+variant : 0
+m : 2
+n : 7
+k : 4
+A-data-regs : 2
+B-data-regs : 14
+AB-data-regs : 14
+C-data-regs : 14
+A-addr-regs : 2
+B-addr-regs : 2
+C-addr-regs : 2
+A-preload : 2
+B-preload : 14
+sched-distance-specs: ["raw::freg:::6","raw::greg:::3","war::greg:::3"]

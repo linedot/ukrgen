@@ -12,6 +12,8 @@ from ..models.load_store_operations import (
      )
 
 from .reg_compare import reg_compare
+from .distance import distance_specification
+from .dependency import dependency_type,get_dependencies
 
 import logging
 from dataclasses import dataclass
@@ -20,18 +22,11 @@ from typing import Type
 
 class simple_dependency_scheduler:
     def __init__(self,
-                 rar : int = 0,
-                 raw : int = 10,
-                 war : int = 0,
-                 waw : int = 10,
-                 patterns : list[str] = [],
+                 dspecs = list[distance_specification],
                  reg_types : set[lsc_reg_type] = {lsc_reg_type.data},
                  ):
-        self.rar = rar
-        self.raw = raw
-        self.war = war
-        self.waw = waw
-        self.patterns = patterns
+        self.dspecs = dspecs
+        self.max_dist = max([ds.distance for ds in dspecs])
         self.reg_types = reg_types
 
         self.debug = logging.getLogger("SCHED").debug
@@ -44,77 +39,19 @@ class simple_dependency_scheduler:
         move_up = 0
         depends = False
 
-        next_op_reads = {
-            reg_compare(ttype=next_op.reg_types[i],
-                        index=next_op.indices[i],
-                        t=next_op.tiles[i]) for i in next_op.reads}
-        next_op_writes = {
-            reg_compare(ttype=next_op.reg_types[i],
-                        index=next_op.indices[i],
-                        t=next_op.tiles[i]) for i in next_op.writes}
+        deps = get_dependencies(cur_op, next_op)
 
-        cur_op_reads = {
-            reg_compare(ttype=cur_op.reg_types[i],
-                        index=cur_op.indices[i],
-                        t=cur_op.tiles[i]) for i in cur_op.reads}
-        cur_op_writes = {
-            reg_compare(ttype=cur_op.reg_types[i],
-                        index=cur_op.indices[i],
-                        t=cur_op.tiles[i]) for i in cur_op.writes}
+        for dspec in self.dspecs:
+            move_up = max(move_up,max(0,dspec.apply(cur_op,next_op)-distance))
 
-        #self.debug(f"cur_op = {cur_op}. reads: {cur_op_reads}")
-        #self.debug(f"cur_op = {cur_op}. writes: {cur_op_writes}")
-        #self.debug(f"next_op = {next_op}. reads: {next_op_reads}")
-        #self.debug(f"next_op = {next_op}. writes: {next_op_writes}")
 
-        #self.debug(f"{checks}")
-
-        rars = set(next_op_reads) & set(cur_op_reads)
-        raws = set(next_op_reads) & set(cur_op_writes)
-        wars = set(next_op_writes) & set(cur_op_reads)
-        waws = set(next_op_writes) & set(cur_op_writes)
-
-        #self.debug(f"RAR: {rars}")
-        #self.debug(f"RAW: {raws}")
-        #self.debug(f"WAR: {wars}")
-        #self.debug(f"WAW: {waws}")
-
-        if checks[0] and len(rars)>0:
-            move_up = max(move_up,max(0,self.rar - distance))
-            if not any([dep.ttype in self.reg_types for dep in rars]):
-                move_up = 0
-            self.debug((f"rar={self.rar-distance}(distance={distance}) between \n"
-                        f"  {cur_op}\n"
-                         "   and\n"
-                        f"  {next_op}"))
-            #depends = True
-        if checks[1] and len(raws)>0:
-            move_up = max(move_up,max(0,self.raw - distance))
-            if not any([dep.ttype in self.reg_types for dep in raws]):
-                move_up = 0
-            self.debug((f"raw={self.raw-distance}(distance={distance}) between \n"
-                        f"  {cur_op}\n"
-                         "   and\n"
-                        f"  {next_op}"))
+        if any([deps[dtype] for dtype in [
+            dependency_type.RAW,
+            dependency_type.WAR,
+            dependency_type.WAW
+            ]]):
             depends = True
-        if checks[2] and len(wars)>0:
-            move_up = max(move_up,max(0,self.war - distance))
-            if not any([dep.ttype in self.reg_types for dep in wars]):
-                move_up = 0
-            self.debug((f"war={self.war-distance}(distance={distance}) between \n"
-                        f"  {cur_op}\n"
-                         "   and\n"
-                        f"  {next_op}"))
-            depends = True
-        if checks[3] and len(waws)>0:
-            move_up = max(move_up,max(0,self.waw - distance))
-            if not any([dep.ttype in self.reg_types for dep in waws]):
-                move_up = 0
-            self.debug((f"waw={self.waw-distance}(distance={distance}) between \n"
-                        f"  {cur_op}\n"
-                         "   and\n"
-                        f"  {next_op}"))
-            depends = True
+
         return depends,move_up
 
 
@@ -122,7 +59,7 @@ class simple_dependency_scheduler:
         scheduled = []
         lookforward = 0
         if loop:
-            lookforward = max(self.rar,self.raw,self.war,self.waw)
+            lookforward = self.max_dist
 
         opslf = ops+ops[:lookforward]
         for cur_idx in range(len(ops)+lookforward):
@@ -202,7 +139,7 @@ class simple_dependency_scheduler:
                             break
 
                     max_preceding_to_test = min(cur_idx,
-                                                max(self.rar,self.raw,self.war,self.waw),
+                                                self.max_dist,
                                                 len(scheduled))
 
                     # check if the previous instruction would depend on a scheduled instruction

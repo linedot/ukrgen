@@ -7,3 +7,4 @@ class stage_param:
     default     : str|list[str]|None = None
     choices     : list[str]|None = None
     required    : bool = True
+    multi       : bool = False

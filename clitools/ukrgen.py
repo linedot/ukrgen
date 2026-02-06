@@ -48,6 +48,7 @@ class argparse_prolog:
         for pname in params:
             self.parser.add_argument(
                 f"--{pname}",
+                nargs="+" if stage.get_param(pname).multi else None,
                 help=stage.get_param(pname).description,
                 default=stage.get_param(pname).default,
                 choices=stage.get_param(pname).choices,

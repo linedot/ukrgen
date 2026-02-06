@@ -16,4 +16,4 @@ B-addr-regs : 1
 C-addr-regs : 2
 A-preload : 2
 B-preload : 3
-sched-raw-distance : 4
+sched-distance-specs: ["raw:::::4"]

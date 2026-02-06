@@ -10,6 +10,7 @@ from .composition import composition_stage
 from ..gemm import gemm_context
 from ..stage_param import stage_param
 
+from ...schedulers.distance import distance_specification as dspec
 from ...schedulers.simple_dependency_scheduler import simple_dependency_scheduler
 
 class lsc_schedule_stage(composition_stage):
@@ -19,20 +20,26 @@ class lsc_schedule_stage(composition_stage):
 
         self.debug = logging.getLogger("SCHED").debug
 
-        for dep in ["rar","raw","war","waw"]:
-            self.params[f"sched-{dep}-distance"] = stage_param(
-                    value=0, 
-                    description=f"Minimum distance for {dep} dependencies (in instructions)",
-                    default=0,
-                    required=False)
+        self.params["sched-distance-specs"] = stage_param(
+                value=[], 
+                description=("distance specifications for the scheduler"
+                             " in \"dep:regt:rtag:op1:op2:dist\" format"),
+                default=[],
+                required=False,
+                multi=True)
 
     def progress(self) -> list[composition_stage]:
 
-        scheduler = simple_dependency_scheduler(
-                rar=int(self.params["sched-rar-distance"].value),
-                raw=int(self.params["sched-raw-distance"].value),
-                war=int(self.params["sched-war-distance"].value),
-                waw=int(self.params["sched-waw-distance"].value))
+        spec_strings = self.params["sched-distance-specs"].value
+
+        if not spec_strings:
+            self.context.params.update(self.params)
+            return list()
+
+        dsspecs = [dspec.from_string(s) for s in spec_strings]
+        
+
+        scheduler = simple_dependency_scheduler(dspecs=dsspecs)
 
 
         for dst,(targets,is_loop) in self.context.sched_map.items():
