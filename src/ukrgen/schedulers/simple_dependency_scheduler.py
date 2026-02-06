@@ -144,27 +144,27 @@ class simple_dependency_scheduler:
 
                     # check if the previous instruction would depend on a scheduled instruction
                     # if swapped
-                    prev_breakout = False
-                    add_distance=0
-                    for prev_cur_idx,prev_cur_op in \
-                            enumerate(opslf[cur_idx-max_preceding_to_test:cur_idx+1]):
-                        if prev_cur_op == prev_op:
-                            break
-                        # test prev_op for dependency on cur_op with distance-1
-                        # if that results in a moveup of >0, prepend it to move_indices
-                        # decrement midx and break out
-                        depends,move_up_prev = self.get_move_up(
-                                next_op=prev_cur_op,
-                                cur_op=prev_op,
-                                distance=len(move_indices)-insts_that_move-add_distance+prev_cur_idx)
-                        if move_up_prev > 0:
-                            self.debug(f"{prev_cur_op} depends on {prev_op}")
-                            move_indices.insert(0,(idx-1,move_up_prev))
-                            midx_add = 0
-                            prev_breakout = True
-                            break
-                    if prev_breakout:
-                        break
+                    #prev_breakout = False
+                    #add_distance=0
+                    #for prev_cur_idx,prev_cur_op in \
+                    #        enumerate(opslf[cur_idx-max_preceding_to_test:cur_idx+1]):
+                    #    if prev_cur_op == prev_op:
+                    #        break
+                    #    # test prev_op for dependency on cur_op with distance-1
+                    #    # if that results in a moveup of >0, prepend it to move_indices
+                    #    # decrement midx and break out
+                    #    depends,move_up_prev = self.get_move_up(
+                    #            next_op=prev_cur_op,
+                    #            cur_op=prev_op,
+                    #            distance=len(move_indices)-insts_that_move-add_distance+prev_cur_idx)
+                    #    if move_up_prev > 0:
+                    #        self.debug(f"{prev_cur_op} depends on {prev_op}")
+                    #        move_indices.insert(0,(idx-1,move_up_prev))
+                    #        midx_add = 0
+                    #        prev_breakout = True
+                    #        break
+                    #if prev_breakout:
+                    #    break
                         
                         
 

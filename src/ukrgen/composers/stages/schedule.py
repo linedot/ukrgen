@@ -4,14 +4,15 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
 
-import logging
-
 from .composition import composition_stage
 from ..gemm import gemm_context
 from ..stage_param import stage_param
 
 from ...schedulers.distance import distance_specification as dspec
 from ...schedulers.simple_dependency_scheduler import simple_dependency_scheduler
+
+import logging
+from copy import deepcopy
 
 class lsc_schedule_stage(composition_stage):
     def __init__(self, context : gemm_context):
@@ -33,6 +34,11 @@ class lsc_schedule_stage(composition_stage):
         spec_strings = self.params["sched-distance-specs"].value
 
         if not spec_strings:
+            for dst,(targets,is_loop) in self.context.sched_map.items():
+                src = []
+                for bname in targets:
+                    src.extend(self.context.irs[bname])
+                self.context.irs[dst] = deepcopy(src)
             self.context.params.update(self.params)
             return list()
 
