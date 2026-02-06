@@ -210,6 +210,8 @@ scalar = dimension_properties(dt=dimension_type.fixed, size=1,
 vla_vector = dimension_properties(dt=dimension_type.vla, size=1,
                                   sdt=dimension_type.fixed, sd_size=4)
 
+vla_vector_tile = tile(dima=vla_vector, dimb=scalar_dp)
+
 x4_vector = dimension_properties(dt=dimension_type.fixed, size=4,
                                  sdt=dimension_type.fixed, sd_size=4)
 

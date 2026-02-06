@@ -5,6 +5,7 @@
 # ------------------------------------------------------------------------------
 
 from ..models.load_store_operations import lsc_operation
+from .reg_compare import reg_compare
 
 from enum import Enum,auto
 
