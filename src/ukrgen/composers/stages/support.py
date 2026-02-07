@@ -77,7 +77,7 @@ class support_stage(composition_stage):
     def __init__(self, context : gemm_context):
         super().__init__(context)
 
-        supported_isas = ["rvv","rvv071","sve","neon","avx128","avx256","avx512"]
+        supported_isas = list(asmgen_modules.keys())
         supported_instructions = ["fma","dota","fopa","mma"]
         supported_ukrs = ["gemm","mm"]
 
