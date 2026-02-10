@@ -247,13 +247,17 @@ class addr_resolver:
                     self.debug(f"  {component}a{addr_list_idx} : [{minoff},{maxoff}]")
                 raise RuntimeError(f"current offsets not in range after {self.max_incs} address adds")
 
+            # Ignore steps for now (useful for debugging though )
             # TODO: Unmessify this (perhaps a set of allowed steps?)
-            if toff.sxv_strides or \
-               toff.reg_strides or \
-               (toff == lsc_offset.zero_offset()):
-                add_value = toff - self.current_offsets[component][best_candidate_idx]
-            else:
-                add_value = self.steps[component][best_candidate_idx]
+            #if toff.sxv_strides or \
+            #   toff.reg_strides or \
+            #   (toff == lsc_offset.zero_offset()):
+            #    add_value = toff - self.current_offsets[component][best_candidate_idx]
+            #else:
+            #    add_value = self.steps[component][best_candidate_idx]
+
+            add_value = toff - self.current_offsets[component][best_candidate_idx]
+
             self.debug(f"Adding {add_value} to {component}a{best_candidate_idx}")
             new_add = addr_add(component=component,
                                addr_idx=self.indices[component][best_candidate_idx],

@@ -4,8 +4,8 @@ ukr : gemm
 AB-data-type : FP64
 C-data-type : FP64
 variant : 0
-m : 12
-n : 2
+m : 2
+n : 12
 k : 4
 A-data-regs : 4
 B-data-regs : 3
@@ -16,4 +16,4 @@ B-addr-regs : 1
 C-addr-regs : 2
 A-preload : 2
 B-preload : 3
-sched-distance-specs: ["raw:::::4"]
+sched-distance-specs: ["raw::vreg:::4"]
