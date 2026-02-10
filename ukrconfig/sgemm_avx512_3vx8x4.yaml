@@ -4,18 +4,16 @@ ukr : gemm
 AB-data-type : FP32
 C-data-type : FP32
 variant : 0
-m : 12
-n : 2
-k : 6
-vecdir : N
-order: nmkNMK
-A-data-regs : 3
-B-data-regs : 4
+m : 3
+n : 8
+k : 4
+A-data-regs : 5
+B-data-regs : 2
 AB-data-regs : 24
 C-data-regs : 24
 A-addr-regs : 1
 B-addr-regs : 1
 C-addr-regs : 2
-A-preload : 3
+A-preload : 2
 B-preload : 2
-sched-distance-specs: ["raw:data::::4"]
+sched-distance-specs: ["raw::vreg:::4"]
