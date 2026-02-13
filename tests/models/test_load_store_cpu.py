@@ -19,7 +19,6 @@ from ukrgen.components import (
         x4_vector
         )
 from ukrgen.generators import mm,order2D
-from ukrgen.generators.mm import string_mapper
 from ukrgen.models import load_store_cpu
 
 class test_load_store_cpu(unittest.TestCase):

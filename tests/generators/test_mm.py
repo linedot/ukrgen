@@ -77,25 +77,6 @@ from ukrgen.schedulers import simple_dependency_scheduler
 #   one is xv and the other is x
 
 class test_mm(unittest.TestCase):
-    # TODO: multitile
-    #def test_multitile(self):
-    #    m = [4,3]
-    #    n = [4]
-    #    k = [2]
-
-    #    
-    #    
-    #    a_tile = composed_ukr_tile(a_sizes=m, b_sizes=k, subdims=(scalar_dp,scalar_dp))
-    #    b_tile = composed_ukr_tile(a_sizes=k, b_sizes=n, subdims=(scalar_dp,scalar_dp))
-    #    c_tile = composed_ukr_tile(a_sizes=m, b_sizes=n, subdims=(scalar_dp,scalar_dp))
-
-    #    mmgen = mm(a_tile, b_tile, c_tile)
-    #    inspector = string_mapper(op="fma")
-
-    #    mm_ops = mmgen.generate()
-
-    #    print("\n".join(map(str,inspector(mm_ops))))
-    #    #self.assertEqual(expected_sequence, inspector(mm_ops))
 
     def test_2x4_scalar(self):
         m = 2
