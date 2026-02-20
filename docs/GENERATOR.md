@@ -105,6 +105,8 @@ After the index is mapped onto an `lsc_offset`, the model tries to resolve the d
 
 ## Pre-specialization/IR modification
 
+The [irmod stage](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/composers/stages/irmod.py) and the [`pre_specialize()`](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/specializers/asm.py#L808) method of the specializer class ensure that the IR match the underlying ISA. This includes for example [ensuring strided loads/stores can be performed](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/specializers/asm.py#L942) by emulating them with either indexed loads or lane-loads, [handling different ways of handling mixed-precision](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/specializers/asm.py#L834-L840) and other modifications.
+
 ## Software scheduling
 
 [A simple instruction scheduler](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/schedulers/simple_dependency_scheduler.py) is implemented that allows maintaining "distance" between dependent instructions. Here, "distance" means number of independent instructions between two dependent ones. The scheduling algorithms is rather naive - it iterates through the instructions and checks their "distance" to the already scheduled instructions. If an unfulfilled distance constraint is encountered, the scheduler tries to "move" instructions "up" in the schedule until it is fulfilled, keeping track of the distances through the process and moving other instructions up as well if constraints would be violated by the move. In case the constraints cannot be fulfilled, [the scheduler fails](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/schedulers/simple_dependency_scheduler.py#L119)
@@ -119,6 +121,23 @@ Impact of sw scheduling on SpacemiT K1/X60:
 
 A graph-based scheduler and/or an ILP-solver-based scheduler could potentially prove to be beneficial. One shortcoming of the simple scheduler is that it doesn't account for the available resources/pipelines in the processor directly and has no concept of instruction "patterns" and orderings that can be performant. Compilers usually have internal performance models that are to some degree aware of those microarchitectural idiosyncrasies and can take them into account when generating code.
 
-## Specialization into ASM
-
 ## Codegen
+
+The [codegen_stage](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/composers/stages/codegen.py) handles transforming the IR into ASM, arranging the resulting ASM blocks in the correct order, [placing them in loops](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/composers/stages/codegen.py#L65-L72), as well as generating the [ASM function boilerplate](https://github.com/linedot/ukrgen/blob/fix_lineno_for_doc/src/ukrgen/composers/stages/codegen.py#L56-L62)
+
+
+# What is different from other approaches
+
+The novelty of the generator is it's abstraction over ISAs as well as underlying arithmetic instructions - including a low-effort way of adding support for new ones, as well as it's multi-stage approach with tight control of each stage.
+
+ISA abstraction is handled by asmgen, which is a very thin wrapper around the actual ASM and therefore can be easily modified and augmented with further support
+
+It is different from DSL approaches like ... (TODO: examples) by having direct control over the ASM codegen, scheduling, etc... instead of leaving it to the compiler infrastructure. It is also faster to support a new or prototype ISA.
+
+It is different from direct, specialized kernel generators like (autogemm? predecessor asmgen-gemm? TODO: examples) by having a higher level abstraction layer that allows very different implementations for different ISAs. It also allows for more variety in code structure and has more parameters that can be used to tune the implementation
+
+Some ways in which the parameterization goes beyond other generators:
+  - Completely user-provided counts for data and address registers for each component
+  - parameterized MNK loop-ordering and A,B,C-data resolution ordering
+  - GEMM specific: customizable vectorization direction (MVxN and MxNV)
+  - parameterized preloading - allowing user-defined number of data registers to be preloaded for the main loop
