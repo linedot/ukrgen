@@ -15,7 +15,7 @@ from copy import deepcopy
 from .load_store_operations import lsc_offset
 from ..components.tile import tile
 
-from .addr.reg_selectors import interleaving_selector,phasing_selector
+from .addr.reg_selectors import rotating_selector,phasing_selector
 
 class addr_add:
     def __init__(self, component : str, addr_idx : int,
@@ -73,7 +73,7 @@ class addr_resolver:
 
         self.candidate_selectors = {
                 c : phasing_selector() if c in phasing_components \
-                        else interleaving_selector() for c in \
+                        else rotating_selector() for c in \
                         self.indices.keys()}
 
     def zero_current_offsets(self):
@@ -110,39 +110,6 @@ class addr_resolver:
         return result
 
 
-    def toff_in_range(self, caoff : lsc_offset, toff : lsc_offset,
-                      offset_range : tuple[lsc_offset,lsc_offset]):
-
-        lsc_offset.adjust_offlists(caoff,offset_range[0])
-        lsc_offset.adjust_offlists(caoff,offset_range[1])
-        lsc_offset.adjust_offlists(caoff,toff)
-
-        # sxv offsets have to be equal
-        for sxv in caoff.sxv_strides.keys():
-            if caoff.sxv_strides[sxv] != toff.sxv_strides[sxv]:
-                return False
-
-        immoffset_in_range = \
-            (toff.immoff >=(caoff.immoff-offset_range[0].immoff)) and \
-            (toff.immoff <=(caoff.immoff+offset_range[1].immoff))
-
-        voffset_in_range = all([(toff >= (coff - minoff)) and \
-                                (toff <= (coff + maxoff)) for \
-            toff,coff,minoff,maxoff in \
-                zip(toff.vlen_strides,
-                    caoff.vlen_strides,
-                    offset_range[0].vlen_strides,
-                    offset_range[1].vlen_strides)])
-
-        roffset_in_range = all([(toff >= (coff - minoff)) and \
-                                (toff <= (coff + maxoff)) for \
-            toff,coff,minoff,maxoff in \
-                zip(toff.reg_strides,
-                    caoff.reg_strides,
-                    offset_range[0].reg_strides,
-                    offset_range[1].reg_strides)])
-
-        return immoffset_in_range and voffset_in_range and roffset_in_range
         
 
     def resolve_addr(self, 
@@ -181,9 +148,8 @@ class addr_resolver:
                     offset_range=self.offset_ranges[component][first_candidate_idx])
 
             # if the first one is also in range, we can use it
-            if self.toff_in_range(caoff=first_off,
-                                  toff=toff,
-                                  offset_range=self.offset_ranges[component][first_candidate_idx]):
+            if first_off.in_range_of(toff=toff,
+                                     offset_range=self.offset_ranges[component][first_candidate_idx]):
                 addr_idx_to_use = first_candidate_idx
                 off = toff-first_off
                 self.debug(f"Initial candidate ADDR:{component}{addr_idx_to_use}")
@@ -216,8 +182,7 @@ class addr_resolver:
                 best_candidate_idx = first_candidate_idx
 
             caoff = current_offsets[best_candidate_idx]
-            if self.toff_in_range(
-                    caoff=caoff,
+            if caoff.in_range_of(
                     toff=toff,
                     offset_range=offset_range):
                 self.debug(f"Best Candidate in range of {toff}: ADDR:{component}{best_candidate_idx}: {caoff}")

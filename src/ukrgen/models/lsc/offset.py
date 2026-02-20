@@ -272,6 +272,40 @@ class lsc_offset:
 
         return self.immoff < other.immoff
 
+    def in_range_of(self, toff : lsc_offset,
+                    offset_range : tuple[lsc_offset,lsc_offset]):
+
+        lsc_offset.adjust_offlists(self,offset_range[0])
+        lsc_offset.adjust_offlists(self,offset_range[1])
+        lsc_offset.adjust_offlists(self,toff)
+
+        # sxv offsets have to be equal
+        for sxv in self.sxv_strides.keys():
+            if self.sxv_strides[sxv] != toff.sxv_strides[sxv]:
+                return False
+
+        immoffset_in_range = \
+            (toff.immoff >=(self.immoff-offset_range[0].immoff)) and \
+            (toff.immoff <=(self.immoff+offset_range[1].immoff))
+
+        voffset_in_range = all([(toff >= (coff - minoff)) and \
+                                (toff <= (coff + maxoff)) for \
+            toff,coff,minoff,maxoff in \
+                zip(toff.vlen_strides,
+                    self.vlen_strides,
+                    offset_range[0].vlen_strides,
+                    offset_range[1].vlen_strides)])
+
+        roffset_in_range = all([(toff >= (coff - minoff)) and \
+                                (toff <= (coff + maxoff)) for \
+            toff,coff,minoff,maxoff in \
+                zip(toff.reg_strides,
+                    self.reg_strides,
+                    offset_range[0].reg_strides,
+                    offset_range[1].reg_strides)])
+
+        return immoffset_in_range and voffset_in_range and roffset_in_range
+
 
     def __eq__(self, other : lsc_offset):
         return self.allcompare(other, lambda s,o : s == o)
