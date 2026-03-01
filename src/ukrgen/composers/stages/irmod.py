@@ -9,7 +9,7 @@ import logging
 from copy import deepcopy
 
 from .composition import composition_stage
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 
 from ...specializers.asm import op_support
@@ -28,7 +28,7 @@ from ...models.load_store_operations import (
 #       that case it could make sense to reschedule the ops. Might also be done 
 #       by a pattern-prefering scheduler)
 class ldinc_lsc_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         self.debug = logging.getLogger("LSCIRMOD").debug
@@ -132,7 +132,7 @@ class ldinc_lsc_stage(composition_stage):
 
 
 class unvec_lsc_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         self.debug = logging.getLogger("LSC").debug
@@ -205,7 +205,7 @@ class unvec_lsc_stage(composition_stage):
         return list()
 
 class irmod_inserter_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         self.debug = logging.getLogger("LSCIRMOD").debug

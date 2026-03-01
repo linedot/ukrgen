@@ -7,11 +7,11 @@
 import logging
 
 from .composition import composition_stage
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 
 
 class specialize_lsc_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         self.debug = logging.getLogger("LSC").debug

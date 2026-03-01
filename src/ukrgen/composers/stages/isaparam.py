@@ -1,12 +1,12 @@
 from ..stage_param import stage_param
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ...specializers.asm import lsc_specializer
 from .composition import composition_stage
 
 from asmgen.registers import reg_tracker,asm_data_type as adt
 
 class isaparam_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         isa = self.context.params["isa"].value

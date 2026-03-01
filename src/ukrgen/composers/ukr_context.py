@@ -14,10 +14,11 @@ from ..generators.mm import mm_op
 
 from .stage_param import stage_param
 
-class gemm_context:
+class ukr_context:
     """
-    Contains data, parameters and structures involved in the generation of a gemm kernel
-    as well as it's state through the different composition stages
+    Contains data, parameters and structures involved in the generation
+    of a compute kernel as well as it's state through the different 
+    composition stages
     """
     def __init__(self):
         self.gen             : asmgen = None

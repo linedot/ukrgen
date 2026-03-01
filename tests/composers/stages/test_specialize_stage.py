@@ -14,7 +14,7 @@ from ukrgen.composers.stages.tif import mm_tif_stage
 from ukrgen.composers.stages.model import lsc_model_stage
 from ukrgen.composers.stages.specialize import specialize_lsc_stage
 
-from ukrgen.composers.gemm import gemm_context
+from ukrgen.composers.ukr_context import ukr_context
 from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.components.tile import scalar_dp,vla_vector
@@ -24,7 +24,7 @@ from .inject_params import inject_params
 class test_specialize_stage(unittest.TestCase):
     def test_rvv_fma(self):        
 
-        ukr_ctx = gemm_context()
+        ukr_ctx = ukr_context()
 
         params = {
             "isa" : "rvv",

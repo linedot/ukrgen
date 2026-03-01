@@ -15,7 +15,7 @@ from ukrgen.composers.stages.dimension import dimension_stage
 from ukrgen.composers.stages.tif import mm_tif_stage
 from ukrgen.composers.stages.model import lsc_model_stage
 
-from ukrgen.composers.gemm import gemm_context
+from ukrgen.composers.ukr_context import ukr_context
 from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.components.tile import scalar_dp,vla_vector
@@ -25,7 +25,7 @@ from ..composers.stages.inject_params import inject_params
 class test_lsc_vecdir(unittest.TestCase):
     def test_n(self):        
 
-        ukr_ctx = gemm_context()
+        ukr_ctx = ukr_context()
 
         params = {
             "isa" : "rvv",

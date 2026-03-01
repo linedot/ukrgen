@@ -5,13 +5,13 @@
 # ------------------------------------------------------------------------------
 
 from .composition import composition_stage
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 
 from ...specializers.asm import op_support
 
 class variant_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         indices = list(range(len(context.op_support_list)))

@@ -20,7 +20,7 @@ from .templates import (
 )
 
 from ...composers.stage_engine import stage_engine
-from ...composers.gemm import gemm_context
+from ...composers.ukr_context import ukr_context
 
 from ...composers.stages import (
     composition_stage,
@@ -41,11 +41,11 @@ class config_prolog:
         self.config = config
 
         self.param_callbacks : dict[str,
-                                    Callable[[gemm_context],
+                                    Callable[[ukr_context],
                                              str|list[str]]] = dict()
 
     def add_param_callback(self, name : str,
-                           cb : Callable[[gemm_context],str|list[str]]):
+                           cb : Callable[[ukr_context],str|list[str]]):
         self.param_callbacks[name] = cb
 
     def __call__(self, stage: composition_stage):
@@ -65,10 +65,10 @@ class config_prolog:
 
 class blis_kernel:
     def __init__(self,
-                 nsctx : gemm_context,
-                 csctx : gemm_context,
-                 rsctx : gemm_context,
-                 csrsctx : gemm_context):
+                 nsctx : ukr_context,
+                 csctx : ukr_context,
+                 rsctx : ukr_context,
+                 csrsctx : ukr_context):
         self.ns = nsctx
         self.cs = csctx
         self.rs = rsctx
@@ -107,7 +107,7 @@ class blis_patcher:
             (["C"],["C"],"_csrs"),
         ]
 
-        def get_fnname(ctx : gemm_context):
+        def get_fnname(ctx : ukr_context):
             if ctx.component_dts["C"] == adt.FP32:
                 dtchar = "s"
             elif ctx.component_dts["C"] == adt.FP64:
@@ -135,7 +135,7 @@ class blis_patcher:
                 config["row-strides"] = rs
                 config["column-strides"] =cs
 
-                ctx = gemm_context()
+                ctx = ukr_context()
                 prolog = config_prolog(config)
                 prolog.add_param_callback("function-name", get_fnname)
 

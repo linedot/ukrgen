@@ -5,7 +5,7 @@
 # ------------------------------------------------------------------------------
 
 from .composition import composition_stage
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 from ...components.tile import (
         dimension_properties,
@@ -14,7 +14,7 @@ from ...components.tile import (
 )
 
 class unvec_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         self.params["unvec-method"] = stage_param(

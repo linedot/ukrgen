@@ -6,13 +6,13 @@
 
 from __future__ import annotations
 
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 
 from ..stage_param import stage_param
 
 class composition_stage:
 
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         self.context  = context
         self.params : dict[str,stage_param] = dict()
 

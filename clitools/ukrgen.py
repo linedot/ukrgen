@@ -21,7 +21,7 @@ from ukrgen.composers.stages.specialize import specialize_lsc_stage
 from ukrgen.composers.stages.irmod import irmod_inserter_stage
 from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
 
-from ukrgen.composers.gemm import gemm_context
+from ukrgen.composers.ukr_context import ukr_context
 from ukrgen.composers.stage_engine import stage_engine
 
 from ukrgen.logging import setup_loggers
@@ -68,7 +68,7 @@ class argparse_prolog:
 
 def ukrgen():
 
-    ukr_ctx = gemm_context()
+    ukr_ctx = ukr_context()
 
     parser = ArgumentParser(add_help=False)
 

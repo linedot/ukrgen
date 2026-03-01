@@ -10,14 +10,14 @@ from ukrgen.composers.stages.composition import composition_stage
 from ukrgen.composers.stages.support import support_stage
 from ukrgen.composers.stage_engine import stage_engine
 
-from ukrgen.composers.gemm import gemm_context
+from ukrgen.composers.ukr_context import ukr_context
 
 from .inject_params import inject_params
 
 class test_support_stage(unittest.TestCase):
     def test_rvv_fma(self):
 
-        ukr_ctx = gemm_context()
+        ukr_ctx = ukr_context()
 
         params = {
             "isa" : "rvv",

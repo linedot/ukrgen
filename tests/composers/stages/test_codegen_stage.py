@@ -18,7 +18,7 @@ from ukrgen.composers.stages.schedule import lsc_schedule_stage
 from ukrgen.composers.stages.specialize import specialize_lsc_stage
 from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
 
-from ukrgen.composers.gemm import gemm_context
+from ukrgen.composers.ukr_context import ukr_context
 from ukrgen.composers.stage_engine import stage_engine
 
 from .inject_params import inject_params
@@ -26,7 +26,7 @@ from .inject_params import inject_params
 class test_codegen_stage(unittest.TestCase):
     def test_rvv_fma(self):
 
-        ukr_ctx = gemm_context()
+        ukr_ctx = ukr_context()
 
         params = {
             "isa" : "rvv",

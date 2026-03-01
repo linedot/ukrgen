@@ -9,7 +9,7 @@ from copy import deepcopy
 
 from .composition import composition_stage
 from .irmod import unvec_lsc_stage
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 from ...components.tile import dimension_properties,dimension_type,scalar_tile
 from ...models.offset_mapper import strided_mapper,same_address_mapper
@@ -18,7 +18,7 @@ from ...models.load_store_cpu import load_store_cpu
 from ...models.addr_resolver import addr_resolver
 
 class lsc_model_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         # TODO: Make this and all following stages indepent of "ukr"

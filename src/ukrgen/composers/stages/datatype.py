@@ -9,7 +9,7 @@ from asmgen.registers import asm_data_type as adt
 from .composition import composition_stage
 from .variant import variant_stage
 
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 
 
@@ -26,7 +26,7 @@ def extend_adtstr_list(initial_list : list[str]):
     return [c for _,c in sorted(zip(vs,initial_list))]
 
 class datatype_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         component_list = []

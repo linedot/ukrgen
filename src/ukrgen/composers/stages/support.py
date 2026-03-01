@@ -11,7 +11,7 @@ from .composition import composition_stage
 from asmgen.asmblocks.noarch import asmgen
 from asmgen.registers import reg_tracker,asm_data_type as adt
 
-from ..gemm import gemm_context
+from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 from ...specializers.asm import lsc_specializer
 
@@ -74,7 +74,7 @@ def get_ukr_specialization_order(ukr : str) -> list[str]:
     raise ValueError(f"Invalid microkernel {ukr}")
 
 class support_stage(composition_stage):
-    def __init__(self, context : gemm_context):
+    def __init__(self, context : ukr_context):
         super().__init__(context)
 
         supported_isas = list(asmgen_modules.keys())

@@ -9,13 +9,12 @@ from collections import deque
 
 from .stages.composition import composition_stage
 
-#TODO: generalized ukr context
-from .gemm import gemm_context
+from .ukr_context import ukr_context
 
 
 class stage_engine:
     def __init__(self, stages : list[Type[composition_stage]],
-                 ctx : gemm_context,
+                 ctx : ukr_context,
                  prolog : Callable[[composition_stage],None] = lambda s : None,
                  epilog : Callable[[composition_stage],None] = lambda s : None):
 
