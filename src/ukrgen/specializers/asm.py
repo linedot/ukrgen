@@ -251,6 +251,9 @@ class lsc_specializer:
         dt = component_dts[ca]
         dt_bytes = adt_size(dt)
 
+        if op.off == lsc_offset.zero_offset():
+            return ""
+
         if op.off.is_vector:
             #factor = op.off.vlen_strides[0]*tsize
             factor = op.off.vlen_strides[0]
@@ -1035,9 +1038,8 @@ class lsc_specializer:
                     if op_mod.addr_idx == op.addr_idx:
                         new_off = op_mod.off - addoff
                         if isinstance(op_mod, lsc_addr_add) or \
-                                lsc_offset.zero_offset().in_range_of(
-                                new_off,
-                                self.model.ar.offset_ranges[ca][op_mod.addr_idx.indices[0]]):
+                                lsc_offset.zero_offset().in_range_of(toff=new_off,
+                                offset_range=self.model.ar.offset_ranges[ca][op_mod.addr_idx.indices[0]]):
                             if op_mod.off in self.offset_registry[ca]:
                                 self.offset_registry[ca].remove(op_mod.off)
                             op_mod.off = new_off
