@@ -11,7 +11,7 @@ from ukrgen.flow.stages.stage import stage
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import pack_tif_stage
+from ukrgen.flow.stages.sto import pack_sto_stage
 from ukrgen.flow.stages.model import lsc_model_stage
 from ukrgen.flow.stages.mru import lsc_mru_stage
 from ukrgen.flow.stages.schedule import lsc_schedule_stage
@@ -49,7 +49,7 @@ class test_pack(unittest.TestCase):
             support_stage,
             datatype_stage,
             dimension_stage,
-            pack_tif_stage,
+            pack_sto_stage,
             #lsc_model_stage,
             #specialize_lsc_stage,
             #lsc_mru_stage,
@@ -63,5 +63,5 @@ class test_pack(unittest.TestCase):
 
         se.run()
 
-        print("\n".join(map(str,ukr_ctx.tifs["pack"])))
+        print("\n".join(map(str,ukr_ctx.stos["pack"])))
 

@@ -9,6 +9,6 @@ from .mru import lsc_mru_stage
 from .schedule import lsc_schedule_stage
 from .specialize import specialize_lsc_stage
 from .support import support_stage
-from .tif import mm_tif_stage
+from .sto import mm_sto_stage
 from .unvec import unvec_stage
 from .variant import variant_stage

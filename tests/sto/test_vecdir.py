@@ -10,7 +10,7 @@ from ukrgen.flow.stages.stage import stage
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.sto import mm_sto_stage
 
 from ukrgen.flow.ukr_context import ukr_context
 from ukrgen.flow.stage_engine import stage_engine
@@ -19,7 +19,7 @@ from ukrgen.components.tile import scalar_dp,vla_vector
 
 from ..flow.stages.inject_params import inject_params
 
-class test_tif_vecdir(unittest.TestCase):
+class test_sto_vecdir(unittest.TestCase):
     def test_n(self):        
 
         ukr_ctx = ukr_context()
@@ -37,7 +37,7 @@ class test_tif_vecdir(unittest.TestCase):
             "vecdir" : "N"
         }
 
-        stages = [support_stage,datatype_stage,dimension_stage,mm_tif_stage]
+        stages = [support_stage,datatype_stage,dimension_stage,mm_sto_stage]
 
         se = stage_engine(stages=stages,
                           ctx=ukr_ctx,
@@ -45,9 +45,9 @@ class test_tif_vecdir(unittest.TestCase):
 
         se.run()
 
-        for name,tif in ukr_ctx.tifs.items():
+        for name,sto in ukr_ctx.stos.items():
             print(f"==== TIF for {name} ====")
-            for op in tif:
+            for op in sto:
                 print(op)
 
         # AB(0,VLEN*0) <- fma(A(0,0), B(0,0*VLEN), AB(0,VLEN*0))

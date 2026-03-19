@@ -13,7 +13,7 @@ from ukrgen.flow.stages.stage import stage
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.sto import mm_sto_stage
 from ukrgen.flow.stages.model import lsc_model_stage
 from ukrgen.flow.stages.mru import lsc_mru_stage
 from ukrgen.flow.stages.schedule import lsc_schedule_stage
@@ -94,7 +94,7 @@ def ukrgen():
         support_stage,
         datatype_stage,
         dimension_stage,
-        mm_tif_stage,
+        mm_sto_stage,
         lsc_model_stage,
         specialize_lsc_stage,
         irmod_inserter_stage,

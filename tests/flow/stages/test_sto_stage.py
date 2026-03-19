@@ -9,7 +9,7 @@ import unittest
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.sto import mm_sto_stage
 
 from ukrgen.flow.ukr_context import ukr_context
 from ukrgen.flow.stage_engine import stage_engine
@@ -34,7 +34,7 @@ class test_tif_stage(unittest.TestCase):
             "k" : 8
         }
 
-        stages = [support_stage,datatype_stage,dimension_stage,mm_tif_stage]
+        stages = [support_stage,datatype_stage,dimension_stage,mm_sto_stage]
 
         se = stage_engine(stages=stages,
                           ctx=ukr_ctx,
@@ -42,6 +42,6 @@ class test_tif_stage(unittest.TestCase):
 
         se.run()
 
-        self.assertIn("mm", ukr_ctx.tifs)
-        self.assertIn("betascale", ukr_ctx.tifs)
-        self.assertIn("alphascale", ukr_ctx.tifs)
+        self.assertIn("mm", ukr_ctx.stos)
+        self.assertIn("betascale", ukr_ctx.stos)
+        self.assertIn("alphascale", ukr_ctx.stos)
