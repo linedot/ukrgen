@@ -19,11 +19,11 @@ from .templates import (
     kernels as tpl_kernels
 )
 
-from ...composers.stage_engine import stage_engine
-from ...composers.ukr_context import ukr_context
+from ...flow.stage_engine import stage_engine
+from ...flow.ukr_context import ukr_context
 
-from ...composers.stages import (
-    composition_stage,
+from ...flow.stages import (
+    stage,
     support_stage,
     datatype_stage,
     dimension_stage,
@@ -48,20 +48,20 @@ class config_prolog:
                            cb : Callable[[ukr_context],str|list[str]]):
         self.param_callbacks[name] = cb
 
-    def __call__(self, stage: composition_stage):
-        params = stage.get_parameter_names()
+    def __call__(self, s: stage):
+        params = s.get_parameter_names()
 
         if not params:
             return
 
         for pname in params:
             if pname in self.param_callbacks:
-                stage.set_param(pname, 
-                    self.param_callbacks[pname](stage.context))
+                s.set_param(pname, 
+                    self.param_callbacks[pname](s.context))
             elif pname in self.config:
-                stage.set_param(pname, self.config[pname])
+                s.set_param(pname, self.config[pname])
             else:
-                stage.set_param(pname, stage.params[pname].default)
+                s.set_param(pname, s.params[pname].default)
 
 class blis_kernel:
     def __init__(self,

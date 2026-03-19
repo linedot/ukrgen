@@ -9,20 +9,20 @@ import sys
 
 from argparse import ArgumentParser
 
-from ukrgen.composers.stages.composition import composition_stage
-from ukrgen.composers.stages.support import support_stage
-from ukrgen.composers.stages.datatype import datatype_stage
-from ukrgen.composers.stages.dimension import dimension_stage
-from ukrgen.composers.stages.tif import mm_tif_stage
-from ukrgen.composers.stages.model import lsc_model_stage
-from ukrgen.composers.stages.mru import lsc_mru_stage
-from ukrgen.composers.stages.schedule import lsc_schedule_stage
-from ukrgen.composers.stages.specialize import specialize_lsc_stage
-from ukrgen.composers.stages.irmod import irmod_inserter_stage
-from ukrgen.composers.stages.codegen import blis_ukr_codegen_stage
+from ukrgen.flow.stages.stage import stage
+from ukrgen.flow.stages.support import support_stage
+from ukrgen.flow.stages.datatype import datatype_stage
+from ukrgen.flow.stages.dimension import dimension_stage
+from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.model import lsc_model_stage
+from ukrgen.flow.stages.mru import lsc_mru_stage
+from ukrgen.flow.stages.schedule import lsc_schedule_stage
+from ukrgen.flow.stages.specialize import specialize_lsc_stage
+from ukrgen.flow.stages.irmod import irmod_inserter_stage
+from ukrgen.flow.stages.codegen import blis_ukr_codegen_stage
 
-from ukrgen.composers.ukr_context import ukr_context
-from ukrgen.composers.stage_engine import stage_engine
+from ukrgen.flow.ukr_context import ukr_context
+from ukrgen.flow.stage_engine import stage_engine
 
 from ukrgen.logging import setup_loggers
 
@@ -39,8 +39,8 @@ class argparse_prolog:
         self.parser=parser
         self.rest=list()
 
-    def __call__(self, stage: composition_stage):
-        params = stage.get_parameter_names()
+    def __call__(self, s: stage):
+        params = s.get_parameter_names()
 
         if not params:
             return
@@ -48,11 +48,11 @@ class argparse_prolog:
         for pname in params:
             self.parser.add_argument(
                 f"--{pname}",
-                nargs="+" if stage.get_param(pname).multi else None,
-                help=stage.get_param(pname).description,
-                default=stage.get_param(pname).default,
-                choices=stage.get_param(pname).choices,
-                required=stage.get_param(pname).required)
+                nargs="+" if s.get_param(pname).multi else None,
+                help=s.get_param(pname).description,
+                default=s.get_param(pname).default,
+                choices=s.get_param(pname).choices,
+                required=s.get_param(pname).required)
 
 
         args, self.rest = self.parser.parse_known_args()
@@ -63,7 +63,7 @@ class argparse_prolog:
             apname = pname.replace("-", "_")
             val = args.__dict__[apname]
 
-            stage.set_param(pname, val)
+            s.set_param(pname, val)
 
 
 def ukrgen():

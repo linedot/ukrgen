@@ -6,18 +6,18 @@
 
 import unittest
 
-from ukrgen.composers.stages.composition import composition_stage
-from ukrgen.composers.stages.support import support_stage
-from ukrgen.composers.stages.datatype import datatype_stage
-from ukrgen.composers.stages.dimension import dimension_stage
-from ukrgen.composers.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.stage import stage
+from ukrgen.flow.stages.support import support_stage
+from ukrgen.flow.stages.datatype import datatype_stage
+from ukrgen.flow.stages.dimension import dimension_stage
+from ukrgen.flow.stages.tif import mm_tif_stage
 
-from ukrgen.composers.ukr_context import ukr_context
-from ukrgen.composers.stage_engine import stage_engine
+from ukrgen.flow.ukr_context import ukr_context
+from ukrgen.flow.stage_engine import stage_engine
 
 from ukrgen.components.tile import scalar_dp,vla_vector
 
-from ..composers.stages.inject_params import inject_params
+from ..flow.stages.inject_params import inject_params
 
 class test_tif_vecdir(unittest.TestCase):
     def test_n(self):        
