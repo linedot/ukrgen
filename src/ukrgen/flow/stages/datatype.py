@@ -12,55 +12,67 @@ from .variant import variant_stage
 from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 
+from .ukr import ukr_composition_map
+
 
 def extend_adtstr_list(initial_list : list[str]):
     initial_list=list(set(initial_list))
 
-    vs = [adt[c] for c in initial_list]
-    for k,v in adt.__members__.items():
-        kstripped = k.replace("asm_data_type.","")
-        if kstripped not in initial_list and v in vs:
-            initial_list.append(kstripped)
-    vs = [adt[c].value for c in initial_list]
+    initial_dts = {adt[name] for name in initial_list}
+    initial_values = {dt.value for dt in initial_dts}
 
-    return [c for _,c in sorted(zip(vs,initial_list))]
+    extended_dts = [dt for dt in adt if dt.value in initial_values]
+    extended_dts.sort(key= lambda dt: (dt.value, dt.name))
+
+    return [dt.name for dt in extended_dts]
+
 
 class datatype_stage(stage):
     def __init__(self, context : ukr_context):
         super().__init__(context)
 
-        component_list = []
-        # TODO: There probably should be a different datatype stage for
-        #       every kernel
-        if "gemm" == context.params["ukr"].value:
-            # Same component for A and B
-            component_list = ["AB","C"]
-        if "pack" == context.params["ukr"].value:
-            component_list = ["X","Y"]
 
+
+        ukr = context.params["ukr"].value
+        composition = ukr_composition_map[ukr]
+
+        component_list = []
+
+        component_list = composition.get_parameterized_components()
         self.component_list = component_list
 
+        # Get ISA supported datatypes
         op = context.params["op"].value
-        narrow_choices = []
+
+        a_choices = []
         for sup in context.specializer.op_support_map[op]:
-            narrow_choices.append(str(sup.triple.a).replace("asm_data_type.",""))
+            a_choices.append(sup.triple.a.name)
+        a_choices = extend_adtstr_list(a_choices)
 
-        narrow_choices = extend_adtstr_list(narrow_choices)
-
-        wide_choices = []
+        b_choices = []
         for sup in context.specializer.op_support_map[op]:
-            wide_choices.append(str(sup.triple.c).replace("asm_data_type.",""))
+            b_choices.append(sup.triple.b.name)
+        b_choices = extend_adtstr_list(b_choices)
 
-        wide_choices = extend_adtstr_list(wide_choices)
+        c_choices = []
+        for sup in context.specializer.op_support_map[op]:
+            c_choices.append(sup.triple.c.name)
+        c_choices = extend_adtstr_list(c_choices)
 
-        # TODO: packing can probably do both narrowing and widening, 
-        #       investigate how to implement this
-        component_choices = {
-            "AB" : list(set(narrow_choices)),
-            "X" : list(set(narrow_choices)),
-            "C" : list(set(wide_choices)),
-            "Y" : list(set(wide_choices))
-        }
+
+        # Set choices per component
+        component_choices = {}
+        for c in component_list:
+            choices = set()
+            sup_tiles = composition.get_component_sup_tiles(c)
+            if "a" in sup_tiles:
+                choices.update(a_choices)
+            if "b" in sup_tiles:
+                choices.update(b_choices)
+            if "c" in sup_tiles:
+                choices.update(c_choices)
+
+            component_choices[c] = list(choices)
 
         for c in component_list:
             if not component_choices[c]:
@@ -90,8 +102,8 @@ class datatype_stage(stage):
         if ukr in {"gemm","mm"}:
             self.op_support_list = [sup for sup in\
                     self.context.specializer.op_support_map[op] if \
-                    (cts["AB"] == sup.triple.a and \
-                     cts["AB"] == sup.triple.b and \
+                    (cts["A"] == sup.triple.a and \
+                     cts["B"] == sup.triple.b and \
                      cts["C"] == sup.triple.c)
                     ]
 

@@ -13,6 +13,23 @@ from ...specializers.asm import op_support
 from ...components.tile import simple_ukr_tile,scalar_dp
 from ...generators.mm import mm,order2D
 
+from .ukr import ukr_composition_map
+
+class sto_stage(stage):
+    def __init__(self, context : ukr_context):
+        super().__init__(context)
+
+        self.debug = logging.getLogger("STO").debug
+
+        sup = context.sup
+
+        ukr = context.params["ukr"].value 
+
+        composition = ukr_composition_map[ukr]
+
+        # extract components 
+
+
 class mm_sto_stage(stage):
     def __init__(self, context : ukr_context):
         super().__init__(context)
