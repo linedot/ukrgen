@@ -15,7 +15,7 @@ def setup_loggers(debugall : bool =False, debug_systems : set[str] = list()):
 
     logging.basicConfig(level=logging.DEBUG)
 
-    for name in ["TIF", "LSC", "LSCIRMOD",
+    for name in ["STO", "LSC", "LSCIRMOD",
                  "ADDR", "CODEGEN", "FNGEN",
                  "SCHED", "MRU", "BLISPATCH",
                  "patch_ng"]:

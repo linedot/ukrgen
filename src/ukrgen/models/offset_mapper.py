@@ -96,7 +96,7 @@ class strided_mapper(offset_mapper):
 
     def map_tile_idx(self, t : tile, idx : tuple[int,int]) -> lsc_offset:
 
-        # I think those are already pre-multiplied in the TIF
+        # I think those are already pre-multiplied in the STO
         first_t_size = t.dima.size
         second_t_size = t.dimb.size
         if self.flip_tile_dims:

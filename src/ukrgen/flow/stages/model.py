@@ -257,21 +257,21 @@ class lsc_model_stage(stage):
         #print("\n".join(map(str,inspector(mm_ops_p1k))))
 
 
-        mm_ops = self.context.tifs["mm"]
-        mm_ops_p1k = self.context.tifs["mm_p1k"]
-        mm_ops_p2k = self.context.tifs["mm_p2k"]
+        mm_ops = self.context.stos["mm"]
+        mm_ops_p1k = self.context.stos["mm_p1k"]
+        mm_ops_p2k = self.context.stos["mm_p2k"]
 
         self.context.model.new_state(name="1k",copyfrom="default")
 
-        self.debug("TIF->LSC: Preload")
+        self.debug("STO->LSC: Preload")
         self.context.irs["preload"] = self.context.model.preload(
                 ops=mm_ops,next_ops=mm_ops_p1k,
                 preload_counts=preload_counts,
                 zero_components=["C","AB"],
                 ignore_components=[])
-        self.debug("TIF->LSC: main")
+        self.debug("STO->LSC: main")
         self.context.irs["main"] = self.context.model(mm_ops)
-        self.debug("TIF->LSC: lastiter")
+        self.debug("STO->LSC: lastiter")
         self.context.irs["lastiter"] = deepcopy(self.context.irs["main"])
 
         self.context.model.new_state(name="lastiter_addradd",copyfrom="default")
@@ -288,7 +288,7 @@ class lsc_model_stage(stage):
         state.res_indices={c : 0 for c in state.res_indices.keys()}
         state.res_subindices={c : 0 for c in state.res_subindices.keys()}
 
-        self.debug("TIF->LSC: preload_next")
+        self.debug("STO->LSC: preload_next")
         self.context.irs["preload_next"] = self.context.model.preload(
                 mm_ops_p1k,
                 mm_ops_p2k,
@@ -312,9 +312,9 @@ class lsc_model_stage(stage):
         if k > 1:
             self.context.model.current_state = "1k"
 
-            mm1k_ops = self.context.tifs["mm1k"]
-            mm1k_ops_p1 = self.context.tifs["mm1k_p1"]
-            mm1k_ops_p2 = self.context.tifs["mm1k_p2"]
+            mm1k_ops = self.context.stos["mm1k"]
+            mm1k_ops_p1 = self.context.stos["mm1k_p1"]
+            mm1k_ops_p2 = self.context.stos["mm1k_p2"]
 
             # we can't preload more regs than are used in 1-k iteration
             preload_counts_1k = deepcopy(preload_counts)
@@ -334,7 +334,7 @@ class lsc_model_stage(stage):
             state.res_indices={c : 0 for c in state.res_indices.keys()}
             state.res_subindices={c : 0 for c in state.res_subindices.keys()}
 
-            self.debug("TIF->LSC: 1k preload")
+            self.debug("STO->LSC: 1k preload")
             self.context.irs["1k_preload"] = self.context.model.preload(
                     mm1k_ops,
                     mm1k_ops_p1,
@@ -342,7 +342,7 @@ class lsc_model_stage(stage):
                     zero_addrs=False,
                     zero_components=[],
                     ignore_components=["C","AB"])
-            self.debug("TIF->LSC: 1k main")
+            self.debug("STO->LSC: 1k main")
             self.context.irs["1k_main"] = self.context.model(mm1k_ops)
             self.context.irs["1k_lastiter"] = deepcopy(self.context.irs["1k_main"])
 
@@ -350,7 +350,7 @@ class lsc_model_stage(stage):
             state = self.context.model.states[self.context.model.current_state]
             state.res_indices={c : 0 for c in state.res_indices.keys()}
             state.res_subindices={c : 0 for c in state.res_subindices.keys()}
-            self.debug("TIF->LSC: 1k preload_next")
+            self.debug("STO->LSC: 1k preload_next")
             self.context.irs["1k_preload_next"] = self.context.model.preload(
                     mm1k_ops_p1,
                     mm1k_ops_p2,
@@ -379,14 +379,14 @@ class lsc_model_stage(stage):
                 "store"]
 
         if "gemm" == ukr:
-            betascale_ops = self.context.tifs["betascale"]
-            alphascale_ops = self.context.tifs["alphascale"]
-            self.debug("TIF->LSC: betascale")
+            betascale_ops = self.context.stos["betascale"]
+            alphascale_ops = self.context.stos["alphascale"]
+            self.debug("STO->LSC: betascale")
             self.context.irs["betascale"] = self.context.model(betascale_ops)
-            self.debug("TIF->LSC: alphascale")
+            self.debug("STO->LSC: alphascale")
             self.context.irs["alphascale"] = self.context.model(alphascale_ops)
 
-        self.debug("TIF->LSC: store")
+        self.debug("STO->LSC: store")
         self.context.irs["store"] = self.context.model.store_modified(ignore_components="AB")
         if "gemm" == ukr:
             self.context.irs["store"] = \

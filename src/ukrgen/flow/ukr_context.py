@@ -36,7 +36,7 @@ class ukr_context:
         self.sched_map       : dict[str,tuple[list[str],bool]] = dict()
         self.specialization_order : list[str] = list()
 
-        self.tifs            : dict[str,list[mm_op]] = dict()
+        self.stos            : dict[str,list[mm_op]] = dict()
         self.irs             : dict[str,list[lsc_operation]] = dict()
         self.asmblocks       : dict[str,str] = dict()
 

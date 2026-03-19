@@ -9,7 +9,7 @@ import unittest
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.sto import mm_sto_stage
 from ukrgen.flow.stages.model import lsc_model_stage
 from ukrgen.flow.stages.specialize import specialize_lsc_stage
 from ukrgen.flow.stages.mru import lsc_mru_stage
@@ -51,7 +51,7 @@ class test_schedule_stage(unittest.TestCase):
             support_stage,
             datatype_stage,
             dimension_stage,
-            mm_tif_stage,
+            mm_sto_stage,
             lsc_model_stage,
             specialize_lsc_stage,
             lsc_mru_stage,

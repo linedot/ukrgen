@@ -13,12 +13,12 @@ from ...specializers.asm import op_support
 from ...components.tile import simple_ukr_tile,scalar_dp
 from ...generators.mm import mm,order2D
 
-class mm_tif_stage(stage):
+class mm_sto_stage(stage):
     def __init__(self, context : ukr_context):
         super().__init__(context)
 
 
-        self.debug = logging.getLogger("TIF").debug
+        self.debug = logging.getLogger("STO").debug
 
         sup = context.sup
 
@@ -100,22 +100,22 @@ class mm_tif_stage(stage):
             genalphascale = mm(scale_tile, alphabeta_tile, scale_tile,
                                lo=scaleorder,
                                opstr="fma", tile_strs=["AB","alpha","C"])
-            self.context.tifs["betascale"] = genbetascale.generate()
-            self.context.tifs["alphascale"] = genalphascale.generate()
+            self.context.stos["betascale"] = genbetascale.generate()
+            self.context.stos["alphascale"] = genalphascale.generate()
 
-        self.context.tifs["mm"]     = genmm.generate()
-        self.context.tifs["mm_p1k"] = genmm.generate(add_dims=[0,0,0,0,0,k])
-        self.context.tifs["mm_p2k"] = genmm.generate(add_dims=[0,0,0,0,0,2*k])
+        self.context.stos["mm"]     = genmm.generate()
+        self.context.stos["mm_p1k"] = genmm.generate(add_dims=[0,0,0,0,0,k])
+        self.context.stos["mm_p2k"] = genmm.generate(add_dims=[0,0,0,0,0,2*k])
 
         # We additionally need k = 1 for tail handling
         if k > 1:
             genmm1k = mm(a=self.a_tile_k1, b=self.b_tile_k1, c=self.c_tile,
                          lo=order, opstr=self.context.params["op"].value,
                          tile_strs=tile_strs)
-            self.context.tifs["mm1k"] = genmm1k.generate()
-            self.context.tifs["mm1k_p1"] = genmm1k.generate(
+            self.context.stos["mm1k"] = genmm1k.generate()
+            self.context.stos["mm1k_p1"] = genmm1k.generate(
                     add_dims=[0,0,0,0,0,1])
-            self.context.tifs["mm1k_p2"] = genmm1k.generate(
+            self.context.stos["mm1k_p2"] = genmm1k.generate(
                     add_dims=[0,0,0,0,0,2])
 
 
@@ -123,43 +123,43 @@ class mm_tif_stage(stage):
 
         self.debug("################### TILE-INSTRUCTION-FORMAT ###################")
         self.debug("### MAIN ###")
-        for op in self.context.tifs["mm"]:
+        for op in self.context.stos["mm"]:
             self.debug(str(op))
         self.debug("### MAIN +1k ###")
-        for op in self.context.tifs["mm_p1k"]:
+        for op in self.context.stos["mm_p1k"]:
             self.debug(str(op))
         self.debug("### MAIN +2k ###")
-        for op in self.context.tifs["mm_p2k"]:
+        for op in self.context.stos["mm_p2k"]:
             self.debug(str(op))
 
         if k > 1:
             self.debug("### k1 MAIN ###")
-            for op in self.context.tifs["mm1k"]:
+            for op in self.context.stos["mm1k"]:
                 self.debug(str(op))
             self.debug("### k1 MAIN +1 ###")
-            for op in self.context.tifs["mm1k_p1"]:
+            for op in self.context.stos["mm1k_p1"]:
                 self.debug(str(op))
             self.debug("### k1 MAIN +2 ###")
-            for op in self.context.tifs["mm1k_p2"]:
+            for op in self.context.stos["mm1k_p2"]:
                 self.debug(str(op))
 
 
         if "gemm" == ukr:
             self.debug("### BETA SCALE ###")
-            for op in self.context.tifs["betascale"]:
+            for op in self.context.stos["betascale"]:
                 self.debug(str(op))
             self.debug("### ALPHA SCALE ###")
-            for op in self.context.tifs["alphascale"]:
+            for op in self.context.stos["alphascale"]:
                 self.debug(str(op))
 
         return list()
 
-class pack_tif_stage(stage):
+class pack_sto_stage(stage):
     def __init__(self, context : ukr_context):
         super().__init__(context)
 
 
-        self.debug = logging.getLogger("TIF").debug
+        self.debug = logging.getLogger("STO").debug
 
         sup = context.sup
 
@@ -222,10 +222,10 @@ class pack_tif_stage(stage):
                    tile_strs=tile_strs)
 
         
-        self.context.tifs["pack"]     = genpack.generate()
-        self.context.tifs["pack_p1n"] = genpack.generate(
+        self.context.stos["pack"]     = genpack.generate()
+        self.context.stos["pack_p1n"] = genpack.generate(
                 add_dims=[0,0,0,0,n,n])
-        self.context.tifs["pack_p2n"] = genpack.generate(
+        self.context.stos["pack_p2n"] = genpack.generate(
                 add_dims=[0,0,0,0,2*n,2*n])
 
         # We additionally need k = 1 for tail handling
@@ -235,10 +235,10 @@ class pack_tif_stage(stage):
                          c=self.y_tile_n1,
                          lo=order, opstr=self.context.params["op"].value,
                          tile_strs=tile_strs)
-            self.context.tifs["pack1n"] = genpack1k.generate()
-            self.context.tifs["pack1n_p1"] = genpack1k.generate(
+            self.context.stos["pack1n"] = genpack1k.generate()
+            self.context.stos["pack1n_p1"] = genpack1k.generate(
                     add_dims=[0,0,0,0,1,1])
-            self.context.tifs["pack1n_p2"] = genpack1k.generate(
+            self.context.stos["pack1n_p2"] = genpack1k.generate(
                     add_dims=[0,0,0,0,2,2])
 
 
@@ -246,24 +246,24 @@ class pack_tif_stage(stage):
 
         self.debug("################### TILE-INSTRUCTION-FORMAT ###################")
         self.debug("### MAIN ###")
-        for op in self.context.tifs["pack"]:
+        for op in self.context.stos["pack"]:
             self.debug(str(op))
         self.debug("### MAIN +1k ###")
-        for op in self.context.tifs["pack_p1n"]:
+        for op in self.context.stos["pack_p1n"]:
             self.debug(str(op))
         self.debug("### MAIN +2k ###")
-        for op in self.context.tifs["pack_p2n"]:
+        for op in self.context.stos["pack_p2n"]:
             self.debug(str(op))
 
         if k > 1:
             self.debug("### k1 MAIN ###")
-            for op in self.context.tifs["pack1n"]:
+            for op in self.context.stos["pack1n"]:
                 self.debug(str(op))
             self.debug("### k1 MAIN +1 ###")
-            for op in self.context.tifs["pack1n_p1"]:
+            for op in self.context.stos["pack1n_p1"]:
                 self.debug(str(op))
             self.debug("### k1 MAIN +2 ###")
-            for op in self.context.tifs["pack1n_p2"]:
+            for op in self.context.stos["pack1n_p2"]:
                 self.debug(str(op))
 
         return list()

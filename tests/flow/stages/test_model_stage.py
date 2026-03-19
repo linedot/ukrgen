@@ -9,7 +9,7 @@ import unittest
 from ukrgen.flow.stages.support import support_stage
 from ukrgen.flow.stages.datatype import datatype_stage
 from ukrgen.flow.stages.dimension import dimension_stage
-from ukrgen.flow.stages.tif import mm_tif_stage
+from ukrgen.flow.stages.sto import mm_sto_stage
 from ukrgen.flow.stages.model import lsc_model_stage
 
 from ukrgen.flow.ukr_context import ukr_context
@@ -49,7 +49,7 @@ class test_model_stage(unittest.TestCase):
             support_stage,
             datatype_stage,
             dimension_stage,
-            mm_tif_stage,
+            mm_sto_stage,
             lsc_model_stage]
 
         se = stage_engine(stages=stages,
