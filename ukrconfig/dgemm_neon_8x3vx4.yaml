@@ -1,14 +1,16 @@
-isa : avx512
+isa : neon
 op : fma
 ukr : gemm
-AB-data-type : FP32
-C-data-type : FP32
+AB-data-type : FP64
+C-data-type : FP64
 variant : 0
-m : 2
-n : 12
+m : 8
+n : 3
 k : 4
-A-data-regs : 4
-B-data-regs : 3
+vecdir : N
+order : NMKnmk
+A-data-regs : 2
+B-data-regs : 5
 AB-data-regs : 24
 C-data-regs : 24
 A-addr-regs : 1
@@ -17,7 +19,7 @@ C-addr-regs : 2
 A-preload : 2
 B-preload : 3
 sched-distance-specs:
-  - "raw:data::::4"
-  - "war:data::::4"
+  - "raw:data::::3"
+  - "war:data::::3"
   - "war:address::::2"
   - "raw:address::::2"

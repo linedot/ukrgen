@@ -4,11 +4,13 @@ ukr : gemm
 AB-data-type : FP32
 C-data-type : FP32
 variant : 0
-m : 2
-n : 12
+m : 8
+n : 3
 k : 4
-A-data-regs : 4
-B-data-regs : 3
+vecdir : N
+order : NMKnmk
+A-data-regs : 2
+B-data-regs : 5
 AB-data-regs : 24
 C-data-regs : 24
 A-addr-regs : 1
