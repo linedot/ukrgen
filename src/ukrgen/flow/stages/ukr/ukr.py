@@ -32,6 +32,12 @@ class ukr_composition(ABC):
         Returns the ISA support triple tile this component can be mapped onto, i.e
         "a","b" or "c"
         """
+    @abstractclassmethod
+    def get_component_reference(cls, component: str) -> str:
+        """
+        If the component parameters like data type are referenced from another
+        component - return that component - otherwise returns the original name
+        """
 
     @abstractclassmethod
     def get_parameterized_components(cls) -> list[str]:

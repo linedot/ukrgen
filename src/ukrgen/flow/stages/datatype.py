@@ -14,6 +14,8 @@ from ..stage_param import stage_param
 
 from .ukr import ukr_composition_map
 
+import itertools
+
 
 def extend_adtstr_list(initial_list : list[str]):
     initial_list=list(set(initial_list))
@@ -95,39 +97,104 @@ class datatype_stage(stage):
         }
 
         op = self.context.params["op"].value
-        cts = self.context.component_types
+        cdts = self.context.component_types
         ukr = self.context.params["ukr"].value
 
-        #TODO: This needs some kind of generalized logic
-        if ukr in {"gemm","mm"}:
-            self.op_support_list = [sup for sup in\
-                    self.context.specializer.op_support_map[op] if \
-                    (cts["A"] == sup.triple.a and \
-                     cts["B"] == sup.triple.b and \
-                     cts["C"] == sup.triple.c)
-                    ]
+        composition = ukr_composition_map[ukr]
+        components = composition.get_components()
+        sups = self.context.specializer.op_support_map[op]
 
-            self.context.component_dts = {
-                "A" : adt[self.params["AB-data-type"].value],
-                "B" : adt[self.params["AB-data-type"].value],
-                "AB" : adt[self.params["C-data-type"].value],
-                "C" : adt[self.params["C-data-type"].value],
-                "alpha" : adt[self.params["C-data-type"].value],
-                "beta" : adt[self.params["C-data-type"].value]
-            }
-        if ukr in {"pack"}:
-            self.op_support_list = [sup for sup in\
-                    self.context.specializer.op_support_map[op] if \
-                    (cts["X"] == sup.triple.a and \
-                     cts["X"] == sup.triple.b and \
-                     cts["Y"] == sup.triple.c)
-                    ]
 
-            self.context.component_dts = {
-                "X" : adt[self.params["X-data-type"].value],
-                "Y" : adt[self.params["Y-data-type"].value],
-                "kappa" : adt[self.params["Y-data-type"].value]
-            }
+        sup_tile_components = {
+            "a" : set(),
+            "b" : set(),
+            "c" : set(),
+        }
+
+        for c in components:
+            real_c = composition.get_component_reference(c)
+            sup_tiles = composition.get_component_sup_tiles(real_c)
+            for stile in sup_tiles:
+                if stile in sup_tile_components:
+                    sup_tile_components[stile].add(c)
+            
+            # also squeeze in this assignment into this loop
+            cdts[c] = cdts[real_c]
+
+        # If a sup tile is unmapped, this operand will be ignored
+        # in that case we'll still add the sup
+        for sup_tile in sup_tile_components:
+            if not sup_tile_components[sup_tile]:
+                sup_tile_components[sup_tile].add(None)
+        
+        self.op_support_list = []
+        for sup in sups:
+            # example:
+            # component : tileset
+            # A : {a,b}
+            # B : {a,b}
+            # C : {c}
+            # AB : {c}
+            # alpha->C : {c}
+            # beta->C : {c}
+
+            # combinations:
+            # A, B, C
+            # B, A, C
+            # A, B, AB
+            # B, A, AB
+            # A, B, alpha
+            # B, A, alpha
+            # A, B, beta
+            # B, A, beta
+
+            # sup = fp64, fp64, fp64
+            # all cdts fp64:
+            #
+            # ==> add
+
+            # sup = fp16, fp16, fp32
+            # cdts: A,B: FP16, rest: FP32
+            #
+            # ==> add
+            # sup = fp32, fp32, fp32
+            # cdts: A,B: FP16, rest: FP32
+            #
+            # ==> don't add
+
+            # sup = fp8e5m2, fp16, fp32
+            # cdts: A: fp16, B: fp8e5m2, C: fp32
+            # combinations:
+            # A, B, C     <- invalid
+            # B, A, C     <- valid
+            # A, B, AB    <- invalid
+            # B, A, AB    <- valid
+            # A, B, alpha <- invalid
+            # B, A, alpha <- valid
+            # A, B, beta  <- invalid
+            # B, A, beta  <- valid
+            #
+            # ==> add
+            
+            components_mapped = set()
+            for a,b,c in itertools.product(sup_tile_components['a'],
+                                           sup_tile_components['b'],
+                                           sup_tile_components['c']):
+                combination_components = [x for x in (a,b,c) if x is not None]
+
+                if len({a,b,c}) < len(combination_components):
+                    continue
+
+                if ((sup.triple.a == cdts[a]) and
+                    (sup.triple.b == cdts[b]) and
+                    (sup.triple.c == cdts[c])):
+                    components_mapped.update(combination_components)
+
+            if components_mapped == set(components):
+                self.op_support_list.append(sup)
+
+        self.context.component_dts = cdts
+        print(self.op_support_list)
 
         if len(self.op_support_list) == 1:
             self.context.sup = self.op_support_list[0]
