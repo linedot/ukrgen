@@ -4,6 +4,11 @@ from .ukr import ukr_composition,sto_description,block_description
 
 class gemm_composition(ukr_composition):
 
+    component_reference_map = {
+        "alpha" : "C",
+        "beta" : "C"
+    }
+
     @classmethod
     def get_components(cls) -> list[str]:
         return ["A","B","AB","C","alpha","beta"]
@@ -23,6 +28,12 @@ class gemm_composition(ukr_composition):
     def get_parameterized_components(cls) -> list[str]:
         return ["A","B","AB","C"]
 
+    @classmethod
+    def get_component_reference(cls, component: str) -> str:
+        if component in cls.component_reference_map:
+            return cls.component_reference_map[component]
+        
+        return component
 
     @classmethod
     def get_sto_descriptions(cls) -> list[sto_description]:
