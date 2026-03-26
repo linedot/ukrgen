@@ -1,6 +1,8 @@
 isa : neon
 op : fma
 ukr : gemm
+A-data-type : FP32
+B-data-type : FP32
 AB-data-type : FP32
 C-data-type : FP32
 variant : 0

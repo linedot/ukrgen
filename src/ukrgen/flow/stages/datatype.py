@@ -194,7 +194,6 @@ class datatype_stage(stage):
                 self.op_support_list.append(sup)
 
         self.context.component_dts = cdts
-        print(self.op_support_list)
 
         if len(self.op_support_list) == 1:
             self.context.sup = self.op_support_list[0]
