@@ -6,20 +6,30 @@
 
 from .stage import stage
 from .unvec import unvec_stage
-
+from .ukr import ukr_composition_map
 from ..ukr_context import ukr_context
 from ..stage_param import stage_param
-
 from ...specializers.asm import op_support
-
 from ...components.tile import copy_with_vecdir
 
 class dimension_stage(stage):
     def __init__(self, context : ukr_context):
         super().__init__(context)
+        
 
-        #TODO: dims are ukr-specific, this is gemm/mm specific, decouple and generalize
-        for dim in ["m","n","k"]:
+        ukr = self.context.params["ukr"].value
+
+        composition = ukr_composition_map[ukr]
+
+        dimensions = set()
+        # get dimensions by investigating all STO descriptions
+        for sto in composition.get_sto_descriptions():
+            for dims in sto.dimensions.values():
+                dimensions.update(dims)
+
+        dimensions = sorted(list(dimensions))
+
+        for dim in dimensions:
             self.params[dim] = stage_param(
                     value=None,
                     description=f"Microkernel dimension {dim}")
@@ -33,9 +43,11 @@ class dimension_stage(stage):
                 required=False
                 )
 
+        default_order = "".join(dimensions)
+        default_order = default_order+default_order.upper()
         self.params["order"] = stage_param(
-                value="mnkMNK",
-                default="mnkMNK",
+                value=default_order,
+                default=default_order,
                 description="Order in which to tile the kernel",
                 required=False
                 )
