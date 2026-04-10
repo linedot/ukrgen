@@ -37,9 +37,14 @@ components = {
     "cntx_set_kernels" : """
     bli_cntx_set_ukrs(
         cntx,
+    // inherited kernels
+    % for kind,type,name in existing_kernels:
+        BLIS_${kind}, BLIS_${type}, ${name},
+    % endfor
 
+    // generated kernels
     % for kind,type,name in kernels:
-        BLIS_${kind}_UKR, BLIS_${type}, ${name},
+        BLIS_${kind}, BLIS_${type}, ${name},
     % endfor
 
         BLIS_VA_END
@@ -50,7 +55,7 @@ components = {
         cntx,
 
     % for kind,type,_ in kernels:
-        BLIS_${kind}_UKR_ROW_PREF, BLIS_${type}, FALSE,
+        BLIS_${kind}_ROW_PREF, BLIS_${type}, FALSE,
     % endfor
 
         BLIS_VA_END
@@ -196,7 +201,11 @@ index 81543934..0f6bec7f 100644
  sifive_x280: sifive_x280/sifive_rvv
  
 +# generated
+% if parent_configname is not None:
++${configname}: ${configname}/${configname}/${parent_configname}
+% else:
 +${configname}: ${configname}
+% endif
 +
  # Generic architectures.
  generic:     generic

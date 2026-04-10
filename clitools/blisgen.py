@@ -40,6 +40,17 @@ def blisgen():
                         type=str,
                         required=False)
 
+    parser.add_argument("--parent-config-name",
+                help="Make the generated BLIS config a child of this config",
+                type=str,
+                required=False
+                )
+    parser.add_argument("--kernel-reuse-file",
+                help="Path to a yaml file containing a list of microkernels to reuse from the parent configuration",
+                type=str,
+                required=False
+                )
+
     source_group = parser.add_mutually_exclusive_group(required=True)
     source_group.add_argument("--from-dir",
                               help="generate blis using the source in the specified directory",
@@ -111,7 +122,29 @@ def blisgen():
     if args.config_name is not None:
         configname = args.config_name
 
-    bp = blis_patcher()
+
+    if args.parent_config_name is not None:
+        bp = blis_patcher(parent_configname=args.parent_config_name)
+    else:
+        bp = blis_patcher()
+
+    if args.kernel_reuse_file is not None and args.parent_config_name is None:
+            raise ValueError("--kernel-reuse-file must be used together with --parent-config-name")
+
+    existing_kernels = []
+    if args.kernel_reuse_file:
+        with open(args.kernel_reuse_file, "r") as krf:
+            krf_data = yaml.safe_load(krf)
+        
+        if krf_data:
+            existing_kernels=[tuple(item) for item in krf_data]
+
+    for blis_kernel_type,blis_data_type,function_name in existing_kernels:
+        bp.add_existing_kernel(
+                blis_ukr_type=blis_kernel_type,
+                blis_data_type=blis_data_type,
+                function_name=function_name)
+
 
     blis_params = {
         "year" : datetime.datetime.today().strftime("%Y"),
