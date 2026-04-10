@@ -28,9 +28,11 @@ class specialize_lsc_stage(stage):
             blockorder = [
             "preload",
             "main",
+            "1k_preload",
+            "1k_main",
             "store",
             "preload_next",
-            "1k"
+            "1k_preload_next"
         ]
 
         specializer = self.context.specializer
