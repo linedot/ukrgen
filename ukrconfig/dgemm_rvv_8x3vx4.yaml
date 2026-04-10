@@ -1,0 +1,28 @@
+isa : rvv
+op : fma
+ukr : gemm
+A-data-type  : FP64
+B-data-type  : FP64
+AB-data-type : FP64
+C-data-type  : FP64
+variant : 0
+m : 8
+n : 3
+k : 4
+vecdir : N
+order: nmkNMK
+A-data-regs : 24
+B-data-regs : 6
+AB-data-regs : 24
+C-data-regs : 24
+A-addr-regs : 1
+B-addr-regs : 2
+C-addr-regs : 2
+A-preload : 12
+B-preload : 2
+sched-distance-specs: 
+  - "raw::vreg:::5"
+  - "raw::freg:::4"
+  - "war:data::::3"
+  - "raw::greg:::4"
+  - "war::greg:::4"
