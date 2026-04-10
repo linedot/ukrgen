@@ -75,7 +75,7 @@ class blis_kernel:
         self.csrs = csrsctx
 
 class blis_patcher:
-    def __init__(self):
+    def __init__(self, parent_configname : str = None):
 
         self.tpl_components = deepcopy(tpl_components)
         self.tpl_files = deepcopy(tpl_files)
@@ -84,6 +84,18 @@ class blis_patcher:
         
         self.extra_params : dict[str,str] = dict()
         self.kernels : list[blis_kernel] = []
+        self.existing_kernels : list[tuple[str,str,bool]] = []
+
+        self.parent_configname = parent_configname
+
+
+    def add_existing_kernel(self,
+                            blis_ukr_type : str,
+                            blis_data_type : str,
+                            function_name : str):
+        self.existing_kernels.append((
+            blis_ukr_type, blis_data_type, function_name
+            ))
 
     def make_kernels(self,
                      configurations : list[dict[str,str|list[str]]],
@@ -237,12 +249,16 @@ class blis_patcher:
             self.tpl_files[f"kernels/${{configname}}/3/{ukr_name}.c"] = ksrc
 
             param_kernels.append(
-                    ("GEMM",param_type,ukr_name)
+                    ("GEMM_UKR",param_type,ukr_name)
                     )
 
         params["cntx_extra_defs"] = self.kernels[0].cs.gen.c_simd_size_function
 
         params["kernels"] = param_kernels
+
+        params["existing_kernels"] = self.existing_kernels
+        params["parent_configname"] = self.parent_configname
+
 
         for tpl in [self.tpl_components,self.tpl_files,self.tpl_patches]:
 
