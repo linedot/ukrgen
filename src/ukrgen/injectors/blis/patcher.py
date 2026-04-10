@@ -7,8 +7,6 @@ from typing import Callable
 from copy import deepcopy
 
 from mako.template import Template, exceptions
-from patch_ng import fromstring
-
 
 from asmgen.registers import asm_data_type as adt
 
@@ -260,7 +258,7 @@ class blis_patcher:
         params["parent_configname"] = self.parent_configname
 
 
-        for tpl in [self.tpl_components,self.tpl_files,self.tpl_patches]:
+        for tpl in [self.tpl_components,self.tpl_files]:
 
             to_resolve = {k for k in tpl.keys() if k not in params}
 
@@ -308,14 +306,36 @@ class blis_patcher:
                         print(f"===========================")
                         print(f"{c}:")
                         try:
-                            Template(key).render(**params)
+                            Template(c).render(**params)
                         except:
                             print(exceptions.text_error_template().render())
                         try:
-                            Template(tpl[key]).render(**params)
+                            Template(tpl[c]).render(**params)
                         except:
                             print(exceptions.text_error_template().render())
                     raise RuntimeError("Nothing new resolved")
+
+        rendered_patches = {}
+
+        for file_key, patch_list in self.tpl_patches.items():
+            try:
+                rendered_file_key = Template(file_key).render(**params)
+            except Exception as e:
+                raise RuntimeError(f"Failed to render patch file key '{file_key}': {e}")
+
+            rendered_patch_list = []
+            for anchor, content_template, insert_after in patch_list:
+                try:
+                    content = Template(content_template).render(**params)
+                    rendered_patch_list.append(
+                            (anchor, content, insert_after))
+                except Exception as e:
+                    raise RuntimeError(f"Failed to render patch content for '{file_key}': {e}")
+
+            rendered_patches[rendered_file_key] = rendered_patch_list
+
+        self.tpl_patches = rendered_patches
+
 
 
     def patch(self, blis_dir : str, out_dir : str, overwrite : bool = False):
@@ -327,18 +347,43 @@ class blis_patcher:
         
         shutil.copytree(blis_dir, out_dir)
 
-        for key,pdata in self.tpl_patches.items():
 
-            log.debug(f"patching {key}")            
+        for rel_filepath, patch_list in self.tpl_patches.items():
+            filepath = os.path.join(out_dir, rel_filepath)
+            
+            if not os.path.exists(filepath):
+                raise RuntimeError(f"File not found: {filepath}")
+                
+            with open(filepath, 'r', encoding='utf-8') as f:
+                content = f.read()
+                
+            modified = False
+            
+            for anchor, insert_text, insert_after in patch_list:
+                    
+                idx = content.find(anchor)
+                if idx != -1:
+                    if insert_after:
+                        content = content[:idx+len(anchor)] + \
+                                insert_text + \
+                                content[idx+len(anchor):]
+                    else:
+                        # Slice the string and insert the new text before the anchor
+                        content = content[:idx] + insert_text + content[idx:]
+                    modified = True
+                else:
+                    log.debug(f"Error: Anchor not found in {filepath}")
+                    log.debug(("--- Anchor text expected ---\n"
+                              f"{anchor}"
+                              "\n----------------------------"))
+                    raise RuntimeError("Anchor not found in file to patch")
 
-            bpatch = fromstring(pdata.encode("UTF-8"))
+            # Only write back to the disk if we successfully applied a patch
+            if modified:
+                with open(filepath, 'w', encoding='utf-8') as f:
+                    f.write(content)
+                log.debug(f"Successfully patched: {filepath}")
 
-            if not bpatch:
-                log.debug(f"Error parsing patch:\n{pdata}")
-
-            if not bpatch.apply(root=out_dir):
-                log.debug(f"Bad patch: \n{pdata}")
-                raise RuntimeError(f"Failed patching {key}")
 
         for key,fdata in self.tpl_files.items():
 
