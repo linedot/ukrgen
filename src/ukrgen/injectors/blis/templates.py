@@ -189,140 +189,77 @@ $(eval $(call store-make-defs,$(THIS_CONFIG)))
 """
 }
 
+# filename : (anchor_lines, template, insert_after)
 patches = {
-    "config_registry" :
-    """
-diff --git a/config_registry b/config_registry
-index 81543934..0f6bec7f 100644
---- a/config_registry
-+++ b/config_registry
-@@ -65,5 +65,8 @@ rv64iv:      rv64iv/rviv
- sifive_rvv: sifive_rvv
- sifive_x280: sifive_x280/sifive_rvv
- 
-+# generated
+    "config_registry" : [
+        ("# Generic architectures.\ngeneric:     generic",
+         """
+# generated
 % if parent_configname is not None:
-+${configname}: ${configname}/${configname}/${parent_configname}
+${configname}: ${configname}/${configname}/${parent_configname}
 % else:
-+${configname}: ${configname}
+${configname}: ${configname}
 % endif
-+
- # Generic architectures.
- generic:     generic
-""",
 
-    "frame/base/bli_arch.c" :
-    """
-diff --git a/frame/base/bli_arch.c b/frame/base/bli_arch.c
-index 776bb698..5224f99a 100644
---- a/frame/base/bli_arch.c
-+++ b/frame/base/bli_arch.c
-@@ -322,6 +322,11 @@ arch_t bli_arch_query_id_impl( void )
- 		id = BLIS_ARCH_SIFIVE_X280;
- 		#endif
- 
-+		// Generated microarchitecture.
-+		#ifdef BLIS_FAMILY_${configname.upper()}
-+		id = BLIS_ARCH_${configname.upper()};
-+		#endif
-+
- 		// Generic microarchitecture.
- 		#ifdef BLIS_FAMILY_GENERIC
- 		id = BLIS_ARCH_GENERIC;
-@@ -390,6 +395,8 @@ static const char* config_name[ BLIS_NUM_ARCHS ] =
-     "sifive_rvv",
-     "sifive_x280",
- 
-+    "${configname}",
-+
-     "generic"
- };
- 
-""",
+         """, False)
+        ],
+    "frame/base/bli_arch.c" : [
+        ("		// Generic microarchitecture.\n		#ifdef BLIS_FAMILY_GENERIC",
+         """
+		// Generated microarchitecture.
+		#ifdef BLIS_FAMILY_${configname.upper()}
+		id = BLIS_ARCH_${configname.upper()};
+		#endif
 
-    "frame/include/bli_arch_config.h" :
-    """
-diff --git a/frame/include/bli_arch_config.h b/frame/include/bli_arch_config.h
-index 49a89430..240460d6 100644
---- a/frame/include/bli_arch_config.h
-+++ b/frame/include/bli_arch_config.h
-@@ -187,6 +187,12 @@ INSERT_GENTCONF
- #include "bli_family_sifive_x280.h"
- #endif
- 
-+// -- ukrgen --
-+
-+#ifdef BLIS_FAMILY_${configname.upper()}
-+#include "bli_family_${configname}.h"
-+#endif
-+
- // -- Generic --
- 
- #ifdef BLIS_FAMILY_GENERIC
-@@ -287,6 +293,10 @@ INSERT_GENTCONF
- #include "bli_kernels_sifive_x280.h"
- #endif
- 
-+#ifdef BLIS_KERNELS_${configname.upper()}
-+#include "bli_kernels_${configname}.h"
-+#endif
-+
- 
- #endif
- 
-""",
-    "frame/include/bli_gentconf_macro_defs.h" :
-    """
-diff --git a/frame/include/bli_gentconf_macro_defs.h b/frame/include/bli_gentconf_macro_defs.h
-index f6f3af20..54fa99ac 100644
---- a/frame/include/bli_gentconf_macro_defs.h
-+++ b/frame/include/bli_gentconf_macro_defs.h
-@@ -233,6 +233,14 @@
- #define INSERT_GENTCONF_SIFIVE_X280
- #endif
- 
-+// -- Generated architectures --------------------------------------------------
-+
-+#ifdef BLIS_CONFIG_${configname.upper()}
-+#define INSERT_GENTCONF_${configname.upper()} GENTCONF( ${configname.upper()}, ${configname} )
-+#else
-+#define INSERT_GENTCONF_${configname.upper()}
-+#endif
-+
- // -- Generic architectures ----------------------------------------------------
- 
- #ifdef BLIS_CONFIG_GENERIC
-@@ -288,7 +296,9 @@ INSERT_GENTCONF_RV64IV ${"\\\\"}
- INSERT_GENTCONF_SIFIVE_RVV ${"\\\\"}
- INSERT_GENTCONF_SIFIVE_X280 ${"\\\\"}
- ${"\\\\"}
--INSERT_GENTCONF_GENERIC
-+INSERT_GENTCONF_${configname.upper()} ${"\\\\"}
-+${"\\\\"}
-+INSERT_GENTCONF_GENERIC 
- 
- 
- #endif
-""",
-    "frame/include/bli_type_defs.h" :
-    """
-diff --git a/frame/include/bli_type_defs.h b/frame/include/bli_type_defs.h
-index 758f9eb3..2305c6a0 100644
---- a/frame/include/bli_type_defs.h
-+++ b/frame/include/bli_type_defs.h
-@@ -1010,6 +1010,9 @@ typedef enum arch_e
- 	BLIS_ARCH_SIFIVE_RVV,
- 	BLIS_ARCH_SIFIVE_X280,
- 
-+	// Generated architecture/configuration
-+	BLIS_ARCH_${configname.upper()},
-+
- 	// Generic architecture/configuration
- 	BLIS_ARCH_GENERIC,
- 
-"""
+""", False),
+        ("    \"generic\"\n};",
+         """
+    "${configname}",
 
-}
+""", False)
+        ],
+    "frame/include/bli_arch_config.h" : [
+        ("// -- Generic --\n\n#ifdef BLIS_FAMILY_GENERIC",
+         """
+// -- ukrgen --
+
+#ifdef BLIS_FAMILY_${configname.upper()}
+#include "bli_family_${configname}.h"
+#endif
+
+""", False),
+        ("#include \"bli_kernels_sifive_x280.h\"\n#endif",
+         """
+#ifdef BLIS_KERNELS_${configname.upper()}
+#include "bli_kernels_${configname}.h"
+#endif
+
+""", True)
+        ],
+    "frame/include/bli_gentconf_macro_defs.h" : [
+        ("// -- Generic architectures ----------------------------------------------------",
+        """
+// -- Generated architectures --------------------------------------------------
+
+#ifdef BLIS_CONFIG_${configname.upper()}
+#define INSERT_GENTCONF_${configname.upper()} GENTCONF( ${configname.upper()}, ${configname} )
+#else
+#define INSERT_GENTCONF_${configname.upper()}
+#endif
+""", False),
+        ("INSERT_GENTCONF_SIFIVE_RVV \\\nINSERT_GENTCONF_SIFIVE_X280 \\",
+         """
+INSERT_GENTCONF_${configname.upper()} ${"\\\\"}
+${"\\\\"}""", True)
+        ],
+    "frame/include/bli_type_defs.h" : [
+        ("	// Generic architecture/configuration\n	BLIS_ARCH_GENERIC,",
+        """
+	// Generated architecture/configuration
+	BLIS_ARCH_${configname.upper()},
+""", False)
+        ],
+    }
 
 
 kernels = {

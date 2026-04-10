@@ -17,8 +17,7 @@ def setup_loggers(debugall : bool =False, debug_systems : set[str] = list()):
 
     for name in ["STO", "LSC", "LSCIRMOD",
                  "ADDR", "CODEGEN", "FNGEN",
-                 "SCHED", "MRU", "BLISPATCH",
-                 "patch_ng"]:
+                 "SCHED", "MRU", "BLISPATCH"]:
         logger = logging.getLogger(name)
 
         if name in debug_systems:
