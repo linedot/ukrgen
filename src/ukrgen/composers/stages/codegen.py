@@ -13,7 +13,7 @@ from .composition import composition_stage
 from ..ukr_context import ukr_context
 from ..stage_param import stage_param
 
-from ...codegen.fngen import fngen
+from asmgen.callconv.fngen import fngen
 from ...codegen.blis import get_blis_gemm_cc
 
 from ...models.loop import lsc_condition,lsc_loop,lsc_comparison
