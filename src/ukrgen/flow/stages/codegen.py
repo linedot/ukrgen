@@ -16,6 +16,8 @@ from ..stage_param import stage_param
 from asmgen.callconv.fngen import fngen
 from ...codegen.blis import get_blis_gemm_cc
 
+from ...emitters.asm import lsc_asm_emitter
+
 from ...models.loop import lsc_condition,lsc_loop,lsc_comparison
 from ...models.lsc.offset import lsc_offset
 from ...models.load_store_operations import lsc_add_val_off
@@ -94,6 +96,7 @@ class blis_ukr_codegen_stage(stage):
 
 
         specializer = self.context.specializer
+        emitter = lsc_asm_emitter(self.context.gen, self.context.rt)
 
         self.context.asmblocks["init"] = specializer.code_init(
                 component_dts=self.context.component_dts)
@@ -125,7 +128,7 @@ class blis_ukr_codegen_stage(stage):
 
 
         for bname in self.context.specialization_order:
-            self.context.asmblocks[bname] = specializer.specialize(
+            self.context.asmblocks[bname] = emitter.transform_list(
                     ops = self.context.irs[bname], 
                     component_dts=self.context.component_dts)
 
