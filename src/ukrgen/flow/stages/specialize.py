@@ -30,6 +30,7 @@ class specialize_lsc_stage(stage):
             "main",
             "1k_preload",
             "1k_main",
+            "1k_lastiter",
             "store",
             "preload_next",
             "1k_preload_next"
@@ -57,6 +58,14 @@ class specialize_lsc_stage(stage):
         self.debug("PRELOAD NEXT ----------------------------")
         self.debug("  "+"\n  ".join(map(str,self.context.irs["preload_next"])))
         self.debug("END MAIN LOOP ---------------------------")
+        if 1 != self.context.params["k"].value:
+            self.debug("1K PRELOAD ----------------------------")
+            self.debug("\n".join(map(str,self.context.irs["1k_preload"])))
+            self.debug("1K MAIN LOOP -------------------------------")
+            self.debug("  "+"\n  ".join(map(str,self.context.irs["1k_main"])))
+            self.debug("1K PRELOAD NEXT ----------------------------")
+            self.debug("  "+"\n  ".join(map(str,self.context.irs["1k_preload_next"])))
+            self.debug("1K END MAIN LOOP ---------------------------")
         self.debug("STOREBLOCK ------------------------------")
         self.debug("\n".join(map(str,self.context.irs["store"])))
         self.debug("ENDSTOREBLOCK ---------------------------")
