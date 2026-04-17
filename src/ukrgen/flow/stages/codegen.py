@@ -96,9 +96,17 @@ class blis_ukr_codegen_stage(stage):
 
 
         specializer = self.context.specializer
-        emitter = lsc_asm_emitter(self.context.gen, self.context.rt)
+        emitter = lsc_asm_emitter(gen=self.context.gen,
+                                  rt=self.context.rt,
+                                  model=self.context.model,
+                                  data_registers=specializer.data_registers,
+                                  data_tags=specializer.data_tags,
+                                  address_registers=specializer.address_registers,
+                                  component_triples=specializer.component_triples,
+                                  vindex_registry=specializer.vindex_registry,
+                                  offset_registry=specializer.offset_registry)
 
-        self.context.asmblocks["init"] = specializer.code_init(
+        self.context.asmblocks["init"] = emitter.code_init(
                 component_dts=self.context.component_dts)
 
         #TODO: More generalized system for the k1 loop
@@ -134,7 +142,7 @@ class blis_ukr_codegen_stage(stage):
 
 
 
-        self.context.asmblocks["fini"] = specializer.code_fini(
+        self.context.asmblocks["fini"] = emitter.code_fini(
                 component_dts=self.context.component_dts)
 
 
