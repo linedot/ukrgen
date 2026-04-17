@@ -25,17 +25,34 @@ from asmgen.registers import asm_data_type as adt,reg_tracker,adt_size
 from asmgen.asmblocks.operations import modifier as opmod
 
 from .lsc import lsc_emitter
+from ..models.lsc.index import lsc_reg_index
+from ..models.load_store_cpu import load_store_cpu
 
 import re
 from functools import singledispatchmethod
+from copy import deepcopy
 
 
 class lsc_asm_emitter(lsc_emitter):
     def __init__(self,
                  gen : asmgen,
-                 rt : reg_tracker):
+                 rt : reg_tracker,
+                 model : load_store_cpu,
+                 data_registers    : dict[str,set[lsc_reg_index]],
+                 address_registers : dict[str,set[lsc_reg_index]],
+                 component_triples : list[tuple[str,str,str]],
+                 data_tags         : dict[str,str],
+                 offset_registry   : dict[str,set[lsc_offset]],
+                 vindex_registry   : dict[str,set[lsc_offset]]):
         self.gen = gen
         self.rt = rt
+        self.model = model
+        self.address_registers = address_registers
+        self.data_registers    = data_registers
+        self.component_triples = component_triples
+        self.data_tags         = data_tags
+        self.offset_registry   = offset_registry
+        self.vindex_registry   = vindex_registry
 
     @singledispatchmethod
     def transform(self, op, component_dts : dict[str,adt]) -> str:
@@ -125,7 +142,19 @@ class lsc_asm_emitter(lsc_emitter):
         cr = op.indices[1].component
         alias = f"RES:{op.res_idx}"
         #print(f"searching index for {alias} in {dreg_tag} aliases:")
-        residx = self.rt.aliased_regs[dreg_tag][f"RES:{op.res_idx}"]
+        try:
+            residx = self.rt.aliased_regs[dreg_tag][f"RES:{op.res_idx}"]
+        except KeyError as e:
+            print(f"RES:{op.res_idx} not found in aliased regs for {dreg_tag}")
+            print(f"Aliased {dreg_tag}s: ")
+            for k,v in self.rt.aliased_regs[dreg_tag].items():
+                print(f"{k} = {v}")
+            
+            print(f"data register set for {cr}:")
+            for v in self.data_registers[cr]:
+                print(f"{v}")
+            raise e
+
         #print(f"found: {residx}")
 
         if dreg_tag in ["freg","treg"]:
@@ -417,3 +446,330 @@ class lsc_asm_emitter(lsc_emitter):
                                             label=op.name)
 
         return asmblock
+
+
+    def calculate_offset(self, component : str,
+                         off : lsc_offset,
+                         component_dts : dict[str,adt],
+                         ways : int) -> str:
+        asmblock = ""
+
+
+        dt_size = adt_size(component_dts[component])
+        dt_shift = dt_size.bit_length()-1
+
+        ways_shift = ways.bit_length()-1
+
+        offreg_idx = self.rt.aliased_regs['greg'][f"{component}off:{str(off)}"]
+        offreg = self.gen.greg(offreg_idx)
+        asmblock += self.gen.zero_greg(greg=offreg)
+        for sxv,value in off.sxv_strides.items():
+            if 0 == value:
+                continue
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg, imm=value)
+
+            for stride_id in sxv.stride_ids:
+                alias = f"stride{stride_id}"
+                if not alias in self.rt.aliased_regs['greg']:
+                    idx = self.rt.reserve_any_reg('greg')
+                    self.rt.alias_reg('greg', alias, idx)
+                else:
+                    idx = self.rt.aliased_regs['greg'][alias]
+
+                reg = self.gen.greg(idx)
+                asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+            
+            for vlen_id in sxv.vlen_ids:
+                if vlen_id != 0:
+                    raise NotImplementedError("Only first VLEN implemented right now")
+
+                vlenidx = self.rt.aliased_regs['greg']['vlen']
+                vlenreg = self.gen.greg(vlenidx)
+                asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=vlenreg)
+
+
+            # ways would reduce the number of elements
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        for i,value in enumerate(off.reg_strides):
+            if 0 == value:
+                continue
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg,imm=value)
+
+            alias = f"stride{i}"
+            if not alias in self.rt.aliased_regs['greg']:
+                idx = self.rt.reserve_any_reg('greg')
+                self.rt.alias_reg('greg', alias, idx)
+            else:
+                idx = self.rt.aliased_regs['greg'][alias]
+
+            reg = self.gen.greg(idx)
+            asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)            
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        for i,value in enumerate(off.vlen_strides):
+            if 0 == value:
+                continue
+            if i != 0:
+                raise NotImplementedError("Only first VLEN implemented right now")
+            tmpreg_idx = self.rt.reserve_any_reg('greg')
+            tmpreg = self.gen.greg(tmpreg_idx)
+            asmblock += self.gen.mov_greg_imm(reg=tmpreg, imm=value)
+
+            idx = self.rt.aliased_regs['greg']['vlen']
+
+            reg = self.gen.greg(idx)
+            asmblock += self.gen.mul_greg_greg(dst=tmpreg,reg1=tmpreg,reg2=reg)
+            
+            asmblock += self.gen.shift_greg_left(reg=tmpreg,bit_count=dt_shift-ways_shift)
+            asmblock += self.gen.add_greg_greg(dst=offreg,reg1=offreg,reg2=tmpreg)
+            self.rt.unuse_reg('greg', tmpreg_idx)
+
+        if 0 != off.immoff:
+            asmblock += self.gen.add_greg_imm(reg=offreg,imm=off.immoff*dt_size)
+        return asmblock
+
+    def init_vlenregs(self, component_dts : dict[str,adt]) -> str:
+
+        asmblock = ""
+
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
+
+        if 'vlen' not in self.rt.aliased_regs['greg']:
+            vlenidx = self.rt.reserve_any_reg('greg')
+            self.rt.alias_reg('greg', 'vlen', vlenidx)
+            vlenreg = self.gen.greg(vlenidx)
+            asmblock += self.gen.simd_size_to_greg(reg=vlenreg, dt=narrow_dt)
+        else:
+            vlenidx = self.rt.aliased_regs['greg']['vlen']
+            vlenreg = self.gen.greg(vlenidx)
+
+        for component in self.offset_registry.keys():
+            for off in self.offset_registry[component]:
+                if not off.is_vector:
+                    continue
+
+                alias = f"{component}off:{str(off)}"
+
+                dt_shift = adt_size(component_dts[component]).bit_length()-1
+
+                vlenxnidx = self.rt.reserve_any_reg('greg')
+                self.rt.alias_reg('greg', alias, vlenxnidx)
+
+                vlenxnreg = self.gen.greg(vlenxnidx)
+
+                asmblock += self.gen.mov_greg(src=vlenreg,dst=vlenxnreg)
+                asmblock += self.gen.shift_greg_left(reg=vlenxnreg, bit_count=dt_shift)
+
+                vlenxn = off.vlen_strides[0]
+                if vlenxn > 1:
+                    asmblock += self.gen.mul_greg_imm(src=vlenreg,
+                                                      dst=vlenxnreg,
+                                                      factor=vlenxn)
+
+        return asmblock
+
+    #TODO: consider deduplication. This is only needed for intialization offset
+    #      in code_init(), might be handled by specializer instead?
+    def register_offset(self, component : str, off : lsc_offset):
+        if off == lsc_offset.zero_offset():
+            # TODO: investigate why this can happen
+            return
+        #self.stridelog.debug(f"registering offset {off} for component={component}")
+        if component not in self.offset_registry:
+            self.offset_registry[component] = set()
+        if off in self.offset_registry[component]:
+            return
+        self.offset_registry[component].add(off)
+
+    def code_init(self, component_dts : dict[str,adt]) -> str:
+
+        #TODO: datatype for quirks. For now go with the narrow type
+        
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
+                        
+        asmblock = self.gen.isaquirks(rt=self.rt,dt=narrow_dt)
+
+        asmblock += self.init_vlenregs(component_dts=component_dts)
+
+
+        
+        acc_components = set()
+        for a,b,c in self.component_triples:
+            acc_components.add(c)
+
+
+        # Register offsets for calculating starting addresses:
+        for component in self.address_registers.keys():
+            for aidx in self.address_registers[component]:
+                if aidx.indices[0] == 0:
+                    continue
+                sos = self.model.ar.starting_offsets[component]
+                step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
+                self.register_offset(component=component, off=step)
+                #print(f"calculated {step} for {component}")
+
+
+        # reserve offset registers
+        for component in self.offset_registry.keys():
+            for off in self.offset_registry[component]:
+                if off.is_scalar:
+                    continue
+                
+                if off.is_vector:
+                    factor = off.vlen_strides[0]
+                    if factor < self.gen.max_add_voff and factor > 0:
+                        continue
+
+                # determine largest widening ways:
+                ways = 1
+                for a,b,c in self.component_triples:
+                    narrow_size = adt_size(component_dts[a])
+                    if c == component:
+                        ways = max(adt_size(component_dts[c])//narrow_size,ways)
+
+                regidx = self.rt.reserve_any_reg('greg')
+                alias = f"{component}off:{str(off)}"
+                self.rt.alias_reg('greg', alias , regidx)
+                #print(f"reserving GP reg {regidx} for {alias}")
+                asmblock += self.gen.asmwrap(f"# {self.gen.greg(regidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
+                asmblock += self.calculate_offset(component, off,
+                                                  component_dts=component_dts,
+                                                  ways=ways)
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
+
+
+        # reserve vector indices
+        for component in self.vindex_registry.keys():
+            for stride in self.vindex_registry[component]:
+                stvidx = self.rt.reserve_any_reg("vreg")
+                alias = f"{component}vidx:{str(stride)}"
+                self.rt.alias_reg('vreg', alias, stvidx)
+                #print(f"reserving vreg {stvidx} for {alias}")
+
+                galias = f"{component}off:{str(stride)}"
+                stridx = self.rt.aliased_regs["greg"][galias]
+                streg = self.gen.greg(stridx)
+                stvreg = self.gen.vreg(stvidx)
+                asmblock += self.gen.asmwrap(f"# {self.gen.vreg(stvidx)} = {alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
+                asmblock += self.gen.greg_to_voffs(streg=streg, vreg=stvreg,
+                                                   dt=component_dts[component])
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
+
+        # reserve address registers
+        for component in self.address_registers.keys():
+            for aidx in self.address_registers[component]:
+                aregblock = ""
+
+                sos = self.model.ar.starting_offsets[component]
+                step = sos[aidx.indices[0]] - sos[aidx.indices[0]-1]
+
+                reg_alias = f"ADDR:{aidx}"
+                #print(f"processing {reg_alias}")
+                if reg_alias not in self.rt.aliased_regs['greg']:
+                    aregidx = self.rt.reserve_any_reg('greg')
+                    self.rt.alias_reg('greg', reg_alias, aregidx)
+                    
+                    # Compute starting address
+
+                    # Not deeopcopying this will mess up existing ops
+                    prev_idx = deepcopy(aidx)
+                    prev_idx.indices[0] -=1
+                    prev_alias = f"ADDR:{prev_idx}"
+
+                    prev_reg_idx = self.rt.aliased_regs['greg'][prev_alias]
+
+                    aregblock += self.gen.mov_greg(
+                        src=self.gen.greg(prev_reg_idx),
+                        dst=self.gen.greg(aregidx)
+                    )
+                    model_state = self.model.states[self.model.current_state]
+                    t = model_state.last_tile_used[component]
+
+                    if step != lsc_offset.zero_offset():
+                        aregblock += self.transform(
+                            lsc_addr_add(
+                                component=component,
+                                addr_idx=aidx.indices[0],
+                                off=step,
+                                t=t),
+                            component_dts=component_dts)
+
+                else:
+                    aregidx = self.rt.aliased_regs['greg'][reg_alias]
+                #print(f"reserving GP reg {aregidx} for {reg_alias}")
+
+                # asmblock += f"// todo: init {reg_alias}\n"
+                asmblock += self.gen.asmwrap(f"# {self.gen.greg(aregidx)} = {reg_alias}")
+                asmblock += self.gen.asmwrap(f"# calculation -->")
+                asmblock += aregblock
+                asmblock += self.gen.asmwrap(f"# calculation end <--")
+
+
+        # reserve data registers
+        for component in self.data_registers.keys():
+            for didx in self.data_registers[component]:
+                reg_alias = f"RES:{lsc_reg_index(component,[didx])}"
+
+                # inaccurate, unvec not considered
+                #model_state = self.model.states[self.model.current_state]
+                #t = model_state.last_tile_used[component]
+                #dreg_tag = determine_dreg_tag(t.dima, t.dimb)
+                dreg_tag = self.data_tags[component]
+
+                dregidx = self.rt.reserve_any_reg(dreg_tag)
+
+                self.rt.alias_reg(dreg_tag, reg_alias, dregidx)
+                #print(f"reserving {dreg_tag} {dregidx} for {reg_alias}")
+
+                dt = component_dts[component]
+
+                if dreg_tag in ["freg","treg"]:
+                    dregname = str(getattr(self.gen,dreg_tag)(dregidx,dt))
+                else:
+                    dregname = str(getattr(self.gen,dreg_tag)(dregidx))
+
+                # asmblock += f"// todo: init {reg_alias}\n"
+                asmblock += self.gen.asmwrap(f"# {dregname} = {reg_alias}")
+
+        return asmblock
+
+    def code_fini(self, component_dts : dict[str,adt]) -> str:
+        # determine narrowest type:
+        narrow_dt = list(component_dts.values())[0]
+        min_size = adt_size(narrow_dt)
+
+        for a,b,c in self.component_triples:
+            size = adt_size(component_dts[a])
+            if size < min_size:
+                min_size = size
+                narrow_dt = component_dts[a]
+
+        return self.gen.isaendquirks(rt=self.rt,dt=narrow_dt)
