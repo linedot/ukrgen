@@ -7,6 +7,7 @@
 # annotation for self type
 from __future__ import annotations
 
+from dataclasses import dataclass
 from copy import deepcopy
 
 from enum import Enum,auto
@@ -21,12 +22,12 @@ class dimension_type(Enum):
     # I think we don't need this, and fixed fits the functionality
     # subtile = auto()
 
+@dataclass(frozen=True)
 class dimension_properties:
-    def __init__(self, dt : dimension_type, size : int, sdt : dimension_type, sd_size : int):
-        self.dt = dt
-        self.size = size
-        self.sdt = sdt
-        self.sd_size = sd_size
+    dt      : dimension_type
+    size    : int
+    sdt     : dimension_type
+    sd_size : int
 
 def determine_dreg_tag(dima : dimension_properties, dimb : dimension_properties) -> str:
 
