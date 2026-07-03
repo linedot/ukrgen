@@ -2,13 +2,21 @@
 
 ## New generator
 
+### installation
+
+```
+git clone https://github.com/linedot/ukrgen
+cd ukrgen
+pip install . "asmgen @ https://github.com/linedot/asmgen"
+```
+
 ### blisgen
 
 Generate a complete BLIS source specifying microkernel configuration files
 
 Usage:
 ```
-usage: python -m clitools.blisgen [-h] [--debug [DEBUG ...]] --sgemm-config SGEMM_CONFIG --dgemm-config DGEMM_CONFIG
+usage: blisgen [-h] [--debug [DEBUG ...]] --sgemm-config SGEMM_CONFIG --dgemm-config DGEMM_CONFIG
                                   [--config-name CONFIG_NAME] (--from-dir FROM_DIR | --from-git FROM_GIT) [--temp-dir TEMP_DIR]
                                   --out-dir OUT_DIR [--overwrite] --author AUTHOR
 
@@ -33,7 +41,7 @@ Example:
 
 ```bash
 # generate BLIS source with RVV kernels
-python -m clitools.blisgen --sgemm-config ukrconfig/sgemm_rvv_2vx12x8.yaml --dgemm-config ukrconfig/dgemm_rvv_2vx12x8.yaml --author "Stepan Nassyr" --from-dir /path/to/vanilla/blis --out-dir /some/path/generated-blis-rvv --overwrite
+blisgen --sgemm-config ukrconfig/sgemm_rvv_2vx12x8.yaml --dgemm-config ukrconfig/dgemm_rvv_2vx12x8.yaml --author "Stepan Nassyr" --from-dir /path/to/vanilla/blis --out-dir /some/path/generated-blis-rvv --overwrite
 
 # configure blis (crosscompilation on x86 machine)
 cd /some/path/generated-blis-rvv
@@ -86,38 +94,32 @@ Inspect the generated ASM function for given parameters directly or debug the ge
 
 Usage:
 ```
-usage: python -m clitools.ukrgen [--debug [DEBUG ...]] --isa {rvv,rvv071,sve,neon,avx128,avx256,avx512}
-                                 --op {fma,dota,fopa,mma} [--ukr {gemm,mm}] --rvv-LMUL RVV_LMUL
-                                 --AB-data-type {SINT32,UINT8,FP32,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
-                                 --C-data-type {SINT32,FP32,UINT64,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
-                                 [--variant {0,1}] --m M --n N --k K [--vecdir {M,N}] [--order ORDER]
-                                 [--column-strides COLUMN_STRIDES] [--row-strides ROW_STRIDES]
-                                 --A-data-regs A_DATA_REGS [--A-addr-regs A_ADDR_REGS]
-                                 [--A-multiaddr-strat {interleave,split,phase}] [--A-preload A_PRELOAD]
-                                 --B-data-regs B_DATA_REGS [--B-addr-regs B_ADDR_REGS]
-                                 [--B-multiaddr-strat {interleave,split,phase}] [--B-preload B_PRELOAD]
-                                 --AB-data-regs AB_DATA_REGS [--AB-addr-regs AB_ADDR_REGS]
-                                 [--AB-multiaddr-strat {interleave,split,phase}]
-                                 --C-data-regs C_DATA_REGS [--C-addr-regs C_ADDR_REGS]
-                                 [--C-multiaddr-strat {interleave,split,phase}]
-                                 [--sched-distance-specs SCHED_DISTANCE_SPECS [SCHED_DISTANCE_SPECS ...]]
+usage: ukrgen [--debug [DEBUG ...]] --isa {avx128,avx256,avx512,rvv,rvv071,neon,sve,sme} --op {fma,dota,fopa,mma}
+              [--ukr {gemm,mm}] --rvv-LMUL RVV_LMUL
+              --AB-data-type {HALF,FP32,UINT32,SINT64,UINT8,SINT8,DOUBLE,FP16,SINT32,UINT16,FP64,SINT16,SINGLE}
+              --C-data-type {HALF,FP32,UINT32,SINT64,SINT8,DOUBLE,FP16,SINT32,UINT16,FP64,SINT16,UINT64,SINGLE}
+              [--variant {0,1}] --m M --n N --k K [--vecdir {M,N}] [--order ORDER] [--column-strides COLUMN_STRIDES]
+              [--row-strides ROW_STRIDES] --A-data-regs A_DATA_REGS [--A-addr-regs A_ADDR_REGS]
+              [--A-multiaddr-strat {interleave,split,phase}] [--A-preload A_PRELOAD] --B-data-regs B_DATA_REGS
+              [--B-addr-regs B_ADDR_REGS] [--B-multiaddr-strat {interleave,split,phase}] [--B-preload B_PRELOAD]
+              --AB-data-regs AB_DATA_REGS [--AB-addr-regs AB_ADDR_REGS] [--AB-multiaddr-strat {interleave,split,phase}]
+              --C-data-regs C_DATA_REGS [--C-addr-regs C_ADDR_REGS] [--C-multiaddr-strat {interleave,split,phase}]
+              [--sched-distance-specs SCHED_DISTANCE_SPECS [SCHED_DISTANCE_SPECS ...]] [--function-name FUNCTION_NAME]
 
 options:
-  --debug [DEBUG ...]   Enables debug output for a specific subsystem; without any arguments, all debug
-                        output is enabled
-  --isa {rvv,rvv071,sve,neon,avx128,avx256,avx512}
+  --debug [DEBUG ...]   Enables debug output for a specific subsystem; without any arguments, all debug output is enabled
+  --isa {avx128,avx256,avx512,rvv,rvv071,neon,sve,sme}
                         Instruction set to use
   --op {fma,dota,fopa,mma}
                         Arithmentic instruction to base the kernel on
   --ukr {gemm,mm}       Type of Microkernel to generate
   --rvv-LMUL RVV_LMUL   rvv parameter: LMUL
-  --AB-data-type {SINT32,UINT8,FP32,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
+  --AB-data-type {HALF,FP32,UINT32,SINT64,UINT8,SINT8,DOUBLE,FP16,SINT32,UINT16,FP64,SINT16,SINGLE}
                         Data type for component AB
-  --C-data-type {SINT32,FP32,UINT64,SINT64,SINT16,UINT16,SINGLE,FP16,DOUBLE,UINT32,FP64,SINT8,HALF}
+  --C-data-type {HALF,FP32,UINT32,SINT64,SINT8,DOUBLE,FP16,SINT32,UINT16,FP64,SINT16,UINT64,SINGLE}
                         Data type for component C
-  --variant {0,1}       Variant of the supported instruction. 0 ==> A: SINGLE with 1vx1 B: SINGLE with
-                        1x1 C: SINGLE with 1vx1 ; 1 ==> A: SINGLE with 1vx1 B: SINGLE with 1vx1 C: SINGLE
-                        with 1vx1
+  --variant {0,1}       Variant of the supported instruction. 0 ==> A: HALF with 1vx1 B: HALF with 1x1 C: SINGLE with 1vx1 ;
+                        1 ==> A: HALF with 1vx1 B: HALF with 1vx1 C: SINGLE with 1vx1
   --m M                 Microkernel dimension m
   --n N                 Microkernel dimension n
   --k K                 Microkernel dimension k
@@ -179,7 +181,7 @@ options:
   - ensure 11 instructions of distance between raw dependencies of FP registers
 
 ```
-$ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 \
+$ ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 \
          --op fma --AB-data-type SINGLE --C-data-type SINGLE \
          --variant 0 --m 2 --n 12 --k 8 --column-strides C \
          --A-data-regs 4 --B-data-regs 24 --C-data-regs 24 --AB-data-regs 24 \
@@ -187,14 +189,14 @@ $ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 \
          --B-multiaddr-strat interleave --A-preload 4 --B-preload 12 \
          --sched-distance-specs "raw::vreg:::11" "war::vreg:::5" "raw::freg:::11"
 [...]
-  vfmacc.vf v13,f10,v26
+  vfmacc.vf v13,f16,v26
   vse32.v v13, (s4)
   add s4,s4,s1
   add a7,a7,s1
-  vle32.v v0, (a7)
-  vfmul.vf v0,v0,f13
-  vfmacc.vf v0,f10,v27
-  vse32.v v0, (s4)
+  vle32.v v1, (a7)
+  vfmul.vf v1,v1,f6
+  vfmacc.vf v1,f16,v27
+  vse32.v v1, (s4)
   # END STOREBLOCK -----------------------------
   # FINALIZE -----------------------------------
   # FUNC OUTRO ---------------------------------
@@ -203,15 +205,16 @@ $ python -m clitools.ukrgen --ukr gemm --isa rvv --rvv-LMUL 1 \
   ld s3,16(sp)
   ld s4,24(sp)
   ld s5,32(sp)
-  fld f8, 40(sp)
-  fld f9, 48(sp)
-  fld f18, 56(sp)
-  fld f19, 64(sp)
-  fld f20, 72(sp)
-  fld f21, 80(sp)
-  fld f22, 88(sp)
-  fld f23, 96(sp)
-  add sp,sp,104
+  ld s6,40(sp)
+  fld f8, 48(sp)
+  fld f9, 56(sp)
+  fld f18, 64(sp)
+  fld f19, 72(sp)
+  fld f20, 80(sp)
+  fld f21, 88(sp)
+  fld f22, 96(sp)
+  fld f23, 104(sp)
+  add sp,sp,112
   ret
 ```
 

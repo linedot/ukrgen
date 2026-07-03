@@ -66,7 +66,7 @@ class argparse_prolog:
             stage.set_param(pname, val)
 
 
-def ukrgen():
+def main():
 
     ukr_ctx = ukr_context()
 
@@ -119,4 +119,4 @@ def ukrgen():
     print(ukr_ctx.asmblocks["full_function"])
 
 if __name__ == "__main__":
-    ukrgen()
+    main()

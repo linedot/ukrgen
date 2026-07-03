@@ -19,7 +19,7 @@ from ukrgen.codegen.isa_compiler_support import isa_flags
 from ukrgen.injectors.blis.patcher import blis_patcher
 from ukrgen.logging import setup_loggers
 
-def blisgen():
+def main():
 
     parser = ArgumentParser()
 
@@ -133,4 +133,4 @@ def blisgen():
 
 
 if __name__ == "__main__":
-    blisgen()
+    main()

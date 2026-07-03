@@ -1035,8 +1035,7 @@ class lsc_specializer:
                     if op_mod.addr_idx == op.addr_idx:
                         new_off = op_mod.off - addoff
                         if isinstance(op_mod, lsc_addr_add) or \
-                                self.model.ar.toff_in_range(
-                                lsc_offset.zero_offset(),
+                                lsc_offset.zero_offset().in_range_of(
                                 new_off,
                                 self.model.ar.offset_ranges[ca][op_mod.addr_idx.indices[0]]):
                             if op_mod.off in self.offset_registry[ca]:
@@ -1184,8 +1183,7 @@ class lsc_specializer:
 
                         gca = group_op.addr_idx.component
                         offrange = self.model.ar.offset_ranges[gca][group_op.addr_idx.indices[0]]
-                        allowed = self.model.ar.toff_in_range(
-                            caoff=baseoff,
+                        allowed = baseoff.in_range_of(
                             toff=baseoff+addoff,
                             offset_range=offrange)
                         if not allowed:
