@@ -7,7 +7,7 @@
 ```
 git clone https://github.com/linedot/ukrgen
 cd ukrgen
-pip install . "asmgen @ https://github.com/linedot/asmgen"
+pip install . "asmgen @ git+https://github.com/linedot/asmgen"
 ```
 
 ### blisgen
