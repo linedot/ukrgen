@@ -25,7 +25,7 @@ from asmgen.registers import (
     adt_triple,
     adt_size,
 )
-from asmgen.asmblocks.operations import modifier as mod,widening_method as wm,opd3
+from asmgen.asmblocks.operations import opd3_modifier as mod,widening_method as wm,opd3
 
 from ..components import *
 from ..generators import *
@@ -567,7 +567,7 @@ class lsc_specializer:
                 target_op = 'mma'
 
         # Call to check if it raises an Exception
-        arith_op(adreg=adreg, bdreg=adreg, cdreg=cdreg,
+        arith_op(adreg=adreg, bdreg=bdreg, cdreg=cdreg,
             a_dt=dt_narrow, b_dt=dt_narrow, c_dt=dt_wide,
             **additional_args)
 
@@ -1428,6 +1428,7 @@ class lsc_specializer:
             for didx in self.data_registers[component]:
                 reg_alias = f"RES:{lsc_reg_index(component,[didx])}"
                 dreg_tag = self.data_tags[component]
+
                 dregidx = self.rt.reserve_any_reg(dreg_tag)
 
                 self.rt.alias_reg(dreg_tag, reg_alias, dregidx)
