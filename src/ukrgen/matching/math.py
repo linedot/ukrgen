@@ -3,6 +3,7 @@ Matching of mathematical operations
 """
 from __future__ import annotations
 
+import logging
 import itertools
 from copy import deepcopy,copy
 from typing import Optional,Iterator
@@ -28,6 +29,8 @@ class transformation(Enum):
     COL_REDUCE    = auto() # (i,j)    -> (None,j)
     ROW_REDUCE    = auto() # (i,j)    -> (i,None)
     SCALAR_REDUCE = auto() # (i,None)/(None,j) -> (None,None) [BCAST/VF/IDX/LANE]
+
+debug = logging.getLogger("MATCHING").debug
 
 @dataclass(frozen=True)
 class operand_ref:
@@ -189,22 +192,22 @@ def map_and_match(requirement : ast_node,
     the hw AST matches the required AST
     """
 
-    print(f"Trying to match {requirement} and {hardware}")
+    debug(f"Trying to match {requirement} and {hardware}")
 
     if type(requirement) != type(hardware):
-        print(f"mismatch: different node types")
+        debug(f"mismatch: different node types")
         return False
 
     if isinstance(requirement, operand_ref):
         if hardware.name not in name_mapping:
             name_mapping[hardware.name] = requirement.name
         elif requirement.name != name_mapping[hardware.name]:
-            print((f"mismatch: {hardware.name} already mapped "
+            debug((f"mismatch: {hardware.name} already mapped "
                    f"to {name_mapping[hardware.name]}, not {requirement.name}"))
             return False
 
         if len(requirement.indices) != len(hardware.indices):
-            print(f"mismatch: index length between {requirement} and {hardware}")
+            debug(f"mismatch: index length between {requirement} and {hardware}")
             return False
 
         for r_idx, h_idx in zip(requirement.indices, hardware.indices):
@@ -212,45 +215,45 @@ def map_and_match(requirement : ast_node,
                 continue
             if h_idx in index_mapping:
                 if index_mapping[h_idx] != r_idx:
-                    print((f"mismatch: index mapping in {requirement} and {hardware}:"
+                    debug((f"mismatch: index mapping in {requirement} and {hardware}:"
                            f" {h_idx} is mapped to {index_mapping[h_idx]} instead of {r_idx}"))
                     return False
             else:
                 index_mapping[h_idx] = r_idx
 
-        print(f"match: mapped {hardware} to {requirement}")
+        debug(f"match: mapped {hardware} to {requirement}")
         return True
 
     if isinstance(requirement, expression_node):
         if requirement.op != hardware.op:
-            print(f"mismatch: {requirement.op} is not {hardware.op}")
+            debug(f"mismatch: {requirement.op} is not {hardware.op}")
             return False
             
         if requirement.reduce_dim is not None and hardware.reduce_dim is not None:
             if hardware.reduce_dim in index_mapping:
                 if index_mapping[hardware.reduce_dim] != requirement.reduce_dim:
-                    print(f"mismatch: reduction dim mapping between {requirement} and {hardware}")
+                    debug(f"mismatch: reduction dim mapping between {requirement} and {hardware}")
                     return False
             else:
                 index_mapping[hardware.reduce_dim] = requirement.reduce_dim
         elif requirement.reduce_dim is not None or hardware.reduce_dim is not None:
-            print(f"mismatch: reduction dim undefined for one but not the other")
+            debug(f"mismatch: reduction dim undefined for one but not the other")
             return False
 
         if not map_and_match(requirement.left, hardware.left,
                              name_mapping, index_mapping):
-            print(f"mismatch: left side {requirement.left} vs {hardware.left}")
+            debug(f"mismatch: left side {requirement.left} vs {hardware.left}")
             return False
         if requirement.right is not None and hardware.right is not None:
             if not map_and_match(requirement.right, hardware.right,
                                  name_mapping, index_mapping):
-                print(f"mismatch: right side {requirement.right} vs {hardware.right}")
+                debug(f"mismatch: right side {requirement.right} vs {hardware.right}")
                 return False
         elif requirement.right is not None or hardware.right is not None:
-            print(f"mismatch: right side undefined for one, but not the other")
+            debug(f"mismatch: right side undefined for one, but not the other")
             return False
 
-        print(f"match: mapped {hardware} to {requirement}")
+        debug(f"match: mapped {hardware} to {requirement}")
         return True
 
 
@@ -318,7 +321,7 @@ def extract_deepest_operation(ast : ast_node,
 
         new_req = expression_node(operation.MOVE, left=temp_ref, right=ast)
         
-        print(f"temporary {temp_ref} created as substitute for {ast} with {new_req} as dependency")
+        debug(f"temporary {temp_ref} created as substitute for {ast} with {new_req} as dependency")
 
         return temp_ref, [new_req]
 
@@ -445,7 +448,8 @@ TF_DEGENERACIES = {
                                  transformation.NONE},
     transformation.COL_REDUCE : {transformation.SCALAR_REDUCE,
                                  transformation.NONE},
-    transformation.SCALAR_REDUCE : {transformation.NONE}
+    transformation.SCALAR_REDUCE : {transformation.NONE},
+    transformation.TRANSPOSE : {transformation.NONE},
 }
 
 def is_transformation_weak(opd : operand_ref,
@@ -485,14 +489,45 @@ def has_weak_transformations(ast : ast_node,
                     for tf in trans_dict[opd.name])))
 
 
+def decimate_index(node : ast_node, idx : str) -> ast_node:
+    
+    if isinstance(node, operand_ref):
+
+        new_indices = [i if i != idx else None for i in node.indices]
+        if len(new_indices) > 2:
+            pruned_indices = [new_indices[0]]
+            for i in new_indices[1:-1]:
+                if i is not None:
+                    pruned_indices.append(i)
+            pruned_indices.append(new_indices[-1])
+
+            new_indices = pruned_indices
+
+        return operand_ref(
+                name=node.name,
+                indices=tuple(new_indices)
+                )
+    
+    l = decimate_index(node.left, idx)
+    r = None
+    if node.right is not None:
+        r = decimate_index(node.right, idx)
+
+    return expression_node(
+            op = node.op, 
+            left = l,
+            right = r,
+            reduce_dim= node.reduce_dim)
 
 def generate_variants(node: ast_node) -> list[ast_node]:
     """
-    Generates the original AST, plus ASTs where reductions are bypassed 
-    (representing accumulation loops that the planner will handle).
+    Generates the original AST, plus ASTs where reductions are applied
+
+    :param node: original AST
+    :return: list of original AST and variants with applied reductions
     """
 
-    print(f"Making variants of {node}")
+    debug(f"Making variants of {node}")
 
     if isinstance(node, operand_ref):
         return [node]
@@ -509,14 +544,15 @@ def generate_variants(node: ast_node) -> list[ast_node]:
             # 2. If this is a reduction, ALSO append the bypassed
             # variant (the loop body)
             if node.op == operation.REDUCE_SUM:
-                if isinstance(l, operand_ref):
-                    new_indices=tuple([idx for idx in l.indices 
-                                       if idx != node.reduce_dim])
-                    variants.append(operand_ref(name=l.name, indices=new_indices))
-                else:
-                    variants.append(l) 
+                variants.append(decimate_index(l, node.reduce_dim))
+                #if isinstance(l, operand_ref):
+                #    new_indices=tuple([idx for idx in l.indices 
+                #                       if idx != node.reduce_dim])
+                #    variants.append(operand_ref(name=l.name, indices=new_indices))
+                #else:
+                #    variants.append(l) 
 
-    print(f"Generated variants: {variants}")
+    debug(f"Generated variants: {variants}")
     return variants
 
 def validate_variance(req: ast_node, hw: ast_node,
@@ -534,6 +570,8 @@ def validate_variance(req: ast_node, hw: ast_node,
         
         for h_idx, r_idx in index_mapping.items():
             if r_idx in req_shape and h_idx not in hw_shape:
+                debug(f"hw shape of {hw_op}: {hw_shape}")
+                debug(f"Variance failure: {r_idx} in req, but {h_idx} not in hw")
                 return False
     return True
 
@@ -553,8 +591,6 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
     tf_options = list(transformation)
     all_operands = get_operands(hw_ast)
     
-    # 1. Generate valid accumulation loop bodies generically
-    req_variants = generate_variants(req)
 
     for perm in itertools.product(tf_options, repeat=len(all_operands)):
         trans_dict = {op_name: [tf] for op_name, tf in zip(all_operands, perm)}
@@ -569,24 +605,24 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
         if not simplified_hw.is_dimensionally_valid():
             continue
 
-        for req_variant in req_variants:
-            index_mapping = {}
-            name_mapping = {}
+        index_mapping = {}
+        name_mapping = {}
+        
+        # 3. STRICT STRUCTURAL MATCHING
+        if map_and_match(req, simplified_hw, name_mapping, index_mapping):
+
+            debug(f"success: {req} and {simplified_hw} match, validating variance")
             
-            print(f"req variant: {req_variant}")
-            # 3. STRICT STRUCTURAL MATCHING
-            if map_and_match(req_variant, simplified_hw, name_mapping, index_mapping):
-                
-                # 4. VARIANCE VALIDATION: Reject fake scalars (All-None Swallows)
-                if validate_variance(req_variant, simplified_hw, index_mapping):
-                    yield {
-                        "hw_ast": hw_ast,
-                        "transformations": trans_dict,
-                        "name_mapping": name_mapping,
-                        "index_mapping": index_mapping
-                    }
-                    # Break to prevent duplicate yields if multiple variants match
-                    break
+            # 4. VARIANCE VALIDATION: Reject fake scalars (All-None Swallows)
+            if validate_variance(req, simplified_hw, index_mapping):
+                yield {
+                    "hw_ast": hw_ast,
+                    "transformations": trans_dict,
+                    "name_mapping": name_mapping,
+                    "index_mapping": index_mapping
+                }
+            else:
+                debug(f"variance validation failed")
 
 
 
@@ -603,36 +639,56 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
     :return: list of valid instruction chains, like [[FMA],[FMUL,FADD],[FDOTA]]
     """
 
+    all_valid_chains = []
 
-    direct_matches = [
-        [match]
-        for hw_ast in hw_asts
-        for match in transform_and_match(req, hw_ast)
-    ]
+    req_variants = generate_variants(req)
 
-    if isinstance(req, operand_ref):
-        return direct_matches
+    for variant in req_variants:
 
-    split_ast, dependencies = extract_deepest_operation(
-            req,
-            temp_counter=temp_counter)
+        direct_matches = [
+            [match]
+            for hw_ast in hw_asts
+            for match in transform_and_match(variant, hw_ast)
+        ]
+        all_valid_chains.extend(direct_matches)
 
-    if not dependencies:
-        return direct_matches
+        if isinstance(variant, operand_ref):
+            continue
+
+        split_ast, dependencies = extract_deepest_operation(
+                variant,
+                temp_counter=temp_counter)
+
+        if not dependencies:
+            continue
+
+        dep_solutions = solve_requirement(dependencies[0], hw_asts,
+                                          temp_counter=temp_counter+1)
+        remainder_solutions = solve_requirement(split_ast, hw_asts,
+                                                temp_counter=temp_counter+1)
 
 
-    dep_solutions = solve_requirement(dependencies[0], hw_asts,
-                                      temp_counter=temp_counter+1)
-    remainder_solutions = solve_requirement(split_ast, hw_asts,
-                                            temp_counter=temp_counter+1)
+        for dep_chain in dep_solutions:
+            for rem_chain in remainder_solutions:
+
+                # This must be a temporary
+                output_opd = dep_chain[-1]['hw_ast'].left 
+                dep_tfs = dep_chain[-1]['transformations'][output_opd.name]
+
+                invalid_change = False
+                for opd in for_each_operand(rem_chain[0]['hw_ast'], lambda x : x):
+                    if opd.name == output_opd.name:
+                        rem_tfs = rem_chain[0]['transformations'][opd.name]
+                        if transform_ast(output_opd, {opd.name:rem_tfs}) != \
+                                transform_ast(opd, {opd.name:dep_tfs}):
+                            invalid_change = True
+                            break
 
 
-    valid_chains = direct_matches.copy()
-    for dep_chain in dep_solutions:
-        for rem_chain in remainder_solutions:
-            valid_chains.append(dep_chain+rem_chain)
+                if not invalid_change:
+                    all_valid_chains.append(dep_chain+rem_chain)
 
-    return valid_chains
+    return all_valid_chains
 
 HW_FADD_AST = expression_node(
         op=operation.MOVE,
@@ -697,7 +753,7 @@ HW_FOPA_AST = expression_node(
 
 HW_MMA_AST = expression_node(
         op=operation.MOVE,
-        left=operand_ref(name="cdreg", indices=('i', None)),
+        left=operand_ref(name="cdreg", indices=('i', 'j')),
         right=expression_node(
             op=operation.ADD,
             left=operand_ref(name="cdreg", indices=('i','j')),
