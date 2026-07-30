@@ -20,7 +20,10 @@ from ukrgen.matching.math import (
     HW_FOPA_AST,
     HW_MMA_AST,
     extract_deepest_operation,
-    solve_requirement
+    solve_requirement,
+    map_and_match,
+    transform_ast,
+    simplify_ast
 )
 
 def print_solution(solutions : list[list[dict[str,Any]]]):
@@ -97,6 +100,30 @@ class test_mm_matching(unittest.TestCase):
         solutions = solve_requirement(self.mm_req, [HW_FOPA_AST])
 
         print_solution(solutions)
+
+    def test_match_reduced_to_scalar(self):
+
+        req = expression_node(
+                operation.MOVE, 
+                operand_ref(name="C", indices=('m','n')),
+                expression_node(
+                    operation.REDUCE_SUM, 
+                    expression_node(operation.MUL, 
+                    operand_ref(name="A", indices=('m','k')),
+                    operand_ref(name="A", indices=('k','n'))),
+                    reduce_dim='k'))
+
+        fmul = transform_ast(HW_FMUL_AST, 
+                      {'adreg': [],
+                       'bdreg': [tf.SCALAR_REDUCE],
+                       'cdreg': []})
+
+        name_mapping = {}
+        index_mapping= {}
+        if map_and_match(req, fmul, name_mapping, index_mapping):
+            print("match!")
+        else:
+            print("no match")
         
 
     def test_extract_deepest(self):

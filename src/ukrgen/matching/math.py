@@ -192,16 +192,19 @@ def map_and_match(requirement : ast_node,
     print(f"Trying to match {requirement} and {hardware}")
 
     if type(requirement) != type(hardware):
+        print(f"mismatch: different node types")
         return False
 
     if isinstance(requirement, operand_ref):
         if hardware.name not in name_mapping:
             name_mapping[hardware.name] = requirement.name
         elif requirement.name != name_mapping[hardware.name]:
+            print((f"mismatch: {hardware.name} already mapped "
+                   f"to {name_mapping[hardware.name]}, not {requirement.name}"))
             return False
 
         if len(requirement.indices) != len(hardware.indices):
-            print(f"mismatch between {requirement} and {hardware}")
+            print(f"mismatch: index length between {requirement} and {hardware}")
             return False
 
         for r_idx, h_idx in zip(requirement.indices, hardware.indices):
@@ -209,34 +212,45 @@ def map_and_match(requirement : ast_node,
                 continue
             if h_idx in index_mapping:
                 if index_mapping[h_idx] != r_idx:
+                    print((f"mismatch: index mapping in {requirement} and {hardware}:"
+                           f" {h_idx} is mapped to {index_mapping[h_idx]} instead of {r_idx}"))
                     return False
             else:
                 index_mapping[h_idx] = r_idx
+
+        print(f"match: mapped {hardware} to {requirement}")
         return True
 
     if isinstance(requirement, expression_node):
         if requirement.op != hardware.op:
+            print(f"mismatch: {requirement.op} is not {hardware.op}")
             return False
             
         if requirement.reduce_dim is not None and hardware.reduce_dim is not None:
             if hardware.reduce_dim in index_mapping:
                 if index_mapping[hardware.reduce_dim] != requirement.reduce_dim:
+                    print(f"mismatch: reduction dim mapping between {requirement} and {hardware}")
                     return False
             else:
                 index_mapping[hardware.reduce_dim] = requirement.reduce_dim
         elif requirement.reduce_dim is not None or hardware.reduce_dim is not None:
+            print(f"mismatch: reduction dim undefined for one but not the other")
             return False
 
         if not map_and_match(requirement.left, hardware.left,
                              name_mapping, index_mapping):
+            print(f"mismatch: left side {requirement.left} vs {hardware.left}")
             return False
         if requirement.right is not None and hardware.right is not None:
             if not map_and_match(requirement.right, hardware.right,
                                  name_mapping, index_mapping):
+                print(f"mismatch: right side {requirement.right} vs {hardware.right}")
                 return False
         elif requirement.right is not None or hardware.right is not None:
+            print(f"mismatch: right side undefined for one, but not the other")
             return False
 
+        print(f"match: mapped {hardware} to {requirement}")
         return True
 
 
@@ -253,24 +267,6 @@ def extract_operand_pairs(req: ast_node, hw: ast_node) \
         if req.right and hw.right:
             pairs.extend(extract_operand_pairs(req.right, hw.right))
     return pairs
-
-def validate_variance(req: ast_node, hw: ast_node,
-                      index_mapping: dict[str, str]) -> bool:
-    """
-    Check the following condition: 
-    If the math requires an operand to vary along dimension R, and the hardware 
-    vectorizes along dimension H (where H maps to R),
-    the hardware operand MUST contain H.
-    """
-    pairs = extract_operand_pairs(req, hw)
-    for req_op, hw_op in pairs:
-        req_shape = req_op.get_shape()
-        hw_shape = hw_op.get_shape()
-        
-        for h_idx, r_idx in index_mapping.items():
-            if r_idx in req_shape and h_idx not in hw_shape:
-                return False
-    return True
 
 def extract_deepest_operation(ast : ast_node,
                               temp_counter: int) -> \
@@ -303,6 +299,8 @@ def extract_deepest_operation(ast : ast_node,
             return ast, []
 
         new_right, deps = extract_deepest_operation(ast.right, temp_counter)
+
+
         return expression_node(
                   op=operation.MOVE,
                   left=ast.left,
@@ -344,28 +342,6 @@ def extract_deepest_operation(ast : ast_node,
 
     raise RuntimeError("This shouldn't be reachable")
 
-def generate_variants(node: ast_node) -> list[ast_node]:
-    """
-    Generates the original AST, plus ASTs where reductions are bypassed 
-    (representing accumulation loops that the planner will handle).
-    """
-    if isinstance(node, operand_ref):
-        return [node]
-        
-    left_vars = generate_variants(node.left)
-    right_vars = generate_variants(node.right) if node.right else [None]
-    
-    variants = []
-    for l in left_vars:
-        for r in right_vars:
-            # 1. Standard structural variant
-            variants.append(expression_node(node.op, l, r, node.reduce_dim))
-            
-            # 2. If this is a reduction, ALSO append the bypassed
-            # variant (the loop body)
-            if node.op == operation.REDUCE_SUM:
-                variants.append(l) 
-    return variants
 
 def transform_operand(operand : operand_ref, tf : transformation) -> operand_ref:
     """
@@ -509,6 +485,58 @@ def has_weak_transformations(ast : ast_node,
                     for tf in trans_dict[opd.name])))
 
 
+
+def generate_variants(node: ast_node) -> list[ast_node]:
+    """
+    Generates the original AST, plus ASTs where reductions are bypassed 
+    (representing accumulation loops that the planner will handle).
+    """
+
+    print(f"Making variants of {node}")
+
+    if isinstance(node, operand_ref):
+        return [node]
+        
+    left_vars = generate_variants(node.left)
+    right_vars = generate_variants(node.right) if node.right else [None]
+    
+    variants = []
+    for l in left_vars:
+        for r in right_vars:
+            # 1. Standard structural variant
+            variants.append(expression_node(node.op, l, r, node.reduce_dim))
+            
+            # 2. If this is a reduction, ALSO append the bypassed
+            # variant (the loop body)
+            if node.op == operation.REDUCE_SUM:
+                if isinstance(l, operand_ref):
+                    new_indices=tuple([idx for idx in l.indices 
+                                       if idx != node.reduce_dim])
+                    variants.append(operand_ref(name=l.name, indices=new_indices))
+                else:
+                    variants.append(l) 
+
+    print(f"Generated variants: {variants}")
+    return variants
+
+def validate_variance(req: ast_node, hw: ast_node,
+                      index_mapping: dict[str, str]) -> bool:
+    """
+    Check the following condition: 
+    If the math requires an operand to vary along dimension R, and the hardware 
+    vectorizes along dimension H (where H maps to R),
+    the hardware operand MUST contain H.
+    """
+    pairs = extract_operand_pairs(req, hw)
+    for req_op, hw_op in pairs:
+        req_shape = req_op.get_shape()
+        hw_shape = hw_op.get_shape()
+        
+        for h_idx, r_idx in index_mapping.items():
+            if r_idx in req_shape and h_idx not in hw_shape:
+                return False
+    return True
+
 def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
     """
     Generator that transforms an HW AST and yields the transformed ast if
@@ -545,6 +573,7 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
             index_mapping = {}
             name_mapping = {}
             
+            print(f"req variant: {req_variant}")
             # 3. STRICT STRUCTURAL MATCHING
             if map_and_match(req_variant, simplified_hw, name_mapping, index_mapping):
                 
@@ -574,6 +603,7 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
     :return: list of valid instruction chains, like [[FMA],[FMUL,FADD],[FDOTA]]
     """
 
+
     direct_matches = [
         [match]
         for hw_ast in hw_asts
@@ -590,7 +620,6 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
     if not dependencies:
         return direct_matches
 
-    print(f"trying to match split {split_ast} remainder and {dependencies[0]} dependency")
 
     dep_solutions = solve_requirement(dependencies[0], hw_asts,
                                       temp_counter=temp_counter+1)
