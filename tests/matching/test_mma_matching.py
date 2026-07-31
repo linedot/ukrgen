@@ -8,6 +8,7 @@
 Testsuite for matching arithmetic instruction to a matrix-multiply-accumulate
 """
 
+import logging
 import unittest
 from typing import Any
 
@@ -34,23 +35,26 @@ from ukrgen.matching.math import (
     decimate_index
 )
 
-# might be useful for debugging
-#def print_solution(solutions : list[list[dict[str,Any]]]):
-#    
-#    for i,s in enumerate(solutions):
-#        print(f"Solution {i}:")
-#        for j,op in enumerate(s):
-#            print(f"  Operation {j}")
-#            print(f"    AST: {op['hw_ast']}")
-#            print( "    Transformations:")
-#            for opd, tfs in op['transformations'].items():
-#                print(f"      {opd}:{'->'.join(t.name for t in tfs)}")
-#            print( "    Name mapping:")
-#            for hw_name, req_name in op['name_mapping'].items():
-#                print(f"      {hw_name}->{req_name}")
-#            print( "    Index mapping:")
-#            for hw_idx, req_idx in op['index_mapping'].items():
-#                print(f"      {hw_idx}->{req_idx}")
+# uncomment this for debugging
+#logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+def print_solution(solutions : list[list[dict[str,Any]]]):
+    
+    for i,s in enumerate(solutions):
+        logger.debug(f"Solution {i}:")
+        for j,op in enumerate(s):
+            logger.debug(f"  Operation {j}")
+            logger.debug(f"    AST: {op['hw_ast']}")
+            logger.debug( "    Transformations:")
+            for opd, tfs in op['transformations'].items():
+                logger.debug(f"      {opd}:{'->'.join(t.name for t in tfs)}")
+            logger.debug( "    Name mapping:")
+            for hw_name, req_name in op['name_mapping'].items():
+                logger.debug(f"      {hw_name}->{req_name}")
+            logger.debug( "    Index mapping:")
+            for hw_idx, req_idx in op['index_mapping'].items():
+                logger.debug(f"      {hw_idx}->{req_idx}")
 
 
 class test_mm_matching(unittest.TestCase):
@@ -94,31 +98,45 @@ class test_mm_matching(unittest.TestCase):
 
     def test_match_fma(self):
         solutions = solve_requirement(self.mm_req, [HW_FMA_AST])
-        self.assertEqual(3, len(solutions))
+        print_solution(solutions)
+        self.assertEqual(6, len(solutions))
         
         expected_tfs = {
+            # direct match to vfmacc.vf c, b, a
             ((tf.NONE, tf.SCALAR_REDUCE, tf.NONE),),
+            # bcast to a, vfmacc.vv c, b, a
             ((tf.SCALAR_REDUCE, tf.TRANSPOSE, tf.TRANSPOSE),),
+            # scalar degeneration
             ((tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE),),
+            # bcast to b, vfmacc.vv c, a, b
+            ((tf.TRANSPOSE, tf.SCALAR_REDUCE, tf.TRANSPOSE),),
+            # direct match to vfmacc c, a, b
+            ((tf.SCALAR_REDUCE, tf.NONE, tf.NONE),),
         }
         self.assertEqual(expected_tfs, self.extract_tfs(solutions))
 
+
     def test_match_fdota(self):
         solutions = solve_requirement(self.mm_req, [HW_FDOTA_AST])
-        self.assertEqual(2, len(solutions))
+        print_solution(solutions)
+        self.assertEqual(4, len(solutions))
 
         expected_tfs = {
             ((tf.TRANSPOSE, tf.NONE, tf.SCALAR_REDUCE),),
+            ((tf.NONE, tf.TRANSPOSE, tf.SCALAR_REDUCE),),
             ((tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE),)
         }
         self.assertEqual(expected_tfs, self.extract_tfs(solutions))
 
+
     def test_match_fopa(self):
         solutions = solve_requirement(self.mm_req, [HW_FOPA_AST])
-        self.assertEqual(3, len(solutions))
+        print_solution(solutions)
+        self.assertEqual(4, len(solutions))
 
         expected_tfs = {
             ((tf.NONE, tf.TRANSPOSE, tf.NONE),),
+            ((tf.TRANSPOSE, tf.NONE, tf.TRANSPOSE),),
             ((tf.SCALAR_REDUCE, tf.TRANSPOSE, tf.COL_REDUCE),),
             ((tf.NONE, tf.SCALAR_REDUCE, tf.ROW_REDUCE),)
         }
@@ -126,20 +144,45 @@ class test_mm_matching(unittest.TestCase):
 
     def test_match_mma(self):
         solutions = solve_requirement(self.mm_req, [HW_MMA_AST])
-        # Validate that MMA instruction produces valid direct matches
-        self.assertTrue(len(solutions) > 0, "MMA hardware should yield at least one solution")
+        print_solution(solutions)
+        self.assertEqual(5, len(solutions))
+
+        expected_tfs = {
+            ((tf.NONE, tf.NONE, tf.NONE),),             # normal
+            ((tf.COL_REDUCE, tf.NONE, tf.COL_REDUCE),), # column times matrix
+            ((tf.NONE, tf.ROW_REDUCE, tf.ROW_REDUCE),), # matrix times row
+            ((tf.ROW_REDUCE, tf.COL_REDUCE, tf.NONE),), # outer product
+            ((tf.TRANSPOSE, tf.TRANSPOSE, tf.TRANSPOSE),),             # normal
+        }
+        self.assertEqual(expected_tfs, self.extract_tfs(solutions))
 
     def test_match_fmulfadd(self):
         solutions = solve_requirement(self.mm_req, [HW_FMUL_AST, HW_FADD_AST])
-        self.assertEqual(3, len(solutions))
+        print_solution(solutions)
 
+        # Many solutions, most degenerate or redundant
+        self.assertEqual(32, len(solutions))
+
+        # only 5 actual solutions (RVV examples in comments)
         expected_tfs = {
-            # op0: FMUL(A,B), op1: FADD(C,T0)
-            ((tf.SCALAR_REDUCE, tf.TRANSPOSE, tf.TRANSPOSE), (tf.TRANSPOSE, tf.TRANSPOSE, tf.TRANSPOSE)),
-            ((tf.NONE, tf.SCALAR_REDUCE, tf.NONE), (tf.NONE, tf.NONE, tf.NONE)),
-            ((tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE), (tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE)),
+            # bcast to a, vfmul.vv -> vfadd.vv
+            ((tf.SCALAR_REDUCE, tf.TRANSPOSE, tf.TRANSPOSE),
+             (tf.TRANSPOSE, tf.TRANSPOSE, tf.TRANSPOSE)),
+            # swapped a,b; bcast to b, vfmul.vv -> vfadd.vv
+            ((tf.TRANSPOSE, tf.SCALAR_REDUCE, tf.TRANSPOSE),
+             (tf.TRANSPOSE, tf.TRANSPOSE, tf.TRANSPOSE)),
+            # Direct match to vfmul.vf -> vfadd.vv
+            ((tf.NONE, tf.SCALAR_REDUCE, tf.NONE),
+             (tf.NONE, tf.NONE, tf.NONE)),
+            # swapped a,b match to vfmul.vf -> vfadd.vv
+            ((tf.SCALAR_REDUCE, tf.NONE, tf.NONE),
+             (tf.NONE, tf.NONE, tf.NONE)),
+            # Scalar degeneration
+            ((tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE),
+             (tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE)),
         }
         self.assertEqual(expected_tfs, self.extract_tfs(solutions))
+
 
     def test_match_fmulfadd_to_addtemp(self):
         req = expression_node(
@@ -151,7 +194,7 @@ class test_mm_matching(unittest.TestCase):
                 operand_ref(name="T0", indices=('m', 'n'))))
 
         solutions = solve_requirement(req, [HW_FMUL_AST, HW_FADD_AST])
-        self.assertEqual(3, len(solutions))
+        self.assertEqual(6, len(solutions))
         
         expected_tfs = {
             ((tf.NONE, tf.NONE, tf.NONE),),
@@ -173,19 +216,17 @@ class test_mm_matching(unittest.TestCase):
                 reduce_dim='k'))
 
         solutions = solve_requirement(req, [HW_FMUL_AST, HW_FADD_AST])
-        self.assertEqual(3, len(solutions))
+        print_solution(solutions)
+        self.assertEqual(6, len(solutions))
 
         expected_tfs = {
             ((tf.SCALAR_REDUCE, tf.TRANSPOSE, tf.TRANSPOSE),),
+            ((tf.TRANSPOSE, tf.SCALAR_REDUCE, tf.TRANSPOSE),),
             ((tf.NONE, tf.SCALAR_REDUCE, tf.NONE),),
+            ((tf.SCALAR_REDUCE, tf.NONE, tf.NONE),),
             ((tf.SCALAR_REDUCE, tf.SCALAR_REDUCE, tf.SCALAR_REDUCE),)
         }
         self.assertEqual(expected_tfs, self.extract_tfs(solutions))
-
-    def test_match_fmulfadd_to_mma(self):
-        # Should behave identically to standard test_match_fmulfadd
-        solutions = solve_requirement(self.mm_req, [HW_FMUL_AST, HW_FADD_AST])
-        self.assertEqual(3, len(solutions))
 
     def test_direct_match_reduced_to_scalar(self):
         req = expression_node(
@@ -289,7 +330,6 @@ class test_mm_matching(unittest.TestCase):
         op = operand_ref(name="T", indices=('m', 'k', 'n'))
         decimated = decimate_index(op, 'k')
         
-        # As per the new decimation logic in user's prompt:
         # T[m, None, n] should be pruned to T[m, n]
         self.assertEqual(('m', 'n'), decimated.indices)
 

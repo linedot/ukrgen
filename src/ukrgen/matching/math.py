@@ -40,12 +40,13 @@ class operand_ref:
     name: str
     indices: tuple[str,...]
 
-    def get_shape(self) -> set[str]:
+    def get_shape(self) -> list[str]:
         """
         Return the set of active dimensions
         """
+        return list(self.indices)
 
-        return set(idx for idx in self.indices if idx is not None)
+        #return set(idx for idx in self.indices if idx is not None)
 
     def is_dimensionally_valid(self) -> bool:
         """
@@ -71,22 +72,35 @@ class expression_node:
     right: Optional[expression_node|operand_ref] = None
     reduce_dim: Optional[str] = None
 
-    def get_shape(self) -> set[str]:
+    def get_shape(self) -> list[str]:
         """
         Return the output shape of the expression
         """
 
         # Potential OOP rework required if more ops are added in the future
         if self.op in (operation.ADD, operation.MUL):
-            s = self.left.get_shape()
-            if self.right is not None:
-                s |= self.right.get_shape()
+            left_indices = self.left.get_shape()
+            if self.right is None:
+                return left_indices
+
+            right_indices = self.right.get_shape()
+
+            s = []
+            maxlen = max(len(left_indices), len(right_indices))
+
+            l_pad = left_indices + [None] * (maxlen - len(left_indices))
+            r_pad = right_indices + [None] * (maxlen - len(right_indices))
+
+            for l,r in zip(l_pad,r_pad):
+                s.append(l if l is not None else r)
             return s
+
         elif self.op == operation.REDUCE_SUM:
-            return self.left.get_shape() - {self.reduce_dim}
+
+            return [i for i in self.left.get_shape() if i != self.reduce_dim]
         elif self.op == operation.MOVE:
             return self.left.get_shape()
-        return set()
+        return []
 
     def is_dimensionally_valid(self) -> bool:
         """
@@ -107,8 +121,16 @@ class expression_node:
             left_shape = self.left.get_shape()
             # right is not None for a MOVE
             right_shape = self.right.get_shape()
-            if not right_shape.issubset(left_shape):
-                return False
+
+            for i_in,i_out in zip(right_shape, left_shape):
+
+                # Vector -> scalar
+                if i_out is None and i_in is not None:
+                    return False
+                # index mismatch
+                if i_out is not None and i_in is not None:
+                    if i_out != i_in:
+                        return False
         return True
 
     def __str__(self):
@@ -521,10 +543,11 @@ def decimate_index(node : ast_node, idx : str) -> ast_node:
 
 def generate_variants(node: ast_node) -> list[ast_node]:
     """
-    Generates the original AST, plus ASTs where reductions are applied
+    Generates the original AST, ASTs where reductions are applied and
+    Commutative variants with swapped operands for MUL/ADD
 
     :param node: original AST
-    :return: list of original AST and variants with applied reductions
+    :return: list of original AST and generated variants
     """
 
     debug(f"Making variants of {node}")
@@ -540,17 +563,18 @@ def generate_variants(node: ast_node) -> list[ast_node]:
         for r in right_vars:
             # 1. Standard structural variant
             variants.append(expression_node(node.op, l, r, node.reduce_dim))
+
+            # 2. Commutative variants
+            if r is not None and node.op in (operation.ADD, operation.MUL):
+                variants.append(expression_node(node.op,
+                                                left=r, right=l,
+                                                reduce_dim=node.reduce_dim))
+
             
-            # 2. If this is a reduction, ALSO append the bypassed
-            # variant (the loop body)
+            # 3. If this is a reduction, ALSO append the operand of the reduction
+            #    with decimated reduction dimension
             if node.op == operation.REDUCE_SUM:
                 variants.append(decimate_index(l, node.reduce_dim))
-                #if isinstance(l, operand_ref):
-                #    new_indices=tuple([idx for idx in l.indices 
-                #                       if idx != node.reduce_dim])
-                #    variants.append(operand_ref(name=l.name, indices=new_indices))
-                #else:
-                #    variants.append(l) 
 
     debug(f"Generated variants: {variants}")
     return variants
