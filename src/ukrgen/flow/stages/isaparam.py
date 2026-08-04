@@ -40,8 +40,7 @@ class isaparam_stage(stage):
 
         self.context.specializer = lsc_specializer(
                 model=None,
-                gen=self.context.gen,
-                rt=self.context.rt)
+                gen=self.context.gen)
 
         self.context.params.update(self.params)
         return []

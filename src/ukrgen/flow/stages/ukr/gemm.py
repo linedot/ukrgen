@@ -1,6 +1,11 @@
 from dataclasses import dataclass
 
-from .ukr import ukr_composition,sto_description,block_description
+from .ukr import (
+        ukr_composition,
+        sto_description,
+        block_description,
+        dimension
+    )
 
 class gemm_composition(ukr_composition):
 
@@ -14,38 +19,30 @@ class gemm_composition(ukr_composition):
         return ["A","B","AB","C","alpha","beta"]
 
     @classmethod
-    def get_component_sup_tiles(cls, component : str) -> set[str]:
-        if component in {"A"}:
-            return {"a","b"}
-        elif component in {"B"}:
-            return {"a","b"}
-        elif component in ["AB","C","alpha","beta"]:
-            return {"c"}
-
-        raise ValueError(f"Invalid component {component}")
-
-    @classmethod
     def get_parameterized_components(cls) -> list[str]:
         return ["A","B","AB","C"]
 
-    @classmethod
-    def get_component_reference(cls, component: str) -> str:
-        if component in cls.component_reference_map:
-            return cls.component_reference_map[component]
-        
-        return component
 
     @classmethod
     def get_sto_descriptions(cls) -> list[sto_description]:
+
+        dim=dimension
+
         return [
             sto_description(
                 name="mm",
                 generator="mm",
                 components=["A","B","AB"],
+                component_references={},
+                component_sup_tiles={
+                    "A" : {"a","b"},
+                    "B" : {"a","b"},
+                    "AB" : {"c"},
+                    },
                 dimensions = {
-                    "A" : ("m","k"),
-                    "B" : ("k","n"),
-                    "AB" : ("m","n")
+                    "A" : (dim("m"),dim("k")),
+                    "B" : (dim("k"),dim("n")),
+                    "AB" : (dim("m"),dim("n"))
                 },
                 preload=True,
                 tail=True),
@@ -53,9 +50,17 @@ class gemm_composition(ukr_composition):
                 name="betascale",
                 generator="mm",
                 components=["C","beta","C"],
+                component_references={"beta":"C"},
+                component_sup_tiles={
+                    "C" : {"a","b","c"},
+                    "beta" : {"a","b"},
+                    },
                 dimensions = {
-                    "C" : ("m","n"),
-                    "beta" : ("n","n"),
+                    "C" : (dim("m"),dim("n")),
+                    "beta" : (
+                        dim(lambda ctx : ctx.resolved_components["C"][1]),
+                        dim(lambda ctx : ctx.resolved_components["C"][1])
+                    )
                 },
                 preload=False,
                 tail=False,
@@ -64,10 +69,19 @@ class gemm_composition(ukr_composition):
                 name="alphascale",
                 generator="mm",
                 components=["AB","alpha","C"],
+                component_references={"alpha":"C"},
+                component_sup_tiles={
+                    "C" : {"c"},
+                    "alpha" : {"a","b"},
+                    "AB" : {"a","b"},
+                    },
                 dimensions = {
-                    "AB" : ("m","n"),
-                    "C" : ("m","n"),
-                    "alpha" : ("n","n"),
+                    "AB" : (dim("m"),dim("n")),
+                    "C" : (dim("m"),dim("n")),
+                    "alpha" : (
+                        dim(lambda ctx : ctx.resolved_components["C"][1]),
+                        dim(lambda ctx : ctx.resolved_components["C"][1])
+                    )
                 },
                 preload=False,
                 tail=False,
@@ -76,8 +90,10 @@ class gemm_composition(ukr_composition):
                 name="store",
                 generator="store",
                 components=["C"],
+                component_references={},
+                component_sup_tiles={ "C" : {"c"}},
                 dimensions = {
-                    "C" : ("m","n"),
+                    "C" : (dim("m"),dim("n")),
                 },
                 preload=False,
                 tail=False),

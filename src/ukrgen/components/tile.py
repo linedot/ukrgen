@@ -29,6 +29,15 @@ class dimension_properties:
     sdt     : dimension_type
     sd_size : int
 
+
+    def __str__(self):
+        suf = "v" if self.dt == dimension_type.vla else ""
+        ssuf = "v" if self.sdt == dimension_type.vla else ""
+        return f"{self.size}{suf}.{self.sd_size}{ssuf}"
+
+    def __repr__(self):
+        return str(self)
+
 def determine_dreg_tag(dima : dimension_properties, dimb : dimension_properties) -> str:
 
     dreg_tag = 'vreg'
@@ -88,6 +97,16 @@ class tile:
             return True
 
         return False
+
+    def transpose(self) -> tile:
+
+        return tile(dima=self.dimb,
+                    dimb=self.dima,
+                    subtiles=self.subtiles,
+                    subtile_count_a=self.subtile_count_b,
+                    subtile_count_b=self.subtile_count_a,
+                    bands = (self.bands[1],self.bands[0])
+                    )
 
 
     @property

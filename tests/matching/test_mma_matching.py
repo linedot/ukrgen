@@ -13,26 +13,27 @@ import unittest
 from typing import Any
 
 from ukrgen.matching.math import (
-    transformation as tf,
-    expression_node,
-    operation,
-    operand_ref,
-    ast_node,
-    HW_FMUL_AST,
     HW_FADD_AST,
-    HW_FMA_AST,
     HW_FDOTA_AST,
+    HW_FMA_AST,
+    HW_FMUL_AST,
     HW_FOPA_AST,
     HW_MMA_AST,
+    ast_node,
+    decimate_index,
+    expression_node,
     extract_deepest_operation,
-    solve_requirement,
     generate_variants,
-    map_and_match,
-    transform_ast,
-    simplify_ast,
+    get_operand_io,
     get_operands,
+    map_and_match,
+    operand_ref,
+    operation,
+    simplify_ast,
+    solve_requirement,
+    transform_ast,
     transform_operand,
-    decimate_index
+    transformation as tf,
 )
 
 # uncomment this for debugging
@@ -42,19 +43,19 @@ logger = logging.getLogger(__name__)
 def print_solution(solutions : list[list[dict[str,Any]]]):
     
     for i,s in enumerate(solutions):
-        logger.debug(f"Solution {i}:")
+        print(f"Solution {i}:")
         for j,op in enumerate(s):
-            logger.debug(f"  Operation {j}")
-            logger.debug(f"    AST: {op['hw_ast']}")
-            logger.debug( "    Transformations:")
+            print(f"  Operation {j}")
+            print(f"    AST: {op['hw_ast']}")
+            print( "    Transformations:")
             for opd, tfs in op['transformations'].items():
-                logger.debug(f"      {opd}:{'->'.join(t.name for t in tfs)}")
-            logger.debug( "    Name mapping:")
+                print(f"      {opd}:{'->'.join(t.name for t in tfs)}")
+            print( "    Name mapping:")
             for hw_name, req_name in op['name_mapping'].items():
-                logger.debug(f"      {hw_name}->{req_name}")
-            logger.debug( "    Index mapping:")
+                print(f"      {hw_name}->{req_name}")
+            print( "    Index mapping:")
             for hw_idx, req_idx in op['index_mapping'].items():
-                logger.debug(f"      {hw_idx}->{req_idx}")
+                print(f"      {hw_idx}->{req_idx}")
 
 
 class test_mm_matching(unittest.TestCase):
@@ -346,3 +347,10 @@ class test_mm_matching(unittest.TestCase):
         )
         solutions = solve_requirement(add_req, [HW_FMUL_AST])
         self.assertEqual(0, len(solutions))
+
+    def test_operand_io(self):
+
+        self.assertEqual((True,False), get_operand_io(self.mm_req, "A"))
+        self.assertEqual((True,False), get_operand_io(self.mm_req, "B"))
+        self.assertEqual((True,True), get_operand_io(self.mm_req, "C"))
+

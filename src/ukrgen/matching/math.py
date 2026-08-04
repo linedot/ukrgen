@@ -453,7 +453,9 @@ def for_each_operand(n: ast_node,
     Recursively iterate through all operands and apply a function to all of them,
     yielding the return values.
     :param n: root node of the AST
-    :return: set of operand names
+    :param func: function to apply to operands
+    :return: Iterator through return values of the supplied
+             function applied to operands of the AST
     """
     if isinstance(n,operand_ref):
         yield func(n)
@@ -464,6 +466,52 @@ def for_each_operand(n: ast_node,
         yield from for_each_operand(n.left, func)
         if n.right is not None:
             yield from for_each_operand(n.right, func)
+
+def for_each_expression(n: ast_node, func : Callable[[ast_node],Any]) -> Iterator[Any]:
+    """
+    Recursively iterate through all expressions and apply a function to all of them,
+    yielding the return values.
+    :param n: root node of the AST
+    :param func: function to apply to expressions
+    :return: Iterator through return values of the supplied
+             function applied to expressions of the AST
+    """
+    if isinstance(n,expression_node):
+        yield func(n)
+        
+        yield from for_each_expression(n.left, func)
+        if n.right is not None:
+            yield from for_each_expression(n.right, func)
+
+
+def get_operand_io(n: ast_node, opd : str) -> tuple[bool,bool]:
+    """
+    Find out if the operator is used as input,output or both in the AST
+    :param n: root node of the AST
+    :param opd: name of the operand to search for
+    :return: first value is True if the operand is used as input, 
+             second value if it is used as output
+    """
+
+    io = [False,False]
+
+    def mark_io(n: ast_node):
+        if isinstance(n, expression_node):
+            if isinstance(n.left, operand_ref):
+                if operation.MOVE == n.op:
+                    if n.left.name == opd:
+                        io[1] = True
+                if n.left.name == opd:
+                    io[0] = True
+            if n.right is not None:
+                if isinstance(n.right, operand_ref):
+                    if n.right.name == opd:
+                        io[0] = True
+
+    for _ in for_each_expression(n, mark_io):
+        pass
+
+    return tuple(io)
 
 TF_DEGENERACIES = {
     transformation.ROW_REDUCE : {transformation.SCALAR_REDUCE,

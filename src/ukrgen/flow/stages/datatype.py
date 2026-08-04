@@ -104,29 +104,12 @@ class datatype_stage(stage):
         components = composition.get_components()
         sups = self.context.specializer.op_support_map[op]
 
-
-        sup_tile_components = {
-            "a" : set(),
-            "b" : set(),
-            "c" : set(),
-        }
-
         for c in components:
             real_c = composition.get_component_reference(c)
-            sup_tiles = composition.get_component_sup_tiles(real_c)
-            for stile in sup_tiles:
-                if stile in sup_tile_components:
-                    sup_tile_components[stile].add(c)
-            
-            # also squeeze in this assignment into this loop
             cdts[c] = cdts[real_c]
 
-        # If a sup tile is unmapped, this operand will be ignored
-        # in that case we'll still add the sup
-        for sup_tile in sup_tile_components:
-            if not sup_tile_components[sup_tile]:
-                sup_tile_components[sup_tile].add(None)
-        
+        sup_tile_components = composition.get_sup_tile_components()
+
         self.op_support_list = []
         for sup in sups:
             # example:

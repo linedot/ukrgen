@@ -6,7 +6,7 @@
 
 
 
-from abc import abstractmethod
+from abc import abstractmethod,ABC
 from enum import Enum,auto
 
 from ..components import operation
@@ -95,6 +95,26 @@ class mm_op(operation):
     @property
     def k_subidx(self):
         return self.subindices[2]
+
+
+class sto_generator(ABC):
+    def __init__(self,
+                 tiles : list[tile],
+                 loop_order : list[int],
+                 opstr : str,
+                 tile_strs : list[str]):
+
+        if len(tiles) != len(tile_strs):
+            raise ValueError("len(tiles) != len(tile_strs) ({len(tiles)} != {len(tile_strs)})")
+
+        self.tiles = deepcopy(tiles)
+        self.loop_order = loop_order
+        self.opstr = opstr
+        self.tile_strs = tile_strs
+
+    @abstractmethod
+    def generate(self, add_dims : list[int] = None) -> list[operation]:
+        pass
 
 
 class mm:
