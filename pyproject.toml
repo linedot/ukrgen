@@ -20,6 +20,7 @@ dependencies = [
     "mako",
     "patch-ng",
     "GitPython",
+    "PyYAML",
     "asmgen>=0.5.0"
 ]
 
