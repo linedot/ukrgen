@@ -552,7 +552,7 @@ class lsc_specializer:
                          modifiers : set[mod]):
         op_to_append = op
         additional_args = {}
-        additional_args['modifiers'] = modifiers
+        additional_args['modifiers'] = modifiers.copy()
 
         target_op = op
         if adt_size(dt_narrow) < adt_size(dt_wide):
