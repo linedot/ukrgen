@@ -1,30 +1,31 @@
+# ------------------------------------------------------------------------------
+# SPDX-License-Identifier: MIT OR GPL-3.0-or-later
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@fz-juelich.de>
+# Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
+# ------------------------------------------------------------------------------
+
 """
 Classes and datatypes for querying if a capability is
 supported in an asmgen generator
 """
 
-from itertools import combinations
-from dataclasses import dataclass
-
 from asmgen.asmblocks.noarch import asmgen
-from asmgen.registers import adt_triple, asm_data_type as adt
+from asmgen.registers import (
+    asm_data_type as adt,
+    adt_size
+)
 from asmgen.asmblocks.op import (
     operation,
-    opd3,
-    opd3_modifier,
-    opdna1,
-    opdna1_modifier,
     operand_shape,
     operand_type as otype,
     register_type as rtype,
-    operand_constraint as opcst,
     operation_signature as opsig
 )
 
 from ..matching.math import (
     ast_node,
     solve_requirement,
-    for_each_expression,
+    operation as math_op,
     HW_FADD_AST,
     HW_FMUL_AST,
     HW_FMA_AST,
@@ -38,13 +39,12 @@ from ..components.tile import (
     dimension_properties as dimp,
     tile
 )
-from ..models.lsc.reg import lsc_reg_type as lrt
 
 def infer_hw_tile(gen : asmgen,
                   shape : operand_shape,
                   dt : adt) -> tile:
     """
-    Determine operand hw tile from operand shape and 
+    Determine operand hw tile from operand shape and
 
     :param gen: generator to query for additional information
     :param shape: shape of the operand
@@ -52,7 +52,7 @@ def infer_hw_tile(gen : asmgen,
 
     :return: 2D tile representation of the operand
     """
-        
+
 
     vla_vec_dp = dimp(dt=dimt.vla, size=1,
                       sdt=dimt.vla, sd_size=1)
@@ -66,8 +66,8 @@ def infer_hw_tile(gen : asmgen,
 
     if otype.REGISTER == shape.otype and \
             shape.rtype in {rtype.GP,rtype.FP,rtype.MASK}:
-                return tile(dima=fixed_scalar_dp,
-                            dimb=fixed_scalar_dp)
+        return tile(dima=fixed_scalar_dp,
+                    dimb=fixed_scalar_dp)
 
     is_vla = gen.is_vla
 
@@ -91,11 +91,11 @@ def infer_hw_tile(gen : asmgen,
 
     # Just VLA in both dimensions. Potentially different actual sizes
     tile_tile = tile(vla_vec_dp,vla_vec_dp)
-    
+
     # If dims are VLA but a ratio is known, could be something like this?
     # tile_1r2c = tile(dimp(dimt.vla, 1, dimt.vla, 1),
     #                  dimp(dimt.vla, 2, dimt.vla, 2)
-    
+
     # it might make sense to encode whether or not the 2 dimensions are
     # equal or not in the 'tile' structures when both are VLA
 
@@ -131,19 +131,22 @@ class op_support:
         self.data_tiles : dict[str, tile] = {}
         self.hw_tiles : dict[str,tile] = {}
 
-        for name,shape in self.signature.operands.items():
-            self.hw_tiles[name] = infer_hw_tile(shape)
+        #for name,shape in self.signature.operands.items():
+            #self.hw_tiles[name] = infer_hw_tile(shape)
 
 
 def generate_op_supports(gen : asmgen,
                          signature : opsig) -> list[op_support]:
+    """
+    Generate op support structs from an op signature
+    """
     hw_tiles = {
         name : infer_hw_tile(gen,shape,shape.dt) \
             for name,shape in signature.operands.items()
     }
     supports = []
 
-    
+
 
 class op_support_builder:
 
@@ -159,7 +162,14 @@ class op_support_builder:
     def __init__(self, gen : asmgen):
         self.gen = gen
 
-    
+        self.is_vla : bool = False
+        self.fregs_in_vregs : bool = False
+        self.mregs_are_vregs : bool = False
+        self.arith_ops : list[operation]
+        self.ldst_ops : list[operation]
+        self.move_ops : list[operation]
+
+
     @classmethod
     def get_base_op(cls, ast : ast_node):
         for name,opast in cls.op_base_asts:
@@ -174,7 +184,7 @@ class op_support_builder:
         # Is this VLA
         self.is_vla = self.gen.is_vla
         self.fregs_in_vregs = self.gen.are_fregs_in_vregs
-        
+
         # TODO: figure out through signatures
         self.mregs_are_vregs = False
 
@@ -186,41 +196,19 @@ class op_support_builder:
                      'madd',
                      'mma','msa']
 
-        self.arith_ops = [op for op in arith_ops if hasattr(self.gen, op)]
+        self.arith_ops = [op for op in arith_ops if hasattr(self.gen,op)]
 
         # The generator is guaranteed to have those, but for consistencies sake...
         ldst_ops = ['load','store']
         self.ldst_ops = [op for op in ldst_ops if hasattr(self.gen,op)]
-    
+
+        # Might have multiple different ones at some point, for now all are
+        # 'move'
+        move_ops = ['move']
+        self.move_ops = [op for op in move_ops if hasattr(self.gen,op)]
+
 
     def create_base_solutions(self, req : ast_node) -> list[dict]:
-        available_asts = [op_base_asts[op] for op in self.arith_ops]
+        available_asts = [self.op_base_asts[op] for op in self.arith_ops]
 
         return solve_requirement(req, available_asts)
-
-    def determine_scalarization_options(self,
-                                        ast : ast_node,
-                                        opsigs : list[operation_signature],
-                                        osh: operand_shape) -> list[dict]:
-        
-        # if input: BCAST, VF, LANE
-        # if output: LANE
-
-        for_each_expression(ast, func)
-
-        pass
-
-
-    def adapt_solutions_to_isa(self, solutions : [list[dict]]) -> list[dict]:
-        isa_solutions = []
-
-        for solution in solutions:
-            # A solution is a list of ASTs
-            for smap in solution:
-                #TODO:
-                ast = smap['hw_ast']
-                opname = self.get_base_op(ast)
-                op : operation = getattr(self.gen,opname)
-
-                sigs = op.get_signatures()
-        pass
