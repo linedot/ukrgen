@@ -59,6 +59,9 @@ def print_solution(solutions : list[list[dict[str,Any]]]):
 
 
 class test_mm_matching(unittest.TestCase):
+    """
+    Test math matching, mostly revolving around matching matmul intent/requirement
+    """
 
     def setUp(self):
         self.mm_req = expression_node(
