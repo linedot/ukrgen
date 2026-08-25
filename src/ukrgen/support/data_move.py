@@ -44,6 +44,9 @@ class register_reference:
     """
     Register reference for a data movement step, either reference to the
     operand of the arithmetic op or a temporary that requires allocation
+
+    :param is_op_opd: True if this is a reference to the original operand of the operation
+    :param tag: string identifying a temporary that requires allocation
     """
     is_op_opd : bool = False
     tag : str|None = None
@@ -65,6 +68,9 @@ class register_reference:
     def from_string(cls, s : str) -> "register_reference":
         """
         Create a register reference from a string
+
+        :param s: string representating a register reference
+        :return: Reference to a register as encoded by the string
         """
         match s.split("_", 1):
 
@@ -96,6 +102,15 @@ class temp_ref(register_reference):
 class dm_step:
     """
     Data movement step as part of a transformation resolution
+
+    :param op: Data movement operation this step invokes (move/load/store)
+    :param dest: Reference to the register this step writes into
+    :param dest_rtype: Destination register type (FP,VEC,GP, ...)
+    :param src: List of references to registers this step reads from
+    :param src_rtypes: List of register types of the sources
+    :param op_mod_reqs: Required operation modifiers in the op signature
+    :param opd_mod_reqs: Required operand modifiers in the op signature mapped to register
+                         references as used in the step
     """
     op:           str|None = None
     dest:         register_reference|None = None
@@ -110,6 +125,15 @@ class transformation_resolution:
     """
     "Resolution" aka one possible way to satisfy the data requirement of a
     transformed operand
+
+    :param unique_tag: Name/Tag identifying this specific transformation resolution, duplicate
+                       tags for the same :class:`ukrgen.support.data_move.tfr_key` are not
+                       allowed
+    :param steps: list of steps, in order, to perform the data moves required for this
+                  resolution
+    :param op_mod_reqs: Modifiers required in the signature of the arithmetic operation
+    :param opd_mod_reqs: Operand modifiers required in the signature of the arithmetic
+                         operation, mapped to register references as used in the dm steps
     """
     unique_tag:   str
     steps:        list[dm_step]
@@ -117,12 +141,15 @@ class transformation_resolution:
     opd_mod_reqs: set[omod] = field(default_factory=set)
 
 
-
 @dataclass(frozen=True)
 class tfr_key:
     """
     The required transformation, register type and whether the operand is
     used as an input or output encode the "key" to the resolution registry
+
+    :param tfs: Transformations of the operand as returned by the solver
+    :param rtype: Operand register type
+    :param ddir: Whether the operand is an input or an output of the arithmetic operation
     """
     tfs: frozenset[tf]
     rtype: rgt
@@ -131,6 +158,10 @@ class tfr_key:
 class resolution_registry:
     """
     Registry for possible resolution of a transformation
+
+    :param tfr_map: list of possible resolution for each requirement
+    :param tfr_tags: used internally to track unique_tag s of the resolution to prevent 
+                     duplicates
     """
 
     def __init__(self):
@@ -141,6 +172,9 @@ class resolution_registry:
     def add_resolution(self, key : tfr_key, rsln : transformation_resolution):
         """
         Adds a possible resolution for a transformation
+
+        :param key: operand transformation requirement resolved by rsln
+        :param rsln: Transformation resolution
         """
         if key not in self.tfr_map:
             self.tfr_map[key] = []
@@ -168,6 +202,10 @@ def filter_by_op_mods(sigs : list[opsig],
     """
     Filter signatures by selecting a subset that matches the modifier
     requirements
+
+    :param sigs: List of signatures to filter
+    :param op_mod_reqs: Operation modifier requirement
+    :return: filtered list of signatures
     """
 
     if op_mod_reqs:
@@ -180,7 +218,7 @@ def filter_by_op_mods(sigs : list[opsig],
     return sigs
 
 def filter_by_operand_mods(sigs : list[opsig],
-                           opd_mod_reqs,
+                           opd_mod_reqs: set[omod],
                            target_opd_name : str,
                            target_dt : adt,
                            target_rtype : rgt
@@ -188,6 +226,13 @@ def filter_by_operand_mods(sigs : list[opsig],
     """
     Filter signatures by selecting a subset that matches the operand modifier
     requirements
+
+    :param sigs: List of signatures to filter
+    :param opd_mod_reqs: Required operand modifiers
+    :param target_opd_name: Name of the operand in the operation signature
+    :param target_dt: Required operand data type
+    :param target_rtype: Required operand register type
+    :return: filtered list of signatures
     """
 
     if opd_mod_reqs:
@@ -216,6 +261,9 @@ def get_op_rtype_req(steps : list[dm_step]) -> rgt:
     """
     extract register type requirement for the compute operation
     from the step list
+
+    :param steps: list of data movement steps
+    :return: Register type of the operand as required by the compute operation
     """
     for step in steps:
         if step.dest == orig_ref():
@@ -232,6 +280,11 @@ def get_dm_sig_io_operands(opname : str,
                            sig : opsig) -> tuple[list[osh],list[osh]]:
     """
     Extract the inputs and outputs of a load/store/move operation
+
+    :param opname: name of the operation (load,store or move)
+    :param sig: operation signature
+    :return: pair/2-tuple of lists containing (inputs,outputs)
+    :raises ValueError: if opname is not load,store or move
     """
 
     dregs = [sig.operands[name] for name in sig.operands if ('dreg' in name and '_' not in name)]
@@ -254,13 +307,19 @@ def get_dm_sig_io_operands(opname : str,
 
 
 def filter_by_operand_count(
-        opname : str,
         sigs : list[opsig],
+        opname : str,
         input_count : int,
         output_count : int
         ) -> list[opsig]:
     """
     Filters load/store/move operations by matching numbers of inputs/outputs
+
+    :param sigs: List of signatures to filter
+    :param opname: Name of the operation (load, store or move)
+    :param input_count: required number of inputs
+    :param output_count: required number of outputs
+    :return: filtered list of signatures
     """
 
     filtered_sigs = []
@@ -281,6 +340,11 @@ def filter_by_step_requirements(
     """
     Filter data move (load/store/move) operation signatures by the requirements
     of the data move steps they are used in
+
+    :param sigs: List of signatures to filter
+    :param step: Step to match the requirements of
+    :param target_dt: Required operand data type
+    :return: filtered list of signatures
     """
 
     # NOTE: having ONE target_dt excludes something like an
@@ -297,7 +361,7 @@ def filter_by_step_requirements(
     output_count = 1
     input_count = len(step.src)
 
-    sigs = filter_by_operand_count(step.op, sigs, input_count, output_count)
+    sigs = filter_by_operand_count(sigs, step.op, input_count, output_count)
     if not sigs:
         return []
 
@@ -330,6 +394,12 @@ def check_resolution(
     """
     Check if a specific resolution is valid for the chosen operation,
     operand and data type
+
+    :param gen: Generator providing operations
+    :param rsln: Transformation resolution to check
+    :param target_opd_name: Operand to check
+    :param target_dt: Required operand data type
+    :param target_op: Compute operation to check
     """
 
     op = getattr(gen, target_op)
