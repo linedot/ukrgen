@@ -647,14 +647,24 @@ def validate_variance(req: ast_node, hw: ast_node,
                 return False
     return True
 
-def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
+@dataclass
+class req_solution_step:
+    """
+    One step of a solution to an AST requirement
+    """
+    hw_ast : ast_node
+    transformations : dict[str, list[transformation]]
+    name_mapping : dict[str,str]
+    index_mapping : dict[str,str]
+
+def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[req_solution_step]:
     """
     Generator that transforms an HW AST and yields the transformed ast if
     it matches the requirement
 
     :param req: Mathematical requirement
     :param hw_ast: Single AST representing HW operation
-    :return: matching transformed HW ASTs
+    :return: solution steps containing matching transformed HW ASTs
     """
     if hw_ast.op != operation.MOVE:
         raise ValueError(
@@ -687,12 +697,12 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[dict]:
             
             # 4. VARIANCE VALIDATION: Reject fake scalars (All-None Swallows)
             if validate_variance(req, simplified_hw, index_mapping):
-                yield {
-                    "hw_ast": hw_ast,
-                    "transformations": trans_dict,
-                    "name_mapping": name_mapping,
-                    "index_mapping": index_mapping
-                }
+                yield req_solution_step(
+                    hw_ast=hw_ast,
+                    transformations=trans_dict,
+                    name_mapping=name_mapping,
+                    index_mapping=index_mapping
+                )
             else:
                 debug(f"variance validation failed")
 
@@ -744,13 +754,13 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
             for rem_chain in remainder_solutions:
 
                 # This must be a temporary
-                output_opd = dep_chain[-1]['hw_ast'].left 
-                dep_tfs = dep_chain[-1]['transformations'][output_opd.name]
+                output_opd = dep_chain[-1].hw_ast.left 
+                dep_tfs = dep_chain[-1].transformations[output_opd.name]
 
                 invalid_change = False
-                for opd in for_each_operand(rem_chain[0]['hw_ast'], lambda x : x):
+                for opd in for_each_operand(rem_chain[0].hw_ast, lambda x : x):
                     if opd.name == output_opd.name:
-                        rem_tfs = rem_chain[0]['transformations'][opd.name]
+                        rem_tfs = rem_chain[0].transformations[opd.name]
                         if transform_ast(output_opd, {opd.name:rem_tfs}) != \
                                 transform_ast(opd, {opd.name:dep_tfs}):
                             invalid_change = True

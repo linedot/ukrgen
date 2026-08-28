@@ -34,27 +34,28 @@ from ukrgen.matching.math import (
     transform_ast,
     transform_operand,
     transformation as tf,
+    req_solution_step as rsstep
 )
 
 # uncomment this for debugging
 #logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
-def print_solution(solutions : list[list[dict[str,Any]]]):
+def print_solution(solutions : list[list[rsstep]]):
     
     for i,s in enumerate(solutions):
         print(f"Solution {i}:")
         for j,op in enumerate(s):
             print(f"  Operation {j}")
-            print(f"    AST: {op['hw_ast']}")
+            print(f"    AST: {op.hw_ast}")
             print( "    Transformations:")
-            for opd, tfs in op['transformations'].items():
+            for opd, tfs in op.transformations.items():
                 print(f"      {opd}:{'->'.join(t.name for t in tfs)}")
             print( "    Name mapping:")
-            for hw_name, req_name in op['name_mapping'].items():
+            for hw_name, req_name in op.name_mapping.items():
                 print(f"      {hw_name}->{req_name}")
             print( "    Index mapping:")
-            for hw_idx, req_idx in op['index_mapping'].items():
+            for hw_idx, req_idx in op.index_mapping.items():
                 print(f"      {hw_idx}->{req_idx}")
 
 
@@ -89,7 +90,7 @@ class test_mm_matching(unittest.TestCase):
         for sol in solutions:
             sol_tfs = []
             for op in sol:
-                tfs = op['transformations']
+                tfs = op.transformations
                 sol_tfs.append((
                     tfs.get('adreg', [tf.NONE])[0],
                     tfs.get('bdreg', [tf.NONE])[0],
