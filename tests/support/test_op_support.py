@@ -17,6 +17,8 @@ from typing import Any
 from asmgen.asmblocks.rvv import rvv
 from asmgen.asmblocks.sme import sme
 from asmgen.asmblocks.sve import sve
+
+from asmgen.registers import asm_data_type as adt
 from ukrgen.matching.math import (
     transformation as tf,
     expression_node,
@@ -186,7 +188,10 @@ class test_op_support(unittest.TestCase):
             )
         )
 
-        impls = osb.find_hw_implementations(mm_req, registry)
+        opds = get_operands(mm_req)
+        dts = {opd : adt.FP64 for opd in opds}
+
+        impls = osb.find_hw_implementations(req=mm_req, registry=registry, io_dts=dts)
 
 
         print(f"Number of solutions:{len(impls)}")

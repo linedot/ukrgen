@@ -282,8 +282,10 @@ class op_support_builder:
     def find_hw_implementations(
             self,
             req : ast_node,
-            registry: resolution_registry
-            ) -> dict[frozenset[tuple[str,adt]],list[resolved_operation_chain]]:
+            registry: resolution_registry,
+            io_dts : dict[str,adt],
+            #) -> dict[frozenset[tuple[str,adt]],list[resolved_operation_chain]]:
+            ) -> list[resolved_operation_chain]:
         """
         Find all possible ways of performing the specified chain of mathematical operations with
         all required data movements and computations
@@ -299,49 +301,53 @@ class op_support_builder:
 
         solutions = self.create_base_solutions(req)
 
-        dt_options = self.get_all_ldst_opd_dts()
-        io_operands = list(get_operands(req))
+        #dt_options = self.get_all_ldst_opd_dts()
+        #io_operands = list(get_operands(req))
 
 
-        resolved_solutions : dict[frozenset[tuple[str,adt]],resolved_operation_chain] = dict()
+        #resolved_solutions : dict[frozenset[tuple[str,adt]],resolved_operation_chain] = dict()
+        resolved_solutions : list[resolved_operation_chain] = []
         
-        for dt_combo in itertools.product(dt_options, repeat=len(io_operands)):
-            io_dts = dict(zip(io_operands,dt_combo))
+        #for dt_combo in itertools.product(dt_options, repeat=len(io_operands)):
+        #    io_dts = dict(zip(io_operands,dt_combo))
 
-            key = frozenset(zip(io_operands,dt_combo))
+        #key = frozenset(zip(io_operands,dt_combo))
 
-            for solution in solutions:
-                resolved_solution_steps = []
+        for solution in solutions:
+            resolved_solution_steps = []
 
-                dts = io_dts.copy()
+            dts = io_dts.copy()
 
-                for sstep in solution:
-                    dts = self.match_temporary_dts(sstep, dts)
+            for sstep in solution:
+                dts = self.match_temporary_dts(sstep, dts)
 
-                step_invalid = False
-                for sstep in solution:
+            step_invalid = False
+            for sstep in solution:
 
-                    #hw_dts = [dts[sstep.name_mapping[opd]] for opd in get_operands(sstep.hw_ast)]
-                    
-                    step_candidates = resolve_ast_solution(
-                            self.gen, sstep, 
-                            dts, self.ast_op_map[sstep.hw_ast],
-                            registry)
-                    if not step_candidates:
-                        step_invalid = True
-                        print(f"unresolvable step; AST= {sstep.hw_ast}")
-                        break
+                #hw_dts = [dts[sstep.name_mapping[opd]] for opd in get_operands(sstep.hw_ast)]
+                
+                step_candidates = resolve_ast_solution(
+                        self.gen, sstep, 
+                        dts, self.ast_op_map[sstep.hw_ast],
+                        registry)
+                if not step_candidates:
+                    step_invalid = True
+                    print(f"unresolvable step; AST= {sstep.hw_ast}")
+                    break
 
-                    resolved_solution_steps.append(step_candidates)
+                resolved_solution_steps.append(step_candidates)
 
 
-                if not step_invalid:
-                    if key not in resolved_solutions:
-                        resolved_solutions[key] = []
-                    for step_resolution_choice in itertools.product(*resolved_solution_steps):
-                        resolved_solutions[key].append(resolved_operation_chain(
-                                math_chain=solution,
-                                resolved_chain=step_resolution_choice))
+            if not step_invalid:
+                #if key not in resolved_solutions:
+                #    resolved_solutions[key] = []
+                for step_resolution_choice in itertools.product(*resolved_solution_steps):
+                    #resolved_solutions[key].append(resolved_operation_chain(
+                    resolved_solutions.append(resolved_operation_chain(
+                            math_chain=solution,
+                            resolved_chain=step_resolution_choice))
+            else:
+                print(f"Unresolvable solution {solution}")
 
         return resolved_solutions
 
