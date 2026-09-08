@@ -16,6 +16,7 @@ from typing import Any
 
 from asmgen.asmblocks.rvv import rvv
 from asmgen.asmblocks.sme import sme
+from asmgen.asmblocks.sve import sve
 from ukrgen.matching.math import (
     transformation as tf,
     expression_node,
@@ -38,6 +39,12 @@ from ukrgen.matching.math import (
     transform_operand,
     decimate_index
 )
+
+
+from ukrgen.support.data_move import resolution_registry
+
+from ukrgen.support.dm_resolutions.direct import direct_provider
+from ukrgen.support.dm_resolutions.scalar_reduce import scalar_reduce_provider
 
 
 from ukrgen.support.op import op_support_builder
@@ -153,3 +160,33 @@ class test_op_support(unittest.TestCase):
                 for op in osb.ldst_ops}
 
         print_unified_signatures(sigs)
+
+    def test_sve_solutions(self):
+
+        osb = op_support_builder(gen=sve())
+        osb.determine_base_support()
+        registry = resolution_registry()
+
+        scalar_reduce_provider().register_resolutions(registry)
+        direct_provider().register_resolutions(registry)
+
+        mm_req = expression_node(
+            op=operation.MOVE,
+            left=operand_ref(name="C", indices=('m', 'n')),
+            right=expression_node(
+                op=operation.ADD,
+                left=operand_ref(name="C", indices=('m', 'n')),
+                right=expression_node(
+                    op=operation.REDUCE_SUM,
+                    left=expression_node(
+                        op=operation.MUL,
+                        left=operand_ref(name="A", indices=('m', 'k')),
+                        right=operand_ref(name="B", indices=('k', 'n'))),
+                    reduce_dim='k')
+            )
+        )
+
+        impls = osb.find_hw_implementations(mm_req, registry)
+
+
+        print(f"Number of solutions:{len(impls)}")

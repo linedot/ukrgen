@@ -710,7 +710,7 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[req_solutio
 
 def solve_requirement(req: ast_node, hw_asts: list[ast_node],
                       temp_counter=0) \
-        -> list[list[dict]]:
+        -> list[list[req_solution_step]]:
     """
     Generates a list of hw ASTs that solve the mathematical requirement
 
