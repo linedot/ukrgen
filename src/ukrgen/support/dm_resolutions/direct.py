@@ -47,7 +47,7 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="store", dest=orig_ref(), dest_rtype=rtype)
+                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype])
                         ]))
             
             # Exactly the same, but with tf.NONE instead of an empty set
@@ -69,5 +69,5 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="store", dest=orig_ref(), dest_rtype=rtype)
+                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype])
                         ]))

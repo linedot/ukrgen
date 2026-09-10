@@ -123,6 +123,7 @@ def generate_operand_resolution_candidates(
 
     for rsln in rslns:
 
+
         compute_sigs = filter_by_op_mods(all_compute_sigs, rsln.op_mod_reqs)
         if not compute_sigs:
             continue
@@ -238,9 +239,10 @@ def get_opd_candidates(*,
                     target_op=opname)
 
             if not candidates:
-                return []
+                return {}
 
             opd_candidates[(opd_name, ddir)] = candidates
+
 
     return opd_candidates
 
@@ -273,6 +275,9 @@ def enumerate_resolutions(*,
 
     combo_keys = list(opd_candidates.keys())
 
+    if not combo_keys:
+        return []
+
     valid_resolutions = []
 
     for combo in itertools.product(*(opd_candidates[k] for k in combo_keys)):
@@ -285,10 +290,6 @@ def enumerate_resolutions(*,
                 sig for sig in intersected_sigs
                 if sig in combo_dict[k].valid_compute_sigs
             ]
-
-            print(f'combo: {combo}')
-            print(f'intersected_sigs: {intersected_sigs}')
-
 
 
         if intersected_sigs:

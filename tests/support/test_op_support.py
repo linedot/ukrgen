@@ -191,6 +191,7 @@ class test_op_support(unittest.TestCase):
         opds = get_operands(mm_req)
         dts = {opd : adt.FP64 for opd in opds}
 
+
         impls = osb.find_hw_implementations(req=mm_req, registry=registry, io_dts=dts)
 
 

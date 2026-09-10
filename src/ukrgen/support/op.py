@@ -321,6 +321,7 @@ class op_support_builder:
             for sstep in solution:
                 dts = self.match_temporary_dts(sstep, dts)
 
+
             step_invalid = False
             for sstep in solution:
 
@@ -332,7 +333,6 @@ class op_support_builder:
                         registry)
                 if not step_candidates:
                     step_invalid = True
-                    print(f"unresolvable step; AST= {sstep.hw_ast}")
                     break
 
                 resolved_solution_steps.append(step_candidates)
@@ -346,8 +346,6 @@ class op_support_builder:
                     resolved_solutions.append(resolved_operation_chain(
                             math_chain=solution,
                             resolved_chain=step_resolution_choice))
-            else:
-                print(f"Unresolvable solution {solution}")
 
         return resolved_solutions
 

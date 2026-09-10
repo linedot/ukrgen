@@ -358,20 +358,21 @@ def filter_by_step_requirements(
     # to handle it with an irmod, fusing multiple loads/stores/moves when
     # possible. Unless there is an exotic architecture that provides ONLY
     # instructions that work on multiple outputs
-    output_count = 1
+    output_count = 1 if step.dest is not None else 0
     input_count = len(step.src)
 
     sigs = filter_by_operand_count(sigs, step.op, input_count, output_count)
     if not sigs:
         return []
 
-    dest_key = f"{mop(len(step.src))}dreg"
 
     opd_map = {f"{mop(i)}dreg" : ref for i,ref in enumerate(step.src)}
-    opd_map[dest_key] = step.dest
-
     rtype_map = {f"{mop(i)}dreg" : rtype for i,rtype in enumerate(step.src_rtypes)}
-    rtype_map[dest_key] = step.dest_rtype
+
+    if step.dest is not None:
+        dest_key = f"{mop(len(step.src))}dreg"
+        opd_map[dest_key] = step.dest
+        rtype_map[dest_key] = step.dest_rtype
 
     for opd,ref in opd_map.items():
         opd_mod_reqs = step.opd_mod_reqs.get(ref,set())
