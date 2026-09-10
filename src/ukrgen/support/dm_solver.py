@@ -92,6 +92,8 @@ class operation_resolution:
     operand_strategies: dict[tuple[str, dmd], resolved_operand_strategy]
 
 
+# Tried splitting it up. made it less readable
+# pylint: disable-next=too-many-locals
 def generate_operand_resolution_candidates(
         gen : asmgen,
         rslns : list[tr],
@@ -197,7 +199,7 @@ def deduce_operand_rtype(
     raise ValueError(f"Invalid number of dimensions in operand {opd_name}: {dim_count}")
 
 
-def enumerate_resolutions(
+def get_opd_candidates(*,
         gen : asmgen,
         tfs : dict[str,tf],
         dir_reqs : dict[str,set[dmd]],
@@ -205,10 +207,9 @@ def enumerate_resolutions(
         hw_rtypes : dict[str,rgt],
         opname : str,
         registry : resolution_registry
-        ) -> list[operation_resolution]:
+        ) -> dict[tuple[str,dmd], list[resolved_operand_strategy]]:
     """
-    Given an operation, operand names, transformations, directions, data and register
-    types, select and resolve valid operation usages
+    For each operand and direction, get a list of valid strategies
 
     :param gen: Generator to inspect the operations of
     :param tfs: required operand transformations
@@ -217,7 +218,7 @@ def enumerate_resolutions(
     :param hw_rtypes: operand register types
     :param opname: name of the operation
     :param registry: Registry containing available operand transformation resolutions
-    :return: list of operation resolutions that can be used to satisfy the requirements
+    :return: list of possible operand strategies for each operand and dm direction
     """
 
     opd_candidates : dict[tuple[str,dmd],list[resolved_operand_strategy]] = {}
@@ -241,6 +242,35 @@ def enumerate_resolutions(
 
             opd_candidates[(opd_name, ddir)] = candidates
 
+    return opd_candidates
+
+def enumerate_resolutions(*,
+        gen : asmgen,
+        tfs : dict[str,tf],
+        dir_reqs : dict[str,set[dmd]],
+        hw_dts : dict[str,adt],
+        hw_rtypes : dict[str,rgt],
+        opname : str,
+        registry : resolution_registry
+        ) -> list[operation_resolution]:
+    """
+    Given an operation, operand names, transformations, directions, data and register
+    types, select and resolve valid operation usages
+
+    :param gen: Generator to inspect the operations of
+    :param tfs: required operand transformations
+    :param dir_reqs: Operand I/O role in the operation (input and/or output)
+    :param hw_dts: operand data types
+    :param hw_rtypes: operand register types
+    :param opname: name of the operation
+    :param registry: Registry containing available operand transformation resolutions
+    :return: list of operation resolutions that can be used to satisfy the requirements
+    """
+
+    opd_candidates = get_opd_candidates(
+            gen=gen, tfs=tfs, dir_reqs=dir_reqs, hw_dts=hw_dts, hw_rtypes=hw_rtypes,
+            opname=opname, registry=registry)
+
     combo_keys = list(opd_candidates.keys())
 
     valid_resolutions = []
@@ -255,6 +285,11 @@ def enumerate_resolutions(
                 sig for sig in intersected_sigs
                 if sig in combo_dict[k].valid_compute_sigs
             ]
+
+            print(f'combo: {combo}')
+            print(f'intersected_sigs: {intersected_sigs}')
+
+
 
         if intersected_sigs:
             valid_resolutions.append(
