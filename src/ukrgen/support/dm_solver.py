@@ -165,7 +165,8 @@ def deduce_operand_rtype(
         dt : adt
         ) -> rgt:
     """
-    Find out what register type is required for an operand in the AST by investigating it's dimensions
+    Find out what register type is required for an operand in the AST by investigating
+    it's dimensions
 
     :param ast: AST that uses this operand
     :param opd_name: Name of the operand as it is used in the AST
@@ -179,7 +180,7 @@ def deduce_operand_rtype(
             dim_count = sum(1 for idx in opd.indices if idx is not None)
 
     if dim_count is None:
-        ValueError(f"Operand {opd_name} not used in AST {ast}")
+        raise ValueError(f"Operand {opd_name} not used in AST {ast}")
 
     if dim_count == 2:
         return rgt.TILE
@@ -188,7 +189,7 @@ def deduce_operand_rtype(
     if dim_count == 0:
         if adt_is_float(dt):
             return rgt.FP
-        elif adt_is_int(dt):
+        if adt_is_int(dt):
             return rgt.GP
 
         raise ValueError(f"Invalid data type {dt}")
@@ -206,9 +207,9 @@ def enumerate_resolutions(
         registry : resolution_registry
         ) -> list[operation_resolution]:
     """
-    Given an operation, operand names, transformations, directions, data and register types, select and resolve
-    valid operation usages
-    
+    Given an operation, operand names, transformations, directions, data and register
+    types, select and resolve valid operation usages
+
     :param gen: Generator to inspect the operations of
     :param tfs: required operand transformations
     :param dir_reqs: Operand I/O role in the operation (input and/or output)
@@ -218,16 +219,13 @@ def enumerate_resolutions(
     :param registry: Registry containing available operand transformation resolutions
     :return: list of operation resolutions that can be used to satisfy the requirements
     """
-    
+
     opd_candidates : dict[tuple[str,dmd],list[resolved_operand_strategy]] = {}
 
     for opd_name, opd_tfs in tfs.items():
-        target_dt = hw_dts[opd_name]
-        target_rtype = hw_rtypes[opd_name]
-        req_dirs = dir_reqs.get(opd_name,set())
 
-        for ddir in req_dirs:
-            key = tfr_key(tfs=frozenset(opd_tfs), rtype=target_rtype, ddir=ddir)
+        for ddir in dir_reqs.get(opd_name,set()):
+            key = tfr_key(tfs=frozenset(opd_tfs), rtype=hw_rtypes[opd_name], ddir=ddir)
 
             rslns = registry.tfr_map.get(key, [])
 
@@ -235,7 +233,7 @@ def enumerate_resolutions(
                     gen=gen,
                     rslns=rslns,
                     target_opd_name=opd_name,
-                    target_dt=target_dt,
+                    target_dt=hw_dts[opd_name],
                     target_op=opname)
 
             if not candidates:
@@ -266,6 +264,29 @@ def enumerate_resolutions(
                     operand_strategies=combo_dict))
 
     return valid_resolutions
+
+
+def get_dir_reqs(ast : ast_node, opds : list[str]) -> dict[str,set[dmd]]:
+    """
+    Given a list of operand names and an AST, determine for each operand if they are used as
+    inputs to, or outputs of, the AST - or both and return a dictionary with the information
+
+    :param ast: AST to query
+    :param opds: list of operand names
+    :return: data movement directions as a set mapped to each operand name in the list
+    """
+    dir_reqs : dict[str, set[dmd]] = {}
+    for opd_name in opds:
+        is_in, is_out = get_operand_io(ast, opd_name)
+        dirs = set()
+        if is_in:
+            dirs.add(dmd.IN)
+        if is_out:
+            dirs.add(dmd.OUT)
+
+        dir_reqs[opd_name] = dirs
+
+    return dir_reqs
 
 
 def resolve_ast_solution(
@@ -303,18 +324,9 @@ def resolve_ast_solution(
     for opd_name in opd_tfs.keys():
         hw_rtypes[opd_name] = deduce_operand_rtype(hw_ast, opd_name, hw_dts[opd_name])
 
-    dir_reqs : dict[str, set[dmd]] = {}
-    for opd_name in opd_tfs.keys():
-        is_in, is_out = get_operand_io(hw_ast, opd_name)
-        dirs = set()
-        if is_in:
-            dirs.add(dmd.IN)
-        if is_out:
-            dirs.add(dmd.OUT)
+    dir_reqs : dict[str, set[dmd]] = get_dir_reqs(hw_ast, opd_tfs.keys())
 
-        dir_reqs[opd_name] = dirs
 
-    
     return enumerate_resolutions(
             gen=gen,
             tfs=opd_tfs,
@@ -332,11 +344,14 @@ class resolved_operation_chain:
     Complete hardware implementation equivalent to the solution of an AST requirement
     """
 
-    math_chain: list[rsstep]
-    resolved_chain: list[operation_resolution]
+    math_chain: list[rsstep] = field(default_factory=list)
+    resolved_chain: list[operation_resolution] = field(default_factory=list)
 
 
     def encode(self) -> list[str]:
+        """
+        Returns a string representation of the chain
+        """
         step_encodings = []
         for res in self.resolved_chain:
             opd_str = []
@@ -348,6 +363,6 @@ class resolved_operation_chain:
 
     @classmethod
     def decode(cls, step_encodings : str, registry : resolution_registry):
-        pass
-
-
+        """
+        constructs the chain from its string representation
+        """
