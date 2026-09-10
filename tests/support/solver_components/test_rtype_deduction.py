@@ -3,6 +3,9 @@
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@fz-juelich.de>
 # Copyright (C) 2021 Stepan Nassyr <s.nassyr@xcpp.org>
 # ------------------------------------------------------------------------------
+"""
+Tests correctness of register type deduction from mathematical AST
+"""
 
 import unittest
 
@@ -28,7 +31,7 @@ from ukrgen.support.dm_solver import (
 
 class test_rtype_deduction(unittest.TestCase):
     """
-    Testsuite for solver components
+    Testsuite for rtype deduction from AST operands and datatype
     """
     def setUp(self):
         
