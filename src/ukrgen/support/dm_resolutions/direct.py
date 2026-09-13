@@ -37,7 +37,8 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="load", dest=orig_ref(), dest_rtype=rtype)
+                        dm_step(op="load", dest=orig_ref(), dest_rtype=rtype,
+                                forbidden_opd_mods={orig_ref(): {omod.BCAST,omod.GLANE,omod.ILANE}})
                         ]))
 
             # Direct store
@@ -47,7 +48,8 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype])
+                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype],
+                                forbidden_opd_mods={orig_ref(): {omod.GLANE,omod.ILANE}})
                         ]))
             
             # Exactly the same, but with tf.NONE instead of an empty set
@@ -59,7 +61,8 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="load", dest=orig_ref(), dest_rtype=rtype)
+                        dm_step(op="load", dest=orig_ref(), dest_rtype=rtype,
+                                forbidden_opd_mods={orig_ref(): {omod.BCAST,omod.GLANE,omod.ILANE}})
                         ]))
 
             # Direct store
@@ -69,5 +72,6 @@ class direct_provider(resolution_provider):
                 rsln=tr(
                     unique_tag='direct',
                     steps=[
-                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype])
+                        dm_step(op="store", src=[orig_ref()], src_rtypes=[rtype],
+                                forbidden_opd_mods={orig_ref(): {omod.GLANE,omod.ILANE}})
                         ]))

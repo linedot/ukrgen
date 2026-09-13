@@ -109,7 +109,10 @@ class dm_step:
     :param src: List of references to registers this step reads from
     :param src_rtypes: List of register types of the sources
     :param op_mod_reqs: Required operation modifiers in the op signature
+    :param op_mod_reqs: Forbidden operation modifiers in the op signature
     :param opd_mod_reqs: Required operand modifiers in the op signature mapped to register
+                         references as used in the step
+    :param opd_mod_reqs: Forbidden operand modifiers in the op signature mapped to register
                          references as used in the step
     """
     op:           str|None = None
@@ -118,7 +121,9 @@ class dm_step:
     src:          list[register_reference] = field(default_factory=list)
     src_rtypes:   list[rgt] = field(default_factory=list)
     op_mod_reqs:  set[opmod] = field(default_factory=set)
+    forbidden_op_mods: set[opmod] = field(default_factory=set)
     opd_mod_reqs: dict[register_reference,set[omod]] = field(default_factory=dict)
+    forbidden_opd_mods: dict[register_reference,set[omod]] = field(default_factory=dict)
 
 @dataclass
 class transformation_resolution:
@@ -138,7 +143,9 @@ class transformation_resolution:
     unique_tag:   str
     steps:        list[dm_step]
     op_mod_reqs:  set[opmod] = field(default_factory=set)
+    forbidden_op_mods: set[opmod] = field(default_factory=set)
     opd_mod_reqs: set[omod] = field(default_factory=set)
+    forbidden_opd_mods: set[omod] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -250,6 +257,43 @@ def filter_by_operand_mods(sigs : list[opsig],
 
     return filtered_sigs
 
+def filter_by_forbidden_op_mods(sigs: list[opsig],
+                                forbidden: set[opmod]) -> list[opsig]:
+    """
+    Filter signatures by selecting a subset that does NOT have the forbidden
+    modifiers
+
+    :param sigs: List of signatures to filter
+    :param forbidden: Forbidden operation signatures
+    :return: filtered list of signatures
+    """
+    if not forbidden:
+        return sigs
+    return [sig for sig in sigs if not forbidden & sig.modifiers]
+
+
+def filter_by_forbidden_operand_mods(sigs: list[opsig],
+                                     forbidden: set[omod],
+                                     target_opd_name: str) -> list[opsig]:
+    """
+    Filter signatures by selecting a subset that does NOT have the forbidden
+    modifiers on the shape of the specified operand
+
+    :param sigs: List of signatures to filter
+    :param forbidden: Forbidden operation signatures
+    :param target_opd_name: Name of the operand in the operation signature
+    :return: filtered list of signatures
+    """
+    if not forbidden:
+        return sigs
+    out = []
+    for sig in sigs:
+        if target_opd_name not in sig.operands:
+            continue
+        if forbidden & sig.operands[target_opd_name].modifiers:
+            continue
+        out.append(sig)
+    return out
 
 def get_op_rtype_req(steps : list[dm_step]) -> rgt:
     """
@@ -348,6 +392,10 @@ def filter_by_step_requirements(
     if not sigs:
         return []
 
+    sigs = filter_by_forbidden_op_mods(sigs, step.forbidden_op_mods)
+    if not sigs:
+        return []
+
     # multiple outputs could possibly be handled here, but it's probably better
     # to handle it with an irmod, fusing multiple loads/stores/moves when
     # possible. Unless there is an exotic architecture that provides ONLY
@@ -373,6 +421,9 @@ def filter_by_step_requirements(
         rtype_req = rtype_map[opd]
         sigs = filter_by_operand_mods(sigs, opd_mod_reqs, opd,
                                   target_dt, rtype_req)
+        sigs = filter_by_forbidden_operand_mods(sigs, 
+                                                step.forbidden_opd_mods.get(ref, set()),
+                                                opd)
 
         if not sigs:
             break

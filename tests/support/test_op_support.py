@@ -44,6 +44,7 @@ from ukrgen.matching.math import (
 
 
 from ukrgen.support.data_move import resolution_registry
+from ukrgen.support.dm_solver import resolved_operation_chain
 
 from ukrgen.support.dm_resolutions.direct import direct_provider
 from ukrgen.support.dm_resolutions.scalar_reduce import scalar_reduce_provider
@@ -131,6 +132,28 @@ def print_unified_signatures(sigs):
 
                 print(f"        - {name:<12}: {', '.join(details)}")
 
+def print_implementation(impl : resolved_operation_chain):
+    print(f"  Math chain:")
+    for i,sstep in enumerate(impl.math_chain):
+        print(f"    Op {i+1} hw AST: {sstep.hw_ast}")
+        print(f"    Op {i+1} operand transformations:")
+        for opd,tfs in sstep.transformations.items():
+            tfstr = "->".join(t.name for t in tfs)
+            print(f"      {opd}:{tfstr}")
+        print(f"    Op {i+1} Name mapping:")
+        for opd_hw,opd_math in sstep.name_mapping.items():
+            print(f"      {opd_hw} -> {opd_math}")
+        print(f"    Op {i+1} Index mapping:")
+        for idx_hw,idx_math in sstep.index_mapping.items():
+            print(f"      {idx_hw} -> {idx_math}")
+    print(f"  Resolved operation chain:")
+    for i,opres in enumerate(impl.resolved_chain):
+        print(f"    OpRes {i+1} op name: {opres.opname}")
+        print(f"    OpRes {i+1} sig. count: {len(opres.compute_sigs)}")
+        print(f"    OpRes {i+1} operand resolution strategies:")
+        for (opname,ddir),strat in opres.operand_strategies.items():
+            print(f"      Operand {opname}, {ddir.name}: {strat.rsln.unique_tag}")
+
 class test_op_support(unittest.TestCase):
 
     def test_rvv_arith_ops(self):
@@ -196,4 +219,43 @@ class test_op_support(unittest.TestCase):
 
 
         print(f"Number of solutions:{len(impls)}")
-        print(impls[0])
+        for k, impl in enumerate(impls):
+            print(f"Solution {k}:")
+            print_implementation(impl)
+
+    def test_sme_solutions(self):
+
+        osb = op_support_builder(gen=sme())
+        osb.determine_base_support()
+        registry = resolution_registry()
+
+        scalar_reduce_provider().register_resolutions(registry)
+        direct_provider().register_resolutions(registry)
+
+        mm_req = expression_node(
+            op=operation.MOVE,
+            left=operand_ref(name="C", indices=('m', 'n')),
+            right=expression_node(
+                op=operation.ADD,
+                left=operand_ref(name="C", indices=('m', 'n')),
+                right=expression_node(
+                    op=operation.REDUCE_SUM,
+                    left=expression_node(
+                        op=operation.MUL,
+                        left=operand_ref(name="A", indices=('m', 'k')),
+                        right=operand_ref(name="B", indices=('k', 'n'))),
+                    reduce_dim='k')
+            )
+        )
+
+        opds = get_operands(mm_req)
+        dts = {opd : adt.FP64 for opd in opds}
+
+
+        impls = osb.find_hw_implementations(req=mm_req, registry=registry, io_dts=dts)
+
+
+        print(f"Number of solutions:{len(impls)}")
+        for k, impl in enumerate(impls):
+            print(f"Solution {k}:")
+            print_implementation(impl)
