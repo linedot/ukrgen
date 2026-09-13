@@ -235,26 +235,20 @@ def filter_by_operand_mods(sigs : list[opsig],
     :return: filtered list of signatures
     """
 
-    if opd_mod_reqs:
+    filtered_sigs = []
+    for sig in sigs:
+        if target_opd_name not in sig.operands:
+            continue
+        opd_sig = sig.operands[target_opd_name]
+        if opd_sig.dt != target_dt:
+            continue
+        if opd_sig.rtype != target_rtype:
+            continue
+        if not opd_mod_reqs.issubset(opd_sig.modifiers):
+            continue
+        filtered_sigs.append(sig)
 
-
-        filtered_sigs = []
-        for sig in sigs:
-            if target_opd_name not in sig.operands:
-                continue
-            opd_sig = sig.operands[target_opd_name]
-            if opd_sig.dt != target_dt:
-                continue
-            if opd_sig.rtype != target_rtype:
-                continue
-            if not opd_mod_reqs.issubset(opd_sig.modifiers):
-                continue
-
-            filtered_sigs.append(sig)
-
-        return filtered_sigs
-
-    return sigs
+    return filtered_sigs
 
 
 def get_op_rtype_req(steps : list[dm_step]) -> rgt:

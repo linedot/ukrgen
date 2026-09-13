@@ -196,3 +196,4 @@ class test_op_support(unittest.TestCase):
 
 
         print(f"Number of solutions:{len(impls)}")
+        print(impls[0])
