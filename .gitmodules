@@ -1,3 +1,0 @@
-[submodule "performance_counters"]
-	path = performance_counters
-	url = https://github.com/linedot/performance_counters.git
