@@ -74,7 +74,7 @@ class sig_identity:
     Structure representing the identity of the signature
     """
     opmods : frozenset[opmod]
-    operands : tuple[tuple[str,rgt,adt,frozenset[opdmod]]]
+    operands : tuple[tuple[str,rgt,adt,frozenset[opdmod]],...]
     struct : frozenset[tuple[str,Any]] # can be int, can be enum value...
 
 def get_sig_identity(sig: opsig) -> sig_identity:
@@ -186,7 +186,7 @@ class sig_group:
 
 
     def __str__(self) -> str:
-        return f"<{self.describe()} ({len(self.sigs)} sigs)"
+        return f"<{self.describe()} ({len(self.sigs)} sigs)>"
 
     def __repr__(self) -> str:
         return str(self)
