@@ -149,7 +149,7 @@ def print_implementation(impl : resolved_operation_chain):
     print(f"  Resolved operation chain:")
     for i,opres in enumerate(impl.resolved_chain):
         print(f"    OpRes {i+1} op name: {opres.opname}")
-        print(f"    OpRes {i+1} sig. count: {len(opres.compute_sigs)}")
+        print(f"    OpRes {i+1} sig. count: {len(opres.compute_sg)}")
         print(f"    OpRes {i+1} operand resolution strategies:")
         for (opname,ddir),strat in opres.operand_strategies.items():
             print(f"      Operand {opname}, {ddir.name}: {strat.rsln.unique_tag}")
