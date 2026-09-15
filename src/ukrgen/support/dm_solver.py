@@ -186,7 +186,7 @@ def generate_operand_resolution_candidates(
                 for step, grp in zip(rsln.steps, combo)
             ]
 
-        candidates.append(
+            candidates.append(
                 resolved_operand_strategy(
                     rsln=rsln,
                     compute_sg=narrowed_sg,
