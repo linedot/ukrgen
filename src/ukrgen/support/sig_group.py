@@ -11,9 +11,11 @@ Grouping signatures that are representing equivalent hw implementations with sup
 
 from __future__ import annotations
 
-
+from typing import Any
 from dataclasses import dataclass
 
+
+from asmgen.registers import asm_data_type as adt
 
 from asmgen.asmblocks.op import (
     operation_signature as opsig,
@@ -164,7 +166,7 @@ class sig_group:
         Human-readable description of the group
         """
 
-        mods = self.ident.opmods
+        mods = sorted(m.name for m in self.ident.opmods)
         opds = self.ident.operands
         struct = self.ident.struct
 
@@ -175,7 +177,8 @@ class sig_group:
             parts.append("+".join(sorted(mods)))
 
         for name, rtype, _dt, opd_mods in opds:
-            tag = name if not opd_mods else f"{name}[{'+'.join(sorted(opd_mods))}]"
+            opd_mod_names = sorted(m.name for m in opd_mods)
+            tag = name if not opd_mods else f"{name}[{'+'.join(sorted(opd_mod_names))}]"
             parts.append(f"{tag}:{rtype.name if rtype is not None else 'None'}")
         for k,v in sorted(struct,key=lambda kv: str(kv[0])):
             parts.append(f"{k}={v}")
@@ -201,7 +204,7 @@ def group_sigs(sigs: list[opsig]) -> list[sig_group]:
     groups : dict[sig_identity, list[opsig]] = {}
 
     for sig in sigs:
-        groups.setdefault(sig_identity(sig), []).append(sig)
+        groups.setdefault(get_sig_identity(sig), []).append(sig)
 
 
     return [sig_group(ident=ident, sigs=tuple(members))
