@@ -188,3 +188,42 @@ class sig_group:
     def __repr__(self) -> str:
         return str(self)
 
+
+def group_sigs(sigs: list[opsig]) -> list[sig_group]:
+    """
+    Partition signatures into signature groups
+
+
+    :param sigs: List of signatures to partition
+    :return: list of signature groups containing all the original signatures
+    """
+
+    groups : dict[sig_identity, list[opsig]] = {}
+
+    for sig in sigs:
+        groups.setdefault(sig_identity(sig), []).append(sig)
+
+
+    return [sig_group(ident=ident, sigs=tuple(members))
+            for ident, members in sorted(groups.items(),
+                                         key=lambda kv: str(kv[0]))
+    ]
+
+def filter_by_forbidden_semantics(sigs: list[opsig],
+                                  allowed: frozenset[opmod] = frozenset()
+                                  ) -> list[opsig]:
+    """
+    Filter signatures by modifiers that change the computation
+
+    :param sigs: List of signatures to filter
+    :param allowed: Allowed semantical modifiers
+    :return: filtered list of signatures
+    """
+
+    forbidden = SEMANTIC_OP_MODS - allowed
+
+    if not forbidden:
+        return sigs
+
+    return [sig for sig in sigs
+            if not forbidden & frozenset(sig.modifiers)]
