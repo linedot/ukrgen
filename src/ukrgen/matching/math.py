@@ -651,8 +651,17 @@ def validate_variance(req: ast_node, hw: ast_node,
 class req_solution_step:
     """
     One step of a solution to an AST requirement
+
+    :param hw_ast: untransformed hardware AST. Contains information about the
+                   physical operands
+    :param logical_ast: hardware AST after transformation and simplification.
+    :param transformations: transformations applied to each operand
+    :param name_mapping: map of hardware opd names to requirement opd names
+    :param index_mapping: map of hardware indices to requirement index.
+                          unmapped requirement indices have extent 1
     """
     hw_ast : ast_node
+    logical_ast : ast_node
     transformations : dict[str, list[transformation]]
     name_mapping : dict[str,str]
     index_mapping : dict[str,str]
@@ -699,6 +708,7 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[req_solutio
             if validate_variance(req, simplified_hw, index_mapping):
                 yield req_solution_step(
                     hw_ast=hw_ast,
+                    logical_ast=simplified_hw,
                     transformations=trans_dict,
                     name_mapping=name_mapping,
                     index_mapping=index_mapping
@@ -707,6 +717,123 @@ def transform_and_match(req: ast_node, hw_ast: ast_node) -> Iterator[req_solutio
                 debug(f"variance validation failed")
 
 
+def reduction_dims(ast: ast_node) -> set[str]:
+    """
+    Returns all dimension names that were reduced over in the AST
+
+    :param ast: AST to query for reductions
+    :return: set of dimension names that were reduced
+    """
+    def get_rdim(expr) -> str:
+        return exr.reduce_dim if expr.op == operation.REDUCE_SUM else None
+
+    return { 
+        dim for dim in for_each_expression(ast, get_rdim)
+        if dim is not None
+    }
+
+def index_axes(step: req_solution_step) -> dict[str, list[tuple[str,int]]]:
+    """
+    For each requirement index, list of operand names and dimension this index
+    occupies, 
+    
+    example: A[m,k] * B[k,n] -> C[m,n]:
+      m: [(A,0),(C,0)]
+      k: [(A,1),(B,0)]
+      n: [(B,1),(C,1)]
+
+    :param step: solution step to inspect
+    :return: list of (hw opd name, occupied dimension) mapped onto 
+             dimension names as used in the requirement
+    """
+
+    axes : dict[str, list[tuple[str,int]]] = {}
+
+    ast = step.logical_ast if step.logical_ast is not None else step.hw_ast
+
+    for opd in for_each_operand(ast,lambda x:x):
+        for axis,hw_idx in enumerate(opd.indices):
+            if hw_idx is None:
+                continue
+            req_idx = step.index_mapping.get(hw_idx)
+            if req_idx is None:
+                continue
+
+            axes.setdefault(req_idx, []).append((opd.name, axis))
+
+
+    return axes
+
+
+def solution_step_key(step: req_solution_step) -> tuple:
+    """
+    Structural key identifying one solution step.
+
+    :param step: solution step
+    :return: hashable key, equal for steps describing the same implementation
+    """
+
+    return (
+        str(step.hw_ast),
+        tuple(sorted((opd, tuple(t.name for t in tfs))
+                     for opd, tfs in step.transformations.items())),
+        tuple(sorted(step.name_mapping.items())),
+        tuple(sorted(step.index_mapping.items()))
+    )
+
+
+def chain_key(chain : list[req_solution_step]) -> tuple:
+    """
+    Structural key identifying a whole solution chain
+
+    :param chain: list of solution steps
+    :return: hashable key, equal for chaoins describing the same implementation
+    """
+
+    return tuple(solution_step_key(step) for step in chain)
+
+
+def dedup_chains(
+        chains: list[list[req_solution_step]]
+        ) -> list[list[req_solution_step]]:
+    """
+    Remove identical solutions
+
+    :param chains: unfiltered chains
+    :return: deduplicated chains
+    """
+
+    seen = set()
+    out = []
+    for chain in chains:
+        key = chain_key(chain)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(chain)
+    
+    return out
+
+
+def dedup_variants(variants : list[ast_node]) -> list[ast_node]:
+    """
+    Remove duplicate variants
+
+    :param variants: unfiltered variants
+    :return: deduplicated variants
+    """
+
+    seen_variants = set()
+    unique_variants = []
+
+    for variant in variants:
+        vkey = str(variant)
+        if vkey in seen_variants:
+            continue
+        seen_variants.add(vkey)
+        unique_variants.append(variant)
+
+    return unique_variants
 
 def solve_requirement(req: ast_node, hw_asts: list[ast_node],
                       temp_counter=0) \
@@ -723,7 +850,7 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
 
     all_valid_chains = []
 
-    req_variants = generate_variants(req)
+    req_variants = dedup_variants(generate_variants(req))
 
     for variant in req_variants:
 
@@ -770,7 +897,7 @@ def solve_requirement(req: ast_node, hw_asts: list[ast_node],
                 if not invalid_change:
                     all_valid_chains.append(dep_chain+rem_chain)
 
-    return all_valid_chains
+    return dedup_chains(all_valid_chains)
 
 HW_FADD_AST = expression_node(
         op=operation.MOVE,
