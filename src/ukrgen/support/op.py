@@ -40,6 +40,8 @@ from ..matching.math import (
     HW_MMA_AST
 )
 
+from .data_move import resolution_registry
+
 from .dm_solver import resolved_operation_chain,resolve_ast_solution
 
 from ..components.tile import (

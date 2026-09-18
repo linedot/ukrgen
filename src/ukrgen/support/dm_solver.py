@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from asmgen.asmblocks.noarch import asmgen
 from asmgen.asmblocks.op import (
     operation_signature as opsig,
+    operation_modifier as opmod,
     register_type as rgt
 )
 from asmgen.registers import (
