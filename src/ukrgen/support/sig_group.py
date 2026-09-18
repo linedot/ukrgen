@@ -26,19 +26,22 @@ from asmgen.asmblocks.op import (
     register_type as rgt,
     opdna1_modifier as dna1mod,
     opd3_modifier as d3mod,
+    move_modifier as mvmod,
     operand_modifier as opdmod
 )
 
 
-IDENTITY_ROLES = frozenset({orl.DATA, orl.MASK})
+IDENTITY_ROLES = frozenset({orl.DATA})
 
 
-ADDRESSING_OP_MODS = frozenset({
-    mod for mod in dna1mod if mod not in {dna1mod.STRUCT,dna1mod.MASK}
+NONID_OP_MODS = frozenset({
+    mod for mod in dna1mod if mod not in {dna1mod.STRUCT}
     })
 
+NONID_OP_MODS |= {d3mod.MASK, mvmod.MASK}
 
-ADDRESSING_STRUCT_PARAMS = frozenset({"it"})
+
+NONID_STRUCT_PARAMS = frozenset({"it"})
 
 
 SEMANTIC_OP_MODS = frozenset({
@@ -66,7 +69,7 @@ def identity_mods(sig: opsig) -> frozenset[opmod]:
     :return: set of identity-relevant modifiers the signature had
     """
 
-    return frozenset(sig.modifiers) - ADDRESSING_OP_MODS
+    return frozenset(sig.modifiers) - NONID_OP_MODS
 
 @dataclass(kw_only=True,frozen=True)
 class sig_identity:
@@ -93,7 +96,7 @@ def get_sig_identity(sig: opsig) -> sig_identity:
 
     struct = frozenset(
         (k,v) for k, v in sig.structural_params.items()
-        if k not in ADDRESSING_STRUCT_PARAMS
+        if k not in NONID_STRUCT_PARAMS
     )
 
     return sig_identity(opmods=identity_mods(sig), operands=opds, struct=struct)
