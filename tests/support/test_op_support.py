@@ -52,6 +52,8 @@ from ukrgen.support.dm_resolutions.scalar_reduce import scalar_reduce_provider
 
 from ukrgen.support.op import op_support_builder
 
+from ukrgen.support.encoding import encode_all
+
 def print_unified_signatures(sigs):
     """
     Nicely formats instruction signatures, handling both RVV (RISC-V Vector)
@@ -133,9 +135,13 @@ def print_unified_signatures(sigs):
                 print(f"        - {name:<12}: {', '.join(details)}")
 
 def print_implementation(impl : resolved_operation_chain):
-    print(f"  Math chain:")
+    """
+    Verbose dump of an implementation
+    """
+    print("  Math chain:")
     for i,sstep in enumerate(impl.math_chain):
         print(f"    Op {i+1} hw AST: {sstep.hw_ast}")
+        print(f"    Op {i+1} logical AST: {sstep.logical_ast}")
         print(f"    Op {i+1} operand transformations:")
         for opd,tfs in sstep.transformations.items():
             tfstr = "->".join(t.name for t in tfs)
@@ -146,13 +152,36 @@ def print_implementation(impl : resolved_operation_chain):
         print(f"    Op {i+1} Index mapping:")
         for idx_hw,idx_math in sstep.index_mapping.items():
             print(f"      {idx_hw} -> {idx_math}")
-    print(f"  Resolved operation chain:")
+    print("  Resolved operation chain:")
     for i,opres in enumerate(impl.resolved_chain):
         print(f"    OpRes {i+1} op name: {opres.opname}")
         print(f"    OpRes {i+1} sig. count: {len(opres.compute_sg)}")
         print(f"    OpRes {i+1} operand resolution strategies:")
         for (opname,ddir),strat in opres.operand_strategies.items():
             print(f"      Operand {opname}, {ddir.name}: {strat.rsln.unique_tag}")
+
+def print_selection_list(impls : list[resolved_operation_chain],
+                         req : ast_node):
+
+    """
+    Print the implementation in the syntax of the cli parameter for a to
+
+    :param impls: implementations found for the requirement
+    :param req: Mathematical requirement
+    """
+
+    encodings = encode_all(impls, req)
+
+    print(f"{len(impls)} implementations for {req}")
+    print()
+    width = len(str(len(encodings)))
+
+    for i,enc in enumerate(sorted(set(encodings))):
+        print(f"  [{i:>{width}}] \"{enc}\"")
+
+    if len(set(encodings)) != len(encodings):
+        dupes = len(encodings) - len(set(encodings))
+        print(f"\n WARNING: {dupes} implementations share an encoding")
 
 class test_op_support(unittest.TestCase):
 
@@ -218,10 +247,7 @@ class test_op_support(unittest.TestCase):
         impls = osb.find_hw_implementations(req=mm_req, registry=registry, io_dts=dts)
 
 
-        print(f"Number of solutions:{len(impls)}")
-        for k, impl in enumerate(impls):
-            print(f"Solution {k}:")
-            print_implementation(impl)
+        print_selection_list(impls, mm_req)
 
     def test_sme_solutions(self):
 
@@ -255,7 +281,4 @@ class test_op_support(unittest.TestCase):
         impls = osb.find_hw_implementations(req=mm_req, registry=registry, io_dts=dts)
 
 
-        print(f"Number of solutions:{len(impls)}")
-        for k, impl in enumerate(impls):
-            print(f"Solution {k}:")
-            print_implementation(impl)
+        print_selection_list(impls, mm_req)

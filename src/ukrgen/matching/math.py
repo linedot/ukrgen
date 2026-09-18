@@ -725,7 +725,7 @@ def reduction_dims(ast: ast_node) -> set[str]:
     :return: set of dimension names that were reduced
     """
     def get_rdim(expr) -> str:
-        return exr.reduce_dim if expr.op == operation.REDUCE_SUM else None
+        return expr.reduce_dim if expr.op == operation.REDUCE_SUM else None
 
     return { 
         dim for dim in for_each_expression(ast, get_rdim)
